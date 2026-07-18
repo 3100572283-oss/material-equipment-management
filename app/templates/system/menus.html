@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}菜单管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.dashboard') }}">系统管理</a></li>
+            <li class="breadcrumb-item active">菜单管理</li>
+        </ol>
+    </nav>
+    <a href="{{ url_for('system.create_menu') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>新增菜单
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-menu-button-wide me-2"></i>菜单列表</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:220px;">菜单名称</th>
+                        <th style="width:80px;">类型</th>
+                        <th style="width:180px;">编码</th>
+                        <th style="width:140px;">权限标识</th>
+                        <th>路径</th>
+                        <th style="width:70px;">状态</th>
+                        <th style="width:60px;">排序</th>
+                        <th style="width:160px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for menu in menus if menu.parent_id == 0 %}
+                    <tr>
+                        <td>
+                            {% if menu.icon %}<i class="bi {{ menu.icon }} me-2"></i>{% endif %}
+                            <strong>{{ menu.menu_name }}</strong>
+                        </td>
+                        <td><span class="badge {{ 'bg-primary' if menu.menu_type == 'catalog' else ('bg-info text-dark' if menu.menu_type == 'menu' else 'bg-secondary') }}">{{ TYPE_LABELS.get(menu.menu_type, menu.menu_type) }}</span></td>
+                        <td><code class="text-muted small">{{ menu.menu_code or '-' }}</code></td>
+                        <td><code class="text-muted small">{{ menu.permission or '-' }}</code></td>
+                        <td>{{ menu.path or '-' }}</td>
+                        <td>
+                            {% if menu.status %}
+                            <span class="badge bg-success">启用</span>
+                            {% else %}
+                            <span class="badge bg-secondary">禁用</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ menu.sort }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('system.edit_menu', id=menu.id) }}" class="btn btn-outline-primary" title="编辑">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('system.toggle_menu', id=menu.id) }}" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-secondary" title="{{ '禁用' if menu.status else '启用' }}">
+                                        <i class="bi {% if menu.status %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+                                    </button>
+                                </form>
+                                {% if menu.children.count() == 0 %}
+                                <form method="POST" action="{{ url_for('system.delete_menu', id=menu.id) }}" 
+                                      class="d-inline" onsubmit="return confirm('确定删除菜单「{{ menu.menu_name }}」？');">
+                                    <button type="submit" class="btn btn-outline-danger" title="删除">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% set menu_children = menu.children.order_by(menu.__class__.sort).all() %}
+                    {% if menu_children %}
+                    {% for child in menu_children %}
+                    <tr>
+                        <td class="ps-4">
+                            {% if child.icon %}<i class="bi {{ child.icon }} me-2"></i>{% endif %}
+                            {{ child.menu_name }}
+                        </td>
+                        <td><span class="badge {{ 'bg-primary' if child.menu_type == 'catalog' else ('bg-info text-dark' if child.menu_type == 'menu' else 'bg-secondary') }}">{{ TYPE_LABELS.get(child.menu_type, child.menu_type) }}</span></td>
+                        <td><code class="text-muted small">{{ child.menu_code or '-' }}</code></td>
+                        <td><code class="text-muted small">{{ child.permission or '-' }}</code></td>
+                        <td>{{ child.path or '-' }}</td>
+                        <td>
+                            {% if child.status %}
+                            <span class="badge bg-success">启用</span>
+                            {% else %}
+                            <span class="badge bg-secondary">禁用</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ child.sort }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('system.edit_menu', id=child.id) }}" class="btn btn-outline-primary" title="编辑">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('system.toggle_menu', id=child.id) }}" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-secondary" title="{{ '禁用' if child.status else '启用' }}">
+                                        <i class="bi {% if child.status %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+                                    </button>
+                                </form>
+                                {% set child_children = child.children.order_by(child.__class__.sort).all() %}
+                                {% if not child_children %}
+                                <form method="POST" action="{{ url_for('system.delete_menu', id=child.id) }}" 
+                                      class="d-inline" onsubmit="return confirm('确定删除菜单「{{ child.menu_name }}」？');">
+                                    <button type="submit" class="btn btn-outline-danger" title="删除">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% if child_children %}
+                    {% for sub in child_children %}
+                    <tr>
+                        <td class="ps-5">
+                            {% if sub.icon %}<i class="bi {{ sub.icon }} me-2"></i>{% endif %}
+                            {{ sub.menu_name }}
+                        </td>
+                        <td><span class="badge {{ 'bg-primary' if sub.menu_type == 'catalog' else ('bg-info text-dark' if sub.menu_type == 'menu' else 'bg-secondary') }}">{{ TYPE_LABELS.get(sub.menu_type, sub.menu_type) }}</span></td>
+                        <td><code class="text-muted small">{{ sub.menu_code or '-' }}</code></td>
+                        <td><code class="text-muted small">{{ sub.permission or '-' }}</code></td>
+                        <td>{{ sub.path or '-' }}</td>
+                        <td>
+                            {% if sub.status %}
+                            <span class="badge bg-success">启用</span>
+                            {% else %}
+                            <span class="badge bg-secondary">禁用</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ sub.sort }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('system.edit_menu', id=sub.id) }}" class="btn btn-outline-primary" title="编辑">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('system.toggle_menu', id=sub.id) }}" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-secondary" title="{{ '禁用' if sub.status else '启用' }}">
+                                        <i class="bi {% if sub.status %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('system.delete_menu', id=sub.id) }}" 
+                                      class="d-inline" onsubmit="return confirm('确定删除菜单「{{ sub.menu_name }}」？');">
+                                    <button type="submit" class="btn btn-outline-danger" title="删除">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% endif %}
+                    {% endfor %}
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if not menus %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox d-block mb-2" style="font-size:2.5rem;"></i>
+            <p>暂无菜单数据</p>
+            <a href="{{ url_for('system.create_menu') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i>添加第一个菜单
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

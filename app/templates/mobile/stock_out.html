@@ -1,0 +1,237 @@
+{% extends "mobile/base_mobile.html" %}
+{% block title %}离线出库录入{% endblock %}
+{% block nav_title %}离线出库录入{% endblock %}
+{% block back_url %}{{ url_for('mobile.index') }}{% endblock %}
+
+{% block content %}
+<!-- 已保存条数提示 -->
+<div class="mobile-card d-flex justify-content-between align-items-center">
+    <div>
+        <i class="bi bi-save text-warning me-1"></i>
+        <span class="small">已保存到本地：</span>
+        <span class="fw-bold text-warning" id="saved-count">0</span>
+        <span class="small">条</span>
+    </div>
+    <a href="{{ url_for('mobile.offline_data') }}" class="btn btn-sm btn-outline-primary">
+        查看已保存 <i class="bi bi-chevron-right"></i>
+    </a>
+</div>
+
+<!-- 出库表单 -->
+<form id="stock-out-form" class="mobile-card">
+    <!-- 物资选择（搜索下拉） -->
+    <div class="mb-3">
+        <label class="form-label"><i class="bi bi-box me-1"></i>选择物资</label>
+        <select class="form-select" id="material_id" name="material_id" required>
+            <option value="">正在加载物资...</option>
+        </select>
+        <div id="material-info" class="small text-muted mt-1" style="min-height:20px;"></div>
+    </div>
+
+    <!-- 搜索过滤 -->
+    <div class="mb-3">
+        <input type="text" class="form-control" id="material-search"
+               placeholder="输入名称/编码搜索物资..." autocomplete="off">
+    </div>
+
+    <!-- 数量 -->
+    <div class="mb-3">
+        <label class="form-label"><i class="bi bi-123 me-1"></i>数量</label>
+        <input type="number" class="form-control" id="quantity" name="quantity"
+               step="0.0001" min="0" placeholder="请输入数量" required inputmode="decimal">
+    </div>
+
+    <!-- 用料单位 -->
+    <div class="mb-3">
+        <label class="form-label"><i class="bi bi-building me-1"></i>用料单位</label>
+        <select class="form-select" id="usage_unit_id" name="usage_unit_id">
+            <option value="">请选择用料单位（选填）</option>
+        </select>
+    </div>
+
+    <!-- 备注 -->
+    <div class="mb-3">
+        <label class="form-label"><i class="bi bi-chat-dots me-1"></i>备注</label>
+        <textarea class="form-control" id="remark" name="remark" rows="2"
+                  placeholder="备注信息（选填）"></textarea>
+    </div>
+
+    <!-- 操作按钮 -->
+    <button type="submit" class="btn btn-warning btn-lg-mobile w-100 mb-2">
+        <i class="bi bi-save me-1"></i>保存到本地
+    </button>
+    <a href="{{ url_for('mobile.offline_data') }}" class="btn btn-outline-secondary btn-lg-mobile w-100">
+        <i class="bi bi-list-check me-1"></i>查看已保存
+    </a>
+</form>
+
+<!-- 保存结果提示 -->
+<div id="save-result" class="alert alert-success alert-mobile mt-3" style="display:none;">
+    <i class="bi bi-check-circle me-1"></i><span id="save-msg"></span>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var materials = [];
+    var usageUnits = [];
+
+    // 加载物资列表
+    function loadMaterials() {
+        var cached = MobileOffline.getCachedData('materials');
+        if (cached && cached.length) {
+            materials = cached;
+            renderMaterials('');
+        }
+        if (navigator.onLine) {
+            fetch('{{ url_for("mobile.api_material_list") }}')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    materials = data || [];
+                    MobileOffline.cacheData('materials', materials);
+                    renderMaterials(document.getElementById('material-search').value);
+                })
+                .catch(function() {
+                    if (!cached) {
+                        document.getElementById('material_id').innerHTML =
+                            '<option value="">加载物资失败，请检查网络</option>';
+                    }
+                });
+        } else if (!cached) {
+            document.getElementById('material_id').innerHTML =
+                '<option value="">无缓存数据，请联网后加载</option>';
+        }
+    }
+
+    // 加载用料单位
+    function loadUsageUnits() {
+        var cached = MobileOffline.getCachedData('usage_units');
+        if (cached && cached.length) {
+            usageUnits = cached;
+            renderUsageUnits();
+        }
+        if (navigator.onLine) {
+            fetch('{{ url_for("mobile.api_usage_units") }}')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    usageUnits = data || [];
+                    MobileOffline.cacheData('usage_units', usageUnits);
+                    renderUsageUnits();
+                })
+                .catch(function() {
+                    if (!cached) {
+                        // 加载失败不阻塞，用料单位为选填
+                    }
+                });
+        }
+    }
+
+    function renderMaterials(keyword) {
+        var sel = document.getElementById('material_id');
+        keyword = (keyword || '').trim().toLowerCase();
+        var filtered = materials;
+        if (keyword) {
+            filtered = materials.filter(function(m) {
+                return (m.name || '').toLowerCase().indexOf(keyword) >= 0 ||
+                       (m.code || '').toLowerCase().indexOf(keyword) >= 0;
+            });
+        }
+        var html = '<option value="">请选择物资</option>';
+        filtered.forEach(function(m) {
+            var label = m.name;
+            if (m.code) label += ' [' + m.code + ']';
+            if (m.spec) label += ' ' + m.spec;
+            if (m.unit) label += ' /' + m.unit;
+            html += '<option value="' + m.id + '" data-unit="' + (m.unit || '') + '">' +
+                    label + '</option>';
+        });
+        if (!filtered.length) {
+            html = '<option value="">无匹配物资</option>';
+        }
+        sel.innerHTML = html;
+    }
+
+    function renderUsageUnits() {
+        var sel = document.getElementById('usage_unit_id');
+        var html = '<option value="">请选择用料单位（选填）</option>';
+        usageUnits.forEach(function(u) {
+            html += '<option value="' + u.id + '">' + u.name +
+                    (u.code ? ' [' + u.code + ']' : '') + '</option>';
+        });
+        sel.innerHTML = html;
+    }
+
+    // 物资选择变化时显示信息
+    document.getElementById('material_id').addEventListener('change', function() {
+        var opt = this.options[this.selectedIndex];
+        var unit = opt ? opt.getAttribute('data-unit') : '';
+        var info = document.getElementById('material-info');
+        info.textContent = unit ? '单位：' + unit : '';
+    });
+
+    // 搜索过滤
+    document.getElementById('material-search').addEventListener('input', function() {
+        renderMaterials(this.value);
+    });
+
+    // 表单提交：保存到 localStorage
+    document.getElementById('stock-out-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var materialId = parseInt(document.getElementById('material_id').value);
+        var quantity = parseFloat(document.getElementById('quantity').value);
+        var usageUnitId = parseInt(document.getElementById('usage_unit_id').value) || null;
+        var remark = document.getElementById('remark').value.trim();
+
+        if (!materialId) {
+            alert('请选择物资');
+            return;
+        }
+        if (!quantity || quantity <= 0) {
+            alert('请输入有效数量');
+            return;
+        }
+
+        MobileOffline.addRecord({
+            type: 'stock_out',
+            data: {
+                material_id: materialId,
+                material_name: getMaterialName(materialId),
+                quantity: quantity,
+                usage_unit_id: usageUnitId,
+                remark: remark
+            }
+        });
+
+        // 显示成功提示
+        var result = document.getElementById('save-result');
+        var msg = document.getElementById('save-msg');
+        msg.textContent = '已保存到本地（共 ' + MobileOffline.count() + ' 条待同步）';
+        result.style.display = 'block';
+        setTimeout(function() { result.style.display = 'none'; }, 2500);
+
+        // 清空表单（保留物资选择以便连续录入）
+        document.getElementById('quantity').value = '';
+        document.getElementById('remark').value = '';
+        document.getElementById('quantity').focus();
+
+        updateSavedCount();
+    });
+
+    function getMaterialName(id) {
+        for (var i = 0; i < materials.length; i++) {
+            if (materials[i].id === id) return materials[i].name;
+        }
+        return '';
+    }
+
+    function updateSavedCount() {
+        document.getElementById('saved-count').textContent = MobileOffline.count();
+    }
+
+    loadMaterials();
+    loadUsageUnits();
+    updateSavedCount();
+})();
+</script>
+{% endblock %}

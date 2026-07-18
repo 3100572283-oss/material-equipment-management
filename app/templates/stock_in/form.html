@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% block title %}{% if is_copy %}复制新增{% elif stock_in %}编辑{% else %}新增{% endif %}入库单 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">{% if is_copy %}复制新增{% elif stock_in %}编辑{% else %}新增{% endif %}入库单</h5>
+        {% if stock_in %}<span class="text-muted small">单号：{{ stock_in.code }}</span>{% else %}<span class="text-muted small">单号：{{ default_code }}（保存后生效）</span>{% endif %}
+    </div>
+    <div class="card-body">
+        <form method="POST" id="stockInForm">
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">关联合同</label>
+                    <select class="form-select" name="contract_id" id="contractSelect">
+                        <option value="">-- 不关联合同 --</option>
+                        {% for c in contracts %}
+                        <option value="{{ c.id }}" data-supplier="{{ c.supplier_id }}" data-rate="{{ c.tax_rate }}" {% if stock_in and stock_in.contract_id == c.id %}selected{% endif %}>{{ c.code }} - {{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">供应商 <span class="text-danger">*</span></label>
+                    <select class="form-select" name="supplier_id" id="supplierSelect" required>
+                        <option value="">-- 请选择 --</option>
+                        {% for s in suppliers %}
+                        <option value="{{ s.id }}" {% if stock_in and stock_in.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">入库日期</label>
+                    <input type="date" class="form-control" name="stock_in_date" value="{{ stock_in.stock_in_date if stock_in else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">入库类型</label>
+                    <select class="form-select" name="stock_in_type">
+                        {% for label, value in get_dict_items('stockin_type') %}
+                        <option value="{{ value }}" {% if (stock_in and stock_in.stock_in_type == value) or (not stock_in and value == '采购入库') %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">经办人</label>
+                    <input type="text" class="form-control" name="operator" value="{{ stock_in.operator if stock_in else current_user.name or current_user.username }}">
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">备注</label>
+                    <input type="text" class="form-control" name="remark" value="{{ stock_in.remark if stock_in else '' }}">
+                </div>
+            </div>
+
+            <h6 class="mb-2"><i class="bi bi-list-ul me-1"></i>物资明细</h6>
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle" id="itemsTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:30%">物资</th>
+                            <th>规格型号</th>
+                            <th>单位</th>
+                            <th style="width:10%" class="text-end">数量</th>
+                            <th style="width:12%" class="text-end">含税单价</th>
+                            <th style="width:12%" class="text-end">金额</th>
+                            <th style="width:60px">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsBody">
+                        {% if stock_in %}
+                            {% for it in stock_in.items %}
+                            <tr>
+                                <td>
+                                    <select class="form-select form-select-sm material-select" name="material_id[]" required>
+                                        <option value="">-- 请选择 --</option>
+                                        {% for m in materials %}
+                                        <option value="{{ m.id }}" data-spec="{{ m.specification or '' }}" data-unit="{{ m.unit }}" {% if m.id == it.material_id %}selected{% endif %}>{{ m.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td><input type="text" class="form-control form-control-sm spec-cell" value="{{ it.material.specification if it.material else '' }}" readonly></td>
+                                <td><input type="text" class="form-control form-control-sm unit-cell" value="{{ it.material.unit if it.material else '' }}" readonly></td>
+                                <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end qty-input" name="quantity[]" value="{{ it.quantity }}"></td>
+                                <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end price-input" name="unit_price[]" value="{{ it.unit_price }}"></td>
+                                <td><input type="text" class="form-control form-control-sm text-end amount-cell fw-bold" value="{{ '%.2f'|format(it.amount or 0) }}" readonly></td>
+                                <td><input type="hidden" name="contract_item_id[]" value="{{ it.contract_item_id or '' }}"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="bi bi-trash"></i></button></td>
+                            </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-primary">
+                            <td colspan="3" class="text-end fw-bold">合计</td>
+                            <td class="text-end fw-bold fs-5" id="totalQty">0</td>
+                            <td></td>
+                            <td class="text-end fw-bold fs-5 text-primary" id="totalAmount">0.00</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="d-grid d-md-block mt-2 mb-3">
+                <button type="button" class="btn btn-outline-primary" id="addRowBtn"><i class="bi bi-plus-lg me-1"></i>添加明细行</button>
+                <button type="button" class="btn btn-outline-success ms-2" id="scanBtn" data-bs-toggle="modal" data-bs-target="#scanModal"><i class="bi bi-qr-code-scan me-1"></i>扫码添加</button>
+            </div>
+
+            <hr class="my-4">
+
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                <button type="submit" class="btn btn-primary">保存入库单</button>
+                <a href="{{ url_for('stock_in.index') }}" class="btn btn-secondary">返回</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Scan Modal -->
+<div class="modal fade" id="scanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">扫码添加物资</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="qr-reader" style="width:100%"></div>
+                <div id="scan-status" class="text-center mt-2 text-muted small"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const materialsOptions = `{% for m in materials %}<option value="{{ m.id }}" data-spec="{{ m.specification or '' }}" data-unit="{{ m.unit }}">{{ m.name }}</option>{% endfor %}`;
+
+function addRow() {
+    const tbody = document.getElementById('itemsBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><select class="form-select form-select-sm material-select" name="material_id[]" required><option value="">-- 请选择 --</option>${materialsOptions}</select></td>
+        <td><input type="text" class="form-control form-control-sm spec-cell" readonly></td>
+        <td><input type="text" class="form-control form-control-sm unit-cell" readonly></td>
+        <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end qty-input" name="quantity[]" value="0"></td>
+        <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end price-input" name="unit_price[]" value="0"></td>
+        <td><input type="text" class="form-control form-control-sm text-end amount-cell fw-bold" value="0.00" readonly></td>
+        <td><input type="hidden" name="contract_item_id[]" value=""><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="bi bi-trash"></i></button></td>
+    `;
+    tbody.appendChild(tr);
+    bindRowEvents(tr);
+}
+
+function removeRow(btn) {
+    if (document.querySelectorAll('#itemsBody tr').length <= 1) {
+        if (!confirm('至少保留一行明细，确认清空？')) return;
+    }
+    const tr = btn.closest('tr');
+    tr.remove();
+    recalc();
+}
+
+function recalc() {
+    let tq = 0, ta = 0;
+    document.querySelectorAll('#itemsBody tr').forEach(tr => {
+        const q = parseFloat(tr.querySelector('.qty-input').value) || 0;
+        const p = parseFloat(tr.querySelector('.price-input').value) || 0;
+        const a = q * p;
+        tr.querySelector('.amount-cell').value = a.toFixed(2);
+        tq += q;
+        ta += a;
+    });
+    document.getElementById('totalQty').textContent = tq.toFixed(4);
+    document.getElementById('totalAmount').textContent = ta.toFixed(2);
+}
+
+function bindRowEvents(tr) {
+    const sel = tr.querySelector('.material-select');
+    sel.addEventListener('change', () => {
+        const opt = sel.options[sel.selectedIndex];
+        tr.querySelector('.spec-cell').value = opt ? opt.dataset.spec : '';
+        tr.querySelector('.unit-cell').value = opt ? opt.dataset.unit : '';
+    });
+    tr.querySelector('.qty-input').addEventListener('input', recalc);
+    tr.querySelector('.price-input').addEventListener('input', recalc);
+}
+
+document.getElementById('addRowBtn').addEventListener('click', addRow);
+document.querySelectorAll('#itemsBody tr').forEach(bindRowEvents);
+
+// 合同联动
+document.getElementById('contractSelect').addEventListener('change', async function() {
+    const cid = this.value;
+    const supplierId = this.options[this.selectedIndex].dataset.supplier;
+    if (supplierId) document.getElementById('supplierSelect').value = supplierId;
+    if (!cid) return;
+    try {
+        const res = await fetch(`/stock_in/api/contract/${cid}/items`);
+        const data = await res.json();
+        if (data.length === 0) return;
+        // 清空明细
+        document.getElementById('itemsBody').innerHTML = '';
+        data.forEach(it => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><select class="form-select form-select-sm material-select" name="material_id[]" required><option value="">-- 请选择 --</option>${materialsOptions}</select></td>
+                <td><input type="text" class="form-control form-control-sm spec-cell" value="${it.specification}" readonly></td>
+                <td><input type="text" class="form-control form-control-sm unit-cell" value="${it.unit}" readonly></td>
+                <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end qty-input" name="quantity[]" value="0"></td>
+                <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end price-input" name="unit_price[]" value="${it.unit_price_with_tax}"></td>
+                <td><input type="text" class="form-control form-control-sm text-end amount-cell fw-bold" value="0.00" readonly></td>
+                <td><input type="hidden" name="contract_item_id[]" value="${it.contract_item_id}"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="bi bi-trash"></i></button></td>
+            `;
+            document.getElementById('itemsBody').appendChild(tr);
+            // 设置物资
+            const ms = tr.querySelector('.material-select');
+            ms.value = it.material_id;
+            bindRowEvents(tr);
+        });
+        recalc();
+    } catch (e) { console.error(e); }
+});
+
+recalc();
+
+// ===== 扫码添加 =====
+let html5QrCode = null;
+const scanModal = document.getElementById('scanModal');
+const scanStatus = document.getElementById('scan-status');
+
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
+async function startScanner() {
+    // HTTPS 环境检测(getUserMedia 在非 HTTPS 下不可用,localhost 除外)
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        scanStatus.innerHTML = '扫码功能需要 HTTPS 环境。<br><button type="button" class="btn btn-sm btn-link p-0" onclick="document.getElementById(\'materialCodeInput\').focus()">手动输入编码</button>';
+        return;
+    }
+    if (!window.Html5Qrcode) {
+        // CDN 多源 fallback: unpkg → jsdelivr → 本地
+        const cdnSources = [
+            'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
+            'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
+            '{{ url_for("static", filename="js/vendor/html5-qrcode.min.js") }}'
+        ];
+        let loaded = false;
+        for (const src of cdnSources) {
+            try {
+                await loadScript(src);
+                loaded = true;
+                break;
+            } catch (e) {
+                console.warn('加载扫码库失败:', src, e);
+            }
+        }
+        if (!loaded) {
+            scanStatus.innerHTML = '加载扫码库失败,请检查网络。<br><button type="button" class="btn btn-sm btn-link p-0" onclick="document.getElementById(\'materialCodeInput\').focus()">手动输入编码</button>';
+            return;
+        }
+    }
+    if (html5QrCode) {
+        await html5QrCode.stop();
+        html5QrCode.clear();
+    }
+    html5QrCode = new Html5Qrcode('qr-reader');
+    scanStatus.textContent = '正在启动摄像头…';
+    try {
+        // 权限状态检查
+        if (navigator.permissions) {
+            const result = await navigator.permissions.query({name: 'camera'});
+            if (result.state === 'denied') {
+                scanStatus.innerHTML = '摄像头权限被拒,请在浏览器设置中开启后重试。<br><button type="button" class="btn btn-sm btn-link p-0" onclick="document.getElementById(\'materialCodeInput\').focus()">手动输入编码</button>';
+                return;
+            }
+        }
+        await html5QrCode.start(
+            { facingMode: 'environment' },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            onScanSuccess,
+            () => {}
+        );
+        scanStatus.textContent = '请将二维码对准摄像头';
+    } catch (e) {
+        let msg = '无法启动摄像头：' + e.message;
+        // 提供降级方案
+        msg += '<br><button type="button" class="btn btn-sm btn-link p-0" onclick="document.getElementById(\'materialCodeInput\').focus()">手动输入编码</button>';
+        scanStatus.innerHTML = msg;
+    }
+}
+
+async function stopScanner() {
+    if (html5QrCode) {
+        try { await html5QrCode.stop(); } catch (e) {}
+        html5QrCode.clear();
+        html5QrCode = null;
+    }
+}
+
+async function onScanSuccess(decodedText) {
+    scanStatus.textContent = '识别成功，正在查询…';
+    if (html5QrCode) {
+        await html5QrCode.stop();
+    }
+    let code = decodedText;
+    try {
+        const parsed = JSON.parse(decodedText);
+        if (parsed && parsed.code) code = parsed.code;
+    } catch (e) {}
+    try {
+        const res = await fetch('/material/api/scan_lookup?code=' + encodeURIComponent(code));
+        const data = await res.json();
+        if (!res.ok) {
+            scanStatus.textContent = data.error || '查询失败';
+            if (html5QrCode) await html5QrCode.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 250, height: 250 } }, onScanSuccess, () => {});
+            return;
+        }
+        addScannedRow(data);
+        scanStatus.textContent = '已添加：' + data.name;
+        setTimeout(() => {
+            const modalEl = document.getElementById('scanModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+        }, 800);
+    } catch (e) {
+        scanStatus.textContent = '网络错误：' + e.message;
+        if (html5QrCode) await html5QrCode.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 250, height: 250 } }, onScanSuccess, () => {});
+    }
+}
+
+function addScannedRow(material) {
+    const tbody = document.getElementById('itemsBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><select class="form-select form-select-sm material-select" name="material_id[]" required><option value="">-- 请选择 --</option>${materialsOptions}</select></td>
+        <td><input type="text" class="form-control form-control-sm spec-cell" value="${material.specification || ''}" readonly></td>
+        <td><input type="text" class="form-control form-control-sm unit-cell" value="${material.unit || ''}" readonly></td>
+        <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end qty-input" name="quantity[]" value="0"></td>
+        <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end price-input" name="unit_price[]" value="0"></td>
+        <td><input type="text" class="form-control form-control-sm text-end amount-cell fw-bold" value="0.00" readonly></td>
+        <td><input type="hidden" name="contract_item_id[]" value=""><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="bi bi-trash"></i></button></td>
+    `;
+    tbody.appendChild(tr);
+    const sel = tr.querySelector('.material-select');
+    sel.value = material.id;
+    bindRowEvents(tr);
+    recalc();
+}
+
+scanModal.addEventListener('shown.bs.modal', startScanner);
+scanModal.addEventListener('hidden.bs.modal', stopScanner);
+</script>
+{% endblock %}

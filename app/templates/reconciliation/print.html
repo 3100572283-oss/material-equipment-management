@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}材料对账单 - {{ reconciliation.code }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}" media="print,screen">
+<style>
+    /* 对账单个性化覆盖: 明细字体 10pt,签字区 6 列 */
+    table.print-table th,
+    table.print-table td { font-size: 10pt; }
+    .sign-area td { width: 16.66%; }
+</style>
+{% endblock %}
+{% block content %}
+{% set ns = namespace(wo_tax=0, tax=0, w_tax=0, total_wo=0, total_tax=0, total_w=0) %}
+<div class="print-sheet">
+    <div class="no-print mb-3 text-end">
+        <button class="btn btn-primary" onclick="window.print();"><i class="bi bi-printer me-1"></i>打印</button>
+        <button class="btn btn-secondary" onclick="window.close();">关闭</button>
+    </div>
+
+    <div class="print-title">材料对账单</div>
+
+    <div class="print-header">
+        <div class="left">对账单号：<strong>{{ reconciliation.code }}</strong></div>
+        <div class="right">打印日期：{{ now_date or '' }}</div>
+    </div>
+
+    <div class="print-info">
+        <table>
+            <tr>
+                <td style="width:15%">供应商名称</td>
+                <td style="width:35%"><strong>{{ reconciliation.supplier.name if reconciliation.supplier else '-' }}</strong></td>
+                <td style="width:15%">合同编号</td>
+                <td style="width:35%">{{ reconciliation.contract.code if reconciliation.contract else '-' }}</td>
+            </tr>
+            <tr>
+                <td>对账期间</td>
+                <td>{{ reconciliation.start_date or '-' }} ~ {{ reconciliation.end_date or '-' }}</td>
+                <td>确认日期</td>
+                <td>{{ reconciliation.confirmed_at.strftime('%Y-%m-%d') if reconciliation.confirmed_at else '-' }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="print-table">
+        <thead>
+            <tr>
+                <th style="width:4%">序号</th>
+                <th style="width:8%">入库日期</th>
+                <th style="width:9%">入库单号</th>
+                <th style="width:12%">物资名称</th>
+                <th style="width:9%">规格</th>
+                <th style="width:5%">单位</th>
+                <th style="width:7%">数量</th>
+                <th style="width:8%">单价</th>
+                <th style="width:9%">不含税金额</th>
+                <th style="width:7%">税额</th>
+                <th style="width:9%">含税金额</th>
+                <th style="width:8%">备注</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for it in items %}
+            {% set row_wo = it.amount_without_tax or 0 %}
+            {% set row_tax = it.tax_amount or 0 %}
+            {% set row_w = it.amount_with_tax if it.amount_with_tax else (it.amount or 0) %}
+            {% set ns.wo_tax = ns.wo_tax + row_wo %}
+            {% set ns.tax = ns.tax + row_tax %}
+            {% set ns.w_tax = ns.w_tax + row_w %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ it.stock_in_date or '-' }}</td>
+                <td>{{ it.stock_in_code or '-' }}</td>
+                <td>{{ it.material.name if it.material else '-' }}</td>
+                <td>{{ it.specification or '-' }}</td>
+                <td>{{ it.unit or '-' }}</td>
+                <td>{{ it.quantity }}</td>
+                <td>{{ '%.4f'|format(it.settlement_price or it.unit_price or 0) }}</td>
+                <td>{{ '%.2f'|format(row_wo) }}</td>
+                <td>{{ '%.2f'|format(row_tax) }}</td>
+                <td>{{ '%.2f'|format(row_w) }}</td>
+                <td>{{ it.cost_subject or '' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="12" style="text-align:center;">暂无明细</td></tr>
+            {% endfor %}
+        </tbody>
+        {% set ns.total_wo = reconciliation.total_amount_without_tax if reconciliation.total_amount_without_tax else ns.wo_tax %}
+        {% set ns.total_tax = reconciliation.total_tax_amount if reconciliation.total_tax_amount else ns.tax %}
+        {% set ns.total_w = reconciliation.total_amount if reconciliation.total_amount else ns.w_tax %}
+        <tfoot>
+            <tr>
+                <td colspan="8" style="text-align:right;"><strong>合计</strong></td>
+                <td><strong>{{ '%.2f'|format(ns.total_wo) }}</strong></td>
+                <td><strong>{{ '%.2f'|format(ns.total_tax) }}</strong></td>
+                <td><strong>{{ '%.2f'|format(ns.total_w) }}</strong></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="amount-summary">
+        <div>不含税合计：¥{{ '%.2f'|format(ns.total_wo) }}</div>
+        <div>税额合计：¥{{ '%.2f'|format(ns.total_tax) }}</div>
+        <div class="chinese">含税总合计（大写）：{{ num_to_chinese(ns.total_w) }}</div>
+        <div>含税总合计（小写）：¥{{ '%.2f'|format(ns.total_w) }}</div>
+    </div>
+
+    {% if reconciliation.remark %}
+    <div style="margin-top:10px; font-size:12pt;">备注：{{ reconciliation.remark }}</div>
+    {% endif %}
+
+    <div class="sign-area">
+        <table>
+            <tr>
+                <td>项目经理：<div class="sign-line"></div></td>
+                <td>分管领导：<div class="sign-line"></div></td>
+                <td>物资部长：<div class="sign-line"></div></td>
+                <td>供应商：<div class="sign-line"></div></td>
+                <td>制表：<div class="sign-line"></div></td>
+                <td>日期：<div class="sign-line"></div></td>
+            </tr>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "wizard/base_wizard.html" %}
+{% block title %}创建部门{% endblock %}
+{% block content %}
+{% if errors %}
+<div class="alert alert-danger">
+    {% for err in errors %}
+    <div>{{ err }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+<div class="mb-4">
+    <h5 class="mb-3"><i class="bi bi-building me-2 text-primary"></i>创建部门（可选）</h5>
+    <p class="text-muted small">设置您的第一个部门，用于后续人员组织和权限管理。</p>
+</div>
+<form method="POST" action="{{ url_for('main.wizard_submit') }}" id="deptForm">
+    <input type="hidden" name="action" value="dept">
+    <div class="mb-3">
+        <label class="form-label">部门编码</label>
+        <input type="text" class="form-control" name="dept_code" value="{{ dept_code or '' }}" placeholder="例如：admin_dept">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">部门名称</label>
+        <input type="text" class="form-control" name="dept_name" value="{{ dept_name or '' }}" placeholder="例如：行政部">
+    </div>
+    <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="skip" id="skipDept" value="1">
+        <label class="form-check-label text-muted" for="skipDept">跳过此步，之后在系统中创建</label>
+    </div>
+</form>
+{% endblock %}
+{% block footer %}
+<div class="wizard-footer">
+    <a href="{{ url_for('main.wizard', step='2') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>上一步</a>
+    <button type="submit" form="deptForm" class="btn btn-primary">下一步 <i class="bi bi-arrow-right ms-1"></i></button>
+</div>
+{% endblock %}

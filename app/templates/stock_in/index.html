@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}入库管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>入库管理</h5>
+        {% if current_user.can_edit() %}
+        <a href="{{ url_for('stock_in.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增入库单</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('stock_in.index') }}">
+            <div class="col-md-2">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索单号/备注" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="supplier_id">
+                    <option value="0">全部供应商</option>
+                    {% for s in suppliers %}
+                    <option value="{{ s.id }}" {% if s.id == supplier_id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="contract_id">
+                    <option value="0">全部合同</option>
+                    {% for c in contracts %}
+                    <option value="{{ c.id }}" {% if c.id == contract_id %}selected{% endif %}>{{ c.code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-1">
+                <select class="form-select form-select-sm" name="stock_in_type">
+                    <option value="">全部类型</option>
+                    {% for label, value in get_dict_items('stockin_type') %}
+                    <option value="{{ value }}" {% if stock_in_type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-1">
+                <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from or '' }}" title="开始日期">
+            </div>
+            <div class="col-md-1">
+                <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to or '' }}" title="结束日期">
+            </div>
+            {% if enable_quality_check %}
+            <div class="col-md-1">
+                <select class="form-select form-select-sm" name="quality_status">
+                    <option value="">全部质检状态</option>
+                    <option value="draft" {% if quality_status == 'draft' %}selected{% endif %}>质检草稿</option>
+                    <option value="pending" {% if quality_status == 'pending' %}selected{% endif %}>待质检</option>
+                    <option value="passed" {% if quality_status == 'passed' %}selected{% endif %}>质检合格</option>
+                    <option value="rejected" {% if quality_status == 'rejected' %}selected{% endif %}>质检退回</option>
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-1">
+                <select class="form-select form-select-sm" name="approval_status">
+                    <option value="">全部审批状态</option>
+                    <option value="draft" {% if approval_status == 'draft' %}selected{% endif %}>草稿</option>
+                    <option value="pending" {% if approval_status == 'pending' %}selected{% endif %}>待审批</option>
+                    <option value="approving" {% if approval_status == 'approving' %}selected{% endif %}>审批中</option>
+                    <option value="passed" {% if approval_status == 'passed' %}selected{% endif %}>已通过</option>
+                    <option value="rejected" {% if approval_status == 'rejected' %}selected{% endif %}>已驳回</option>
+                    <option value="withdrawn" {% if approval_status == 'withdrawn' %}selected{% endif %}>已撤回</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('stock_in.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <!-- 批量操作栏 -->
+        <div class="batch-toolbar mb-2 py-2 px-3 bg-light rounded d-none" id="batchToolbar">
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-muted small"><i class="bi bi-check2-square me-1"></i>已选择 <strong id="selectedCount">0</strong> 项</span>
+                <div class="ms-auto d-flex gap-2">
+                    {% if current_user.can_edit() %}
+                    <form method="POST" action="{{ url_for('stock_in.batch_delete') }}" class="d-inline" id="batchDeleteForm">
+                        <input type="hidden" name="ids" id="batchDeleteIds">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmBatchDelete()">
+                            <i class="bi bi-trash me-1"></i>批量删除
+                        </button>
+                    </form>
+                    {% endif %}
+                    <button type="button" class="btn btn-sm btn-outline-info" onclick="batchPrint()">
+                        <i class="bi bi-printer me-1"></i>批量打印
+                    </button>
+                    <a href="#" class="btn btn-sm btn-outline-success" id="batchExportBtn">
+                        <i class="bi bi-download me-1"></i>批量导出
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">
+                        <i class="bi bi-x-lg me-1"></i>取消
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px;">
+                            <input type="checkbox" class="form-check-input" id="selectAll" onchange="toggleSelectAll(this)">
+                        </th>
+                        <th>入库单号</th>
+                        <th>日期</th>
+                        <th>类型</th>
+                        <th>合同</th>
+                        <th>供应商</th>
+                        <th>经办人</th>
+                        <th>物资摘要</th>
+                        <th class="text-end">总数量</th>
+                        <th class="text-end">总金额</th>
+                        <th>审批状态</th>
+                        {% if enable_quality_check %}<th>质检状态</th>{% endif %}
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in pagination.items %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="form-check-input row-checkbox" data-id="{{ s.id }}" onchange="updateSelection()">
+                        </td>
+                        <td><a href="{{ url_for('stock_in.detail', id=s.id) }}" class="text-decoration-none fw-bold">{{ s.code }}</a></td>
+                        <td>{{ s.stock_in_date or '-' }}</td>
+                        <td>
+                            {% if s.stock_in_type == '采购入库' %}<span class="badge bg-primary">{{ s.stock_in_type }}</span>
+                            {% elif s.stock_in_type == '退货入库' %}<span class="badge bg-warning text-dark">{{ s.stock_in_type }}</span>
+                            {% elif s.stock_in_type == '调拨入库' %}<span class="badge bg-info">{{ s.stock_in_type }}</span>
+                            {% else %}<span class="badge bg-success">{{ s.stock_in_type }}</span>{% endif %}
+                        </td>
+                        <td>{% if s.contract %}<a href="{{ url_for('contract.detail', id=s.contract_id) }}">{{ s.contract.code }}</a>{% else %}-{% endif %}</td>
+                        <td>{{ s.supplier.name if s.supplier else '-' }}</td>
+                        <td>{{ s.operator or '-' }}</td>
+                        <td>
+                            {% set summary = s.items.limit(2).all() %}
+                            {% for it in summary %}<span class="badge bg-light text-dark">{{ it.material.name if it.material else '' }}</span>{% endfor %}
+                            {% if s.items.count() > 2 %}<span class="text-muted small">等{{ s.items.count() }}项</span>{% endif %}
+                        </td>
+                        <td class="text-end">{{ s.total_quantity }}</td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(s.total_amount or 0) }}</td>
+                        <td>
+                            {% if s.approval_status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif s.approval_status == 'pending' %}<span class="badge bg-warning text-dark">待审批</span>
+                            {% elif s.approval_status == 'approving' %}<span class="badge bg-warning text-dark">审批中</span>
+                            {% elif s.approval_status == 'passed' %}<span class="badge bg-success">已通过</span>
+                            {% elif s.approval_status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
+                            {% elif s.approval_status == 'withdrawn' %}<span class="badge bg-secondary">已撤回</span>
+                            {% endif %}
+                        </td>
+                        {% if enable_quality_check %}
+                        <td>
+                            {% if s.quality_status == 'draft' %}<span class="badge bg-secondary">质检草稿</span>
+                            {% elif s.quality_status == 'pending' %}<span class="badge bg-warning text-dark">待质检</span>
+                            {% elif s.quality_status == 'passed' %}<span class="badge bg-success">质检合格</span>
+                            {% elif s.quality_status == 'rejected' %}<span class="badge bg-danger">质检退回</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                        <td class="text-end">
+                            <a href="{{ url_for('stock_in.detail', id=s.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('stock_in.print_stock_in', id=s.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="打印"><i class="bi bi-printer"></i></a>
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('stock_in.create', copy_from=s.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
+                            {% if not s.is_reconciled %}
+                            <a href="{{ url_for('stock_in.edit', id=s.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('stock_in.delete', id=s.id) }}" class="d-inline" onsubmit="return confirm('确定删除？库存将自动扣减。');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% else %}
+                            <span class="badge bg-secondary" title="已对账，禁止修改">已对账</span>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="{{ 13 if enable_quality_check else 12 }}" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_pagination.html' %}
+    </div>
+</div>
+
+<script>
+function toggleSelectAll(el) {
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) {
+        cb.checked = el.checked;
+    });
+    updateSelection();
+}
+
+function updateSelection() {
+    var checkboxes = document.querySelectorAll('.row-checkbox');
+    var checked = document.querySelectorAll('.row-checkbox:checked');
+    var selectAll = document.getElementById('selectAll');
+    var toolbar = document.getElementById('batchToolbar');
+    var countEl = document.getElementById('selectedCount');
+    var exportBtn = document.getElementById('batchExportBtn');
+
+    var count = checked.length;
+    countEl.textContent = count;
+
+    if (count > 0) {
+        toolbar.classList.remove('d-none');
+    } else {
+        toolbar.classList.add('d-none');
+    }
+
+    if (checkboxes.length > 0 && count === checkboxes.length) {
+        selectAll.checked = true;
+        selectAll.indeterminate = false;
+    } else if (count > 0) {
+        selectAll.checked = false;
+        selectAll.indeterminate = true;
+    } else {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+    }
+
+    var ids = Array.from(checked).map(function(cb) { return cb.dataset.id; }).join(',');
+    document.getElementById('batchDeleteIds').value = ids;
+    exportBtn.href = '{{ url_for("stock_in.batch_export") }}?ids=' + encodeURIComponent(ids);
+}
+
+function clearSelection() {
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = false; });
+    document.getElementById('selectAll').checked = false;
+    updateSelection();
+}
+
+function confirmBatchDelete() {
+    var count = document.querySelectorAll('.row-checkbox:checked').length;
+    if (count === 0) {
+        alert('请先选择要删除的记录');
+        return;
+    }
+    if (confirm('确定批量删除选中的 ' + count + ' 条记录？仅草稿且未对账的单据可删除。')) {
+        document.getElementById('batchDeleteForm').submit();
+    }
+}
+
+function batchPrint() {
+    var checked = document.querySelectorAll('.row-checkbox:checked');
+    if (checked.length === 0) {
+        alert('请先选择要打印的记录');
+        return;
+    }
+    Array.from(checked).forEach(function(cb, idx) {
+        setTimeout(function() {
+            window.open('{{ url_for("stock_in.print_stock_in", id=0) }}'.replace('/0', '/' + cb.dataset.id), '_blank');
+        }, idx * 500);
+    });
+}
+</script>
+{% endblock %}

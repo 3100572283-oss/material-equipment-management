@@ -1,0 +1,102 @@
+{% extends "mobile/base_mobile.html" %}
+{% block title %}移动端录入{% endblock %}
+{% block nav_title %}移动端录入{% endblock %}
+{% block back_url %}{{ url_for('main.index') }}{% endblock %}
+
+{% block content %}
+<!-- 当前项目 -->
+<div class="mobile-card">
+    <div class="d-flex align-items-center">
+        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3"
+             style="width:42px;height:42px;">
+            <i class="bi bi-building"></i>
+        </div>
+        <div class="flex-grow-1">
+            <div class="text-muted small">当前项目</div>
+            <div class="fw-bold">{{ project.name if project else '未选择' }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- 待同步状态 -->
+<div class="mobile-card">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <div class="text-muted small mb-1">待同步数据</div>
+            <div class="h3 mb-0 text-warning" id="pending-count">0 条</div>
+        </div>
+        <div class="text-end">
+            <div class="text-muted small mb-1">上次同步</div>
+            <div class="small" id="last-sync-time">从未</div>
+        </div>
+    </div>
+</div>
+
+<!-- 功能入口 -->
+<a href="{{ url_for('mobile.stock_in') }}" class="big-btn-card btn-primary-gradient">
+    <i class="bi bi-box-arrow-in-down icon"></i>
+    <div class="title">离线入库录入</div>
+    <div class="desc">在无网络环境下录入入库数据</div>
+</a>
+
+<a href="{{ url_for('mobile.stock_out') }}" class="big-btn-card btn-warning-gradient">
+    <i class="bi bi-box-arrow-up icon"></i>
+    <div class="title">离线出库录入</div>
+    <div class="desc">在无网络环境下录取出库数据</div>
+</a>
+
+<a href="{{ url_for('mobile.offline_data') }}" class="big-btn-card btn-success-gradient">
+    <i class="bi bi-cloud-arrow-up icon"></i>
+    <div class="title">查看待同步数据</div>
+    <div class="desc">查看本地保存的数据并同步到服务器</div>
+</a>
+
+<!-- 网络状态 -->
+<div class="mobile-card text-center">
+    <div id="net-status">
+        <i class="bi bi-wifi-off text-danger" id="net-icon"></i>
+        <span class="small text-muted ms-1" id="net-text">检测中...</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    // 更新待同步数量
+    function updateStats() {
+        var count = MobileOffline.count();
+        document.getElementById('pending-count').textContent = count + ' 条';
+
+        var lastSync = MobileOffline.getLastSync();
+        var syncEl = document.getElementById('last-sync-time');
+        if (lastSync) {
+            var d = new Date(lastSync);
+            syncEl.textContent = d.toLocaleString('zh-CN');
+        } else {
+            syncEl.textContent = '从未';
+        }
+    }
+
+    // 更新网络状态
+    function updateNetStatus() {
+        var icon = document.getElementById('net-icon');
+        var text = document.getElementById('net-text');
+        if (navigator.onLine) {
+            icon.className = 'bi bi-wifi text-success';
+            text.textContent = '网络正常，可同步';
+            text.className = 'small text-success ms-1';
+        } else {
+            icon.className = 'bi bi-wifi-off text-danger';
+            text.textContent = '离线模式';
+            text.className = 'small text-danger ms-1';
+        }
+    }
+
+    updateStats();
+    updateNetStatus();
+    window.addEventListener('online', updateNetStatus);
+    window.addEventListener('offline', updateNetStatus);
+})();
+</script>
+{% endblock %}

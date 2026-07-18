@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}权限配置 - {{ role.role_name }} - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('system.roles') }}">角色管理</a></li>
+            <li class="breadcrumb-item active">权限配置</li>
+        </ol>
+    </nav>
+    <div class="btn-group">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnCheckAll">
+            <i class="bi bi-check-square me-1"></i>全选
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnUncheckAll">
+            <i class="bi bi-square me-1"></i>取消全选
+        </button>
+        <a href="{{ url_for('system.roles') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i>返回
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-key me-2"></i>{{ role.role_name }} - 菜单权限配置</h6>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('system.save_role_permissions', id=role.id) }}" id="permissionForm">
+            <div class="permission-tree">
+                {% for menu in menus %}
+                <div class="tree-item">
+                    <div class="d-flex align-items-center py-3 border-bottom">
+                        <input type="checkbox" class="form-check-input me-3 checkbox-all"
+                               value="{{ menu.id }}" {% if menu.id in checked_ids %}checked{% endif %}
+                               data-parent-id="0">
+                        <div>
+                            <div class="font-medium">
+                                {% if menu.icon %}<i class="bi {{ menu.icon }} me-2"></i>{% endif %}
+                                {{ menu.menu_name }}
+                                <span class="badge bg-info text-dark ms-2">{{ menu.menu_type }}</span>
+                            </div>
+                            {% if menu.permission %}
+                            <small class="text-muted">{{ menu.permission }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% set menu_children = menu.children.order_by(menu.__class__.sort).all() %}
+                    {% if menu_children %}
+                    <div class="ml-4">
+                        {% for child in menu_children %}
+                        <div class="tree-item">
+                            <div class="d-flex align-items-center py-2 border-bottom">
+                                <input type="checkbox" class="form-check-input me-3 checkbox-item"
+                                       value="{{ child.id }}" {% if child.id in checked_ids %}checked{% endif %}
+                                       data-parent-id="{{ menu.id }}">
+                                <div>
+                                    <div>
+                                        {% if child.icon %}<i class="bi {{ child.icon }} me-2"></i>{% endif %}
+                                        {{ child.menu_name }}
+                                        <span class="badge bg-info text-dark ms-2">{{ child.menu_type }}</span>
+                                    </div>
+                                    {% if child.permission %}
+                                    <small class="text-muted">{{ child.permission }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% set child_children = child.children.order_by(child.__class__.sort).all() %}
+                            {% if child_children %}
+                            <div class="ml-4">
+                                {% for sub in child_children %}
+                                <div class="d-flex align-items-center py-2 border-bottom">
+                                    <input type="checkbox" class="form-check-input me-3 checkbox-item"
+                                           value="{{ sub.id }}" {% if sub.id in checked_ids %}checked{% endif %}
+                                           data-parent-id="{{ child.id }}">
+                                    <div>
+                                        <div>
+                                            {% if sub.icon %}<i class="bi {{ sub.icon }} me-2"></i>{% endif %}
+                                            {{ sub.menu_name }}
+                                            <span class="badge bg-info text-dark ms-2">{{ sub.menu_type }}</span>
+                                        </div>
+                                        {% if sub.permission %}
+                                        <small class="text-muted">{{ sub.permission }}</small>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="mt-4 text-center">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i>保存权限配置
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('btnCheckAll').addEventListener('click', function() {
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+});
+
+document.getElementById('btnUncheckAll').addEventListener('click', function() {
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+});
+
+document.querySelectorAll('.checkbox-all').forEach(cb => {
+    cb.addEventListener('change', function() {
+        const parentId = this.dataset.parentId;
+        const children = document.querySelectorAll('.checkbox-item[data-parent-id="' + this.value + '"]');
+        children.forEach(child => {
+            child.checked = this.checked;
+            const subChildren = document.querySelectorAll('.checkbox-item[data-parent-id="' + child.value + '"]');
+            subChildren.forEach(sub => sub.checked = this.checked);
+        });
+    });
+});
+
+document.querySelectorAll('.checkbox-item').forEach(cb => {
+    cb.addEventListener('change', function() {
+        const parentId = this.dataset.parentId;
+        const parentCb = document.querySelector('.checkbox-all[value="' + parentId + '"]') || 
+                         document.querySelector('.checkbox-item[value="' + parentId + '"]');
+        if (parentCb) {
+            const siblings = document.querySelectorAll('.checkbox-item[data-parent-id="' + parentId + '"]');
+            const allChecked = Array.from(siblings).every(s => s.checked);
+            parentCb.checked = allChecked;
+            
+            const grandParentId = parentCb.dataset.parentId;
+            const grandParentCb = document.querySelector('.checkbox-all[value="' + grandParentId + '"]') ||
+                                 document.querySelector('.checkbox-item[value="' + grandParentId + '"]');
+            if (grandParentCb) {
+                const allSubChecked = Array.from(document.querySelectorAll('.checkbox-item[data-parent-id="' + grandParentId + '"]')).every(s => s.checked);
+                grandParentCb.checked = allSubChecked;
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

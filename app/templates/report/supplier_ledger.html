@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}供应商往来台账 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-people me-2"></i>供应商往来台账</h5>
+        <div>
+            <a href="{{ url_for('report.index') }}" class="btn btn-sm btn-outline-secondary me-1"><i class="bi bi-arrow-left me-1"></i>报表中心</a>
+            <a href="{{ url_for('report.export_supplier_ledger', start_date=start_date, end_date=end_date, status=status) }}" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i>导出Excel</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3 align-items-end" method="GET">
+            <div class="col-md-2">
+                <label class="form-label small text-muted">时间范围</label>
+                <select class="form-select form-select-sm" name="time_range" id="timeRange">
+                    <option value="month" {% if time_range == 'month' %}selected{% endif %}>本月</option>
+                    <option value="last_month" {% if time_range == 'last_month' %}selected{% endif %}>上月</option>
+                    <option value="quarter" {% if time_range == 'quarter' %}selected{% endif %}>本季度</option>
+                    <option value="year" {% if time_range == 'year' %}selected{% endif %}>本年度</option>
+                    <option value="custom" {% if time_range == 'custom' %}selected{% endif %}>自定义</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">开始日期</label>
+                <input type="date" class="form-control form-control-sm" name="start_date" value="{{ start_date }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">结束日期</label>
+                <input type="date" class="form-control form-control-sm" name="end_date" value="{{ end_date }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">欠款状态</label>
+                <select class="form-select form-select-sm" name="status">
+                    <option value="all" {% if status == 'all' %}selected{% endif %}>全部</option>
+                    <option value="owing" {% if status == 'owing' %}selected{% endif %}>有欠款</option>
+                    <option value="cleared" {% if status == 'cleared' %}selected{% endif %}>已结清</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 查询</button>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>供应商编码</th>
+                        <th>供应商名称</th>
+                        <th class="text-end">期初余额(元)</th>
+                        <th class="text-end">本期入库(元)</th>
+                        <th class="text-end">本期开票(元)</th>
+                        <th class="text-end">本期付款(元)</th>
+                        <th class="text-end">期末余额(元)</th>
+                        <th class="text-center">账龄</th>
+                        <th class="text-center">状态</th>
+                        <th class="text-center">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in supplier_data %}
+                    <tr>
+                        <td><a href="{{ url_for('report.supplier_ledger_detail', supplier_id=item.id, start_date=start_date, end_date=end_date) }}" class="text-primary">{{ item.code or '-' }}</a></td>
+                        <td>{{ item.name }}</td>
+                        <td class="text-end">{{ "%.2f"|format(item.opening_balance) }}</td>
+                        <td class="text-end">{{ "%.2f"|format(item.current_in_amount) }}</td>
+                        <td class="text-end">{{ "%.2f"|format(item.current_invoice_amount) }}</td>
+                        <td class="text-end">{{ "%.2f"|format(item.current_payment_amount) }}</td>
+                        <td class="text-end fw-bold {% if item.closing_balance > 0 %}text-danger{% endif %}">{{ "%.2f"|format(item.closing_balance) }}</td>
+                        <td class="text-center">
+                            <span class="badge {% if item.aging == '30' %}bg-success{% elif item.aging == '90' %}bg-warning{% else %}bg-danger{% endif %} text-white">
+                                {% if item.aging == '30' %}30天内{% elif item.aging == '90' %}30-90天{% else %}90天以上{% endif %}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge {% if item.status == '异常' %}bg-danger{% else %}bg-success{% endif %} text-white">{{ item.status }}</span>
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('report.supplier_ledger_detail', supplier_id=item.id, start_date=start_date, end_date=end_date) }}" class="btn btn-xs btn-outline-primary"><i class="bi bi-list"></i> 明细账</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="table-secondary">
+                        <td colspan="2" class="text-center fw-bold">合计</td>
+                        <td class="text-end fw-bold">{{ "%.2f"|format(total_opening) }}</td>
+                        <td class="text-end fw-bold">{{ "%.2f"|format(total_in) }}</td>
+                        <td class="text-end fw-bold">{{ "%.2f"|format(total_invoice) }}</td>
+                        <td class="text-end fw-bold">{{ "%.2f"|format(total_payment) }}</td>
+                        <td class="text-end fw-bold {% if total_closing > 0 %}text-danger{% endif %}">{{ "%.2f"|format(total_closing) }}</td>
+                        <td colspan="3"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.getElementById('timeRange').addEventListener('change', function() {
+    if (this.value === 'custom') {
+        document.querySelector('[name="start_date"]').disabled = false;
+        document.querySelector('[name="end_date"]').disabled = false;
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,15 @@
+# AI识别功能 - 可选依赖
+# 如需使用营业执照/发票OCR识别功能，请安装以下依赖
+
+# PaddleOCR（CPU版本）
+paddlepaddle==2.5.2
+paddleocr==2.7.3
+
+# 图像处理
+Pillow==10.1.0
+opencv-python-headless==4.8.1.78
+
+# 注意：
+# 1. paddlepaddle GPU版本需要根据CUDA版本选择，请参考官方文档
+# 2. 如果不需要AI识别功能，可以不安装这些依赖，系统仍可正常运行
+# 3. 安装命令：pip install -r requirements-ai.txt

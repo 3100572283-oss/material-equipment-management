@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}数据库版本管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-database-gear me-2"></i>数据库版本管理</h5>
+        <div class="d-flex align-items-center gap-3">
+            <span class="text-muted small">当前版本：<strong>V{{ current_version }}</strong></span>
+            {% if pending %}
+            <form method="POST" action="{{ url_for('admin.run_db_migrations') }}" style="display:inline;" onsubmit="return confirm('确定要执行所有待处理的迁移吗？');">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-play-fill me-1"></i>执行迁移 ({{ pending|length }})
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body text-center">
+                        <div class="text-muted small mb-1">已执行版本</div>
+                        <div class="display-6 fw-bold">{{ applied|length }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-warning bg-opacity-10">
+                    <div class="card-body text-center">
+                        <div class="text-warning small mb-1">待执行</div>
+                        <div class="display-6 fw-bold text-warning">{{ pending|length }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-success bg-opacity-10">
+                    <div class="card-body text-center">
+                        <div class="text-success small mb-1">当前版本</div>
+                        <div class="display-6 fw-bold text-success">V{{ current_version }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if pending %}
+        <div class="card border-warning mb-4">
+            <div class="card-header bg-warning bg-opacity-25 border-warning">
+                <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>待执行的迁移（{{ pending|length }} 个）</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:120px;">版本号</th>
+                                <th>描述</th>
+                                <th style="width:200px;">脚本文件</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in pending %}
+                            <tr>
+                                <td><span class="badge bg-warning text-dark">V{{ m.version }}</span></td>
+                                <td>{{ m.description }}</td>
+                                <td class="text-muted small">{{ m.filename }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-check2-circle me-2"></i>已执行的迁移历史</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:120px;">版本号</th>
+                                <th>描述</th>
+                                <th style="width:180px;">执行时间</th>
+                                <th style="width:100px;">状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in applied|reverse %}
+                            <tr>
+                                <td><span class="badge bg-success">V{{ m.version }}</span></td>
+                                <td>{{ m.description or '-' }}</td>
+                                <td class="text-muted small">{{ m.applied_at.strftime('%Y-%m-%d %H:%M:%S') if m.applied_at else '-' }}</td>
+                                <td>
+                                    {% if m.status == 'success' %}
+                                    <span class="badge bg-success">成功</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">{{ m.status }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">暂无迁移记录</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

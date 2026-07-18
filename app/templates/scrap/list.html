@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}物资报废管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-trash3 me-2"></i>物资报废管理</h5>
+        <div>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('scrap.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新建报废单</a>
+            {% endif %}
+            <a href="{{ url_for('scrap.stats') }}" class="btn btn-outline-info btn-sm"><i class="bi bi-bar-chart me-1"></i>统计报表</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('scrap.index') }}">
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    <option value="draft" {% if status == 'draft' %}selected{% endif %}>草稿</option>
+                    <option value="passed" {% if status == 'passed' %}selected{% endif %}>已通过</option>
+                    <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>已驳回</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input type="date" class="form-control form-control-sm" name="start_date" value="{{ start_date or '' }}" title="开始日期" placeholder="开始日期">
+            </div>
+            <div class="col-md-3">
+                <input type="date" class="form-control form-control-sm" name="end_date" value="{{ end_date or '' }}" title="结束日期" placeholder="结束日期">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('scrap.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>报废单号</th>
+                        <th>报废日期</th>
+                        <th>用料单位</th>
+                        <th>报废原因</th>
+                        <th>状态</th>
+                        <th class="text-end">数量</th>
+                        <th class="text-end">金额</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in pagination.items %}
+                    <tr>
+                        <td><a href="{{ url_for('scrap.detail', id=s.id) }}" class="text-decoration-none fw-bold">{{ s.code }}</a></td>
+                        <td>{{ s.scrap_date or '-' }}</td>
+                        <td>{{ s.usage_unit.name if s.usage_unit else '-' }}</td>
+                        <td>
+                            {% set label = reason_labels.get(s.reason, s.reason) %}
+                            {% if s.reason == 'expired' %}<span class="badge bg-warning text-dark">{{ label }}</span>
+                            {% elif s.reason == 'damaged' %}<span class="badge bg-danger">{{ label }}</span>
+                            {% elif s.reason == 'unqualified' %}<span class="badge bg-secondary">{{ label }}</span>
+                            {% else %}<span class="badge bg-info">{{ label }}</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if s.approval_status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif s.approval_status == 'passed' %}<span class="badge bg-success">已通过</span>
+                            {% elif s.approval_status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ s.total_quantity }}</td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(s.total_amount or 0) }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('scrap.detail', id=s.id) }}" class="btn btn-sm btn-outline-primary" title="查看详情"><i class="bi bi-eye"></i></a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_pagination.html' %}
+    </div>
+</div>
+{% endblock %}

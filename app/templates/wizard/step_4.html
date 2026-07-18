@@ -1,0 +1,36 @@
+{% extends "wizard/base_wizard.html" %}
+{% block title %}创建项目{% endblock %}
+{% block content %}
+{% if errors %}
+<div class="alert alert-danger">
+    {% for err in errors %}
+    <div>{{ err }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+<div class="mb-4">
+    <h5 class="mb-3"><i class="bi bi-folder2-open me-2 text-primary"></i>创建项目（可选）</h5>
+    <p class="text-muted small">创建您的第一个项目，所有物资、合同等数据都将归属于项目。</p>
+</div>
+<form method="POST" action="{{ url_for('main.wizard_submit') }}" id="projectForm">
+    <input type="hidden" name="action" value="project">
+    <div class="mb-3">
+        <label class="form-label">项目编码</label>
+        <input type="text" class="form-control" name="project_code" value="{{ project_code or '' }}" placeholder="例如：proj_001">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">项目名称</label>
+        <input type="text" class="form-control" name="project_name" value="{{ project_name or '' }}" placeholder="例如：XX工程项目">
+    </div>
+    <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="skip" id="skipProject" value="1">
+        <label class="form-check-label text-muted" for="skipProject">跳过此步，之后在系统中创建</label>
+    </div>
+</form>
+{% endblock %}
+{% block footer %}
+<div class="wizard-footer">
+    <a href="{{ url_for('main.wizard', step='3') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>上一步</a>
+    <button type="submit" form="projectForm" class="btn btn-primary">下一步 <i class="bi bi-arrow-right ms-1"></i></button>
+</div>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "wizard/base_wizard.html" %}
+{% block title %}初始化完成{% endblock %}
+{% block content %}
+<div class="text-center py-4">
+    <div class="step-icon text-success"><i class="bi bi-check-circle-fill"></i></div>
+    <h4 class="mb-3">初始化完成！</h4>
+    <p class="text-muted mb-4">
+        系统已成功配置，您现在可以使用管理员账号登录系统。<br>
+        祝您使用愉快！
+    </p>
+    <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg">
+        <i class="bi bi-box-arrow-in-right me-2"></i>立即登录
+    </a>
+</div>
+{% endblock %}
+{% block footer %}
+<div class="wizard-footer" style="justify-content: center;">
+    <span class="text-muted small">感谢使用物资设备管理系统</span>
+</div>
+{% endblock %}

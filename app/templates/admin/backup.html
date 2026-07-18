@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}数据备份 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-hdd me-2"></i>数据备份</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="card border-primary">
+                    <div class="card-body">
+                        <h6 class="card-title"><i class="bi bi-download me-2"></i>立即备份</h6>
+                        <p class="card-text text-muted small">点击按钮备份当前数据库文件</p>
+                        <a href="{{ url_for('admin.backup_now') }}" class="btn btn-primary"><i class="bi bi-download me-1"></i>立即备份</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-warning">
+                    <div class="card-body">
+                        <h6 class="card-title"><i class="bi bi-upload me-2"></i>恢复数据</h6>
+                        <p class="card-text text-muted small">上传 .db 备份文件恢复数据（恢复前会自动备份当前数据）</p>
+                        <form method="POST" action="{{ url_for('admin.restore_backup') }}" enctype="multipart/form-data">
+                            <div class="input-group">
+                                <input type="file" class="form-control" name="backup_file" accept=".db" required>
+                                <button type="submit" class="btn btn-warning" onclick="return confirm('恢复数据将覆盖当前数据，确定继续？');"><i class="bi bi-upload me-1"></i>恢复</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>备份历史</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>文件名</th>
+                        <th>大小</th>
+                        <th>备份时间</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in backups %}
+                    <tr>
+                        <td>{{ b.filename }}</td>
+                        <td>{{ b.size }}</td>
+                        <td>{{ b.created_at }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.download_backup', filename=b.filename) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-download"></i></a>
+                            <form method="POST" action="{{ url_for('admin.delete_backup', filename=b.filename) }}" class="d-inline" onsubmit="return confirm('确定删除此备份？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center text-muted">暂无备份记录</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

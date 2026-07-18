@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if project else '新增' }}项目 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">{{ '编辑' if project else '新增' }}项目</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">项目名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name" value="{{ project.name if project else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">项目编号</label>
+                            <input type="text" class="form-control" name="code" value="{{ project.code if project else '' }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">项目地址</label>
+                            <input type="text" class="form-control" name="address" value="{{ project.address if project else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">开工日期</label>
+                            <input type="date" class="form-control" name="start_date" value="{{ project.start_date if project else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">计划完工日期</label>
+                            <input type="date" class="form-control" name="planned_end_date" value="{{ project.planned_end_date if project else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">项目经理</label>
+                            <input type="text" class="form-control" name="manager" value="{{ project.manager if project else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">联系电话</label>
+                            <input type="text" class="form-control" name="contact_phone" value="{{ project.contact_phone if project else '' }}">
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <button type="submit" class="btn btn-primary">保存</button>
+                        <a href="{{ url_for('project.index') }}" class="btn btn-secondary">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

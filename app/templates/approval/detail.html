@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block title %}审批详情 - {{ instance.biz_title or '' }} - 物资设备管理系统{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ url_for('approval.my_approvals') }}">我的审批</a></li>
+        <li class="breadcrumb-item active">审批详情</li>
+    </ol>
+</nav>
+
+<!-- 顶部：单据基本信息 -->
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-file-earmark-text me-2"></i>{{ instance.biz_title or '审批详情' }}
+        </h5>
+        <span class="badge bg-{{ status_color }} fs-6">{{ status_label }}</span>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4 mb-2">
+                <span class="text-muted">业务类型：</span>
+                <span class="badge bg-info text-dark">{{ biz_name }}</span>
+            </div>
+            <div class="col-md-4 mb-2">
+                <span class="text-muted">提交人：</span>
+                {{ instance.applicant.name or instance.applicant.username }}
+            </div>
+            <div class="col-md-4 mb-2">
+                <span class="text-muted">提交时间：</span>
+                {{ instance.submit_time.strftime('%Y-%m-%d %H:%M') if instance.submit_time else '-' }}
+            </div>
+            <div class="col-md-4 mb-2">
+                <span class="text-muted">审批流程：</span>
+                {{ instance.flow.flow_name }}
+            </div>
+            {% if branch_name %}
+            <div class="col-md-4 mb-2">
+                <span class="text-muted">当前分支：</span>
+                <span class="badge bg-warning text-dark">{{ branch_name }}</span>
+            </div>
+            {% endif %}
+            <div class="col-md-4 mb-2">
+                <span class="text-muted">单据编号：</span>
+                <code>{{ instance.biz_id }}</code>
+            </div>
+            {% if instance.reject_reason %}
+            <div class="col-12 mt-2">
+                <div class="alert alert-danger mb-0">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    <strong>驳回原因：</strong>{{ instance.reject_reason }}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- 中部：审批流程时间线 -->
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>审批流程</h6>
+    </div>
+    <div class="card-body">
+        <div class="approval-timeline">
+            <!-- 提交节点 -->
+            {% if submit_record %}
+            <div class="timeline-item">
+                <div class="timeline-dot bg-secondary">
+                    <i class="bi bi-upload"></i>
+                </div>
+                <div class="timeline-content">
+                    <div class="d-flex justify-content-between">
+                        <strong>提交审批</strong>
+                        <span class="text-muted small">{{ submit_record.approve_time.strftime('%Y-%m-%d %H:%M') if submit_record.approve_time else '-' }}</span>
+                    </div>
+                    <div class="text-muted small">
+                        操作人：{{ submit_record.approver.name or submit_record.approver.username }}
+                        {% if submit_record.opinion %}｜{{ submit_record.opinion }}{% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 审批节点 -->
+            {% for item in timeline %}
+            <div class="timeline-item">
+                {% if item.status == 'approved' %}
+                <div class="timeline-dot bg-success">
+                    <i class="bi bi-check-lg"></i>
+                </div>
+                {% elif item.status == 'rejected' %}
+                <div class="timeline-dot bg-danger">
+                    <i class="bi bi-x-lg"></i>
+                </div>
+                {% elif item.status == 'current' %}
+                <div class="timeline-dot bg-primary timeline-dot-current">
+                    <i class="bi bi-hourglass-split"></i>
+                </div>
+                {% else %}
+                <div class="timeline-dot bg-light text-muted border">
+                    <i class="bi bi-circle"></i>
+                </div>
+                {% endif %}
+
+                <div class="timeline-content {% if item.status == 'current' %}timeline-content-current{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>{{ item.node.node_name }}</strong>
+                            {% if item.node.pass_rule == 'ALL' %}
+                            <span class="badge bg-info ms-1">会签</span>
+                            {% elif item.node.pass_rule == 'ANY' %}
+                            <span class="badge bg-info ms-1">或签</span>
+                            {% endif %}
+                            {% if item.status == 'current' %}
+                            <span class="badge bg-primary ms-1">待审批</span>
+                            {% elif item.status == 'approved' %}
+                            <span class="badge bg-success ms-1">已通过</span>
+                            {% elif item.status == 'rejected' %}
+                            <span class="badge bg-danger ms-1">已驳回</span>
+                            {% else %}
+                            <span class="badge bg-light text-muted border ms-1">未到达</span>
+                            {% endif %}
+                        </div>
+                        {% if item.record %}
+                        <span class="text-muted small">
+                            {{ item.record.approve_time.strftime('%Y-%m-%d %H:%M') if item.record.approve_time else '-' }}
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    {% if item.sign_details %}
+                    <div class="mt-2">
+                        <table class="table table-sm table-borderless">
+                            {% for detail in item.sign_details %}
+                            <tr>
+                                <td class="text-muted small">{{ detail.user.name or detail.user.username }}</td>
+                                <td>
+                                    {% if detail.status == 'approve' %}
+                                    <span class="badge bg-success small">已同意</span>
+                                    {% elif detail.status == 'reject' %}
+                                    <span class="badge bg-danger small">已驳回</span>
+                                    {% elif detail.status == 'pending' %}
+                                    <span class="badge bg-light text-muted border small">待审批</span>
+                                    {% elif detail.status == 'skipped' %}
+                                    <span class="badge bg-secondary small">无需审批</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small text-end">
+                                    {% if detail.time %}
+                                    {{ detail.time.strftime('%Y-%m-%d %H:%M') }}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if detail.opinion %}
+                            <tr>
+                                <td colspan="3" class="text-muted small pl-4">
+                                    <i class="bi bi-chat-left-quote me-1"></i>{{ detail.opinion }}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </table>
+                    </div>
+                    {% elif item.record %}
+                    <div class="text-muted small mt-1">
+                        审批人：{{ item.record.approver.name or item.record.approver.username }}
+                        {% if item.record.opinion %}｜意见：{{ item.record.opinion }}{% endif %}
+                    </div>
+                    {% elif item.status == 'current' %}
+                    <div class="text-muted small mt-1">
+                        {% if item.node.approve_type == 'role' %}
+                        <i class="bi bi-people me-1"></i>待审批角色：
+                        {% set roles = (item.node.approve_role or '').split(',') %}
+                        {% set role_names = {'admin': '管理员', 'editor': '录入员', 'viewer': '查看员'} %}
+                        {% for r in roles %}
+                            {% if r.strip() %}{{ role_names.get(r.strip(), r.strip()) }}{% if not loop.last %}、{% endif %}{% endif %}
+                        {% endfor %}
+                        {% else %}
+                        <i class="bi bi-person me-1"></i>待审批人：{{ item.node.approver_user.name or item.node.approver_user.username if item.node.approver_user else '未设置' }}
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <div class="text-muted small mt-1">
+                        {% if item.node.approve_type == 'role' %}
+                        <i class="bi bi-people me-1"></i>审批角色：
+                        {% set roles = (item.node.approve_role or '').split(',') %}
+                        {% set role_names = {'admin': '管理员', 'editor': '录入员', 'viewer': '查看员'} %}
+                        {% for r in roles %}
+                            {% if r.strip() %}{{ role_names.get(r.strip(), r.strip()) }}{% if not loop.last %}、{% endif %}{% endif %}
+                        {% endfor %}
+                        {% else %}
+                        <i class="bi bi-person me-1"></i>审批人：{{ item.node.approver_user.name or item.node.approver_user.username if item.node.approver_user else '未设置' }}
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- 底部：审批操作区 -->
+{% if can_approve or can_withdraw %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-actions me-2"></i>审批操作</h6>
+    </div>
+    <div class="card-body">
+        {% if can_approve %}
+        <form method="POST" action="{{ url_for('approval.approve', instance_id=instance.id) }}">
+            <div class="mb-3">
+                <label class="form-label">审批意见</label>
+                <textarea class="form-control" name="opinion" rows="2"
+                          placeholder="请输入审批意见（选填，默认为「同意」）"></textarea>
+            </div>
+            <button type="submit" class="btn btn-success">
+                <i class="bi bi-check-lg me-1"></i>通过
+            </button>
+        </form>
+        <hr>
+        <form method="POST" action="{{ url_for('approval.reject', instance_id=instance.id) }}"
+              onsubmit="return validateReject();">
+            <div class="mb-3">
+                <label class="form-label">驳回原因 <span class="text-danger">*</span></label>
+                <textarea class="form-control" name="reason" rows="2" id="rejectReason"
+                          placeholder="驳回必须填写原因" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-danger">
+                <i class="bi bi-x-lg me-1"></i>驳回
+            </button>
+        </form>
+        {% elif can_withdraw %}
+        <form method="POST" action="{{ url_for('approval.withdraw', instance_id=instance.id) }}">
+            <div class="mb-3">
+                <label class="form-label">撤回原因</label>
+                <textarea class="form-control" name="reason" rows="2"
+                          placeholder="请输入撤回原因（选填）"></textarea>
+            </div>
+            <button type="submit" class="btn btn-warning"
+                    onclick="return confirm('确定撤回此审批吗？');">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>撤回审批
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div class="mt-3">
+    <a href="{{ url_for('approval.my_approvals') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left me-1"></i>返回我的审批
+    </a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function validateReject() {
+    var reason = document.getElementById('rejectReason').value.trim();
+    if (!reason) {
+        alert('驳回必须填写原因');
+        return false;
+    }
+    return confirm('确定驳回此审批吗？');
+}
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.approval-timeline {
+    position: relative;
+    padding-left: 2rem;
+}
+.approval-timeline::before {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #e0e0e0;
+}
+.timeline-item {
+    position: relative;
+    padding-bottom: 1.5rem;
+}
+.timeline-item:last-child {
+    padding-bottom: 0;
+}
+.timeline-dot {
+    position: absolute;
+    left: -2rem;
+    top: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.7rem;
+    z-index: 1;
+}
+.timeline-dot-current {
+    animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(13, 110, 253, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0); }
+}
+.timeline-content {
+    padding: 0.5rem 0;
+}
+.timeline-content-current {
+    background-color: rgba(13, 110, 253, 0.05);
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    margin-left: -0.5rem;
+}
+.node-card {
+    border-left: 3px solid #0d6efd;
+}
+.node-card-last {
+    border-left-color: #198754;
+}
+</style>
+{% endblock %}

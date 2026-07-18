@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}第三方组织架构同步 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-arrow-repeat me-2"></i>第三方组织架构同步</h5>
+        <a href="{{ url_for('org_sync.sync_log') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-clock-history me-1"></i>同步日志
+        </a>
+    </div>
+    <div class="card-body">
+        <!-- 平台 Tab -->
+        <ul class="nav nav-tabs" id="platformTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#dingtalk" type="button" role="tab">
+                    <i class="bi bi-chat-dots me-1"></i>钉钉
+                    {% if configs.dingtalk.enabled %}<span class="badge bg-success ms-1">已启用</span>{% endif %}
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#wechat" type="button" role="tab">
+                    <i class="bi bi-wechat me-1"></i>企业微信
+                    {% if configs.wechat.enabled %}<span class="badge bg-success ms-1">已启用</span>{% endif %}
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#feishu" type="button" role="tab">
+                    <i class="bi bi-messenger me-1"></i>飞书
+                    {% if configs.feishu.enabled %}<span class="badge bg-success ms-1">已启用</span>{% endif %}
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content pt-3" id="platformTabContent">
+            {% for platform, cfg in configs.items() %}
+            <div class="tab-pane fade {% if platform == 'dingtalk' %}show active{% endif %}" id="{{ platform }}" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-7">
+                        <div class="card border-light">
+                            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                <span class="fw-bold"><i class="bi bi-gear me-1"></i>{{ cfg.platform_label }} 配置</span>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox"
+                                           id="{{ platform }}_enabled" {% if cfg.enabled %}checked{% endif %}>
+                                    <label class="form-check-label small" for="{{ platform }}_enabled">启用同步</label>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">AppKey / CorpID / App ID</label>
+                                    <input type="text" class="form-control" id="{{ platform }}_app_key"
+                                           value="{{ cfg.app_key }}" placeholder="请输入 {{ cfg.platform_label }} 应用标识">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">AppSecret / CorpSecret / App Secret</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="{{ platform }}_app_secret"
+                                               value="{{ cfg.app_secret }}" placeholder="留空则保留原值">
+                                        <button class="btn btn-outline-secondary" type="button"
+                                                onclick="toggleSecret('{{ platform }}')"><i class="bi bi-eye"></i></button>
+                                    </div>
+                                    {% if cfg.app_secret_masked %}
+                                    <small class="text-muted">当前已保存: <code>{{ cfg.app_secret_masked }}</code></small>
+                                    {% endif %}
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-primary btn-sm"
+                                            onclick="saveConfig('{{ platform }}')">
+                                        <i class="bi bi-save me-1"></i>保存配置
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info btn-sm"
+                                            onclick="testConnection('{{ platform }}')">
+                                        <i class="bi bi-wifi me-1"></i>测试连接
+                                    </button>
+                                    <button type="button" class="btn btn-success btn-sm"
+                                            onclick="syncNow('{{ platform }}')">
+                                        <i class="bi bi-arrow-repeat me-1"></i>立即同步
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-5">
+                        <div class="card border-light h-100">
+                            <div class="card-header bg-light">
+                                <span class="fw-bold"><i class="bi bi-info-circle me-1"></i>同步状态</span>
+                            </div>
+                            <div class="card-body">
+                                <dl class="row mb-0 small">
+                                    <dt class="col-sm-4">启用状态</dt>
+                                    <dd class="col-sm-8">
+                                        {% if cfg.enabled %}<span class="badge bg-success">已启用</span>
+                                        {% else %}<span class="badge bg-secondary">未启用</span>{% endif %}
+                                    </dd>
+                                    <dt class="col-sm-4">上次同步时间</dt>
+                                    <dd class="col-sm-8">{{ cfg.last_sync_time or '从未同步' }}</dd>
+                                    <dt class="col-sm-4">上次同步结果</dt>
+                                    <dd class="col-sm-8">
+                                        {% if cfg.last_sync_status == 'success' %}
+                                            <span class="badge bg-success">成功</span>
+                                        {% elif cfg.last_sync_status == 'failed' %}
+                                            <span class="badge bg-danger">失败</span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                        {% if cfg.last_sync_message %}
+                                            <small class="d-block text-muted mt-1">{{ cfg.last_sync_message }}</small>
+                                        {% endif %}
+                                    </dd>
+                                </dl>
+                                <hr>
+                                <div class="small text-muted">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    说明：实际同步需要正确的 API 密钥并保证服务器可访问外网。配置保存后可点击"立即同步"触发手动同步。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- 结果提示 Modal -->
+<div class="modal fade" id="resultModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="resultModalTitle">操作结果</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="resultModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading 遮罩 -->
+<div id="syncLoadingOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:1080;">
+    <div class="position-absolute top-50 start-50 translate-middle text-center text-white">
+        <div class="spinner-border" role="status"></div>
+        <div class="mt-2" id="syncLoadingText">处理中，请稍候...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleSecret(platform) {
+    var input = document.getElementById(platform + '_app_secret');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function showLoading(text) {
+    document.getElementById('syncLoadingText').textContent = text || '处理中，请稍候...';
+    document.getElementById('syncLoadingOverlay').style.display = 'block';
+}
+
+function hideLoading() {
+    document.getElementById('syncLoadingOverlay').style.display = 'none';
+}
+
+function showResult(title, body) {
+    document.getElementById('resultModalTitle').textContent = title;
+    document.getElementById('resultModalBody').innerHTML = body;
+    var modal = new bootstrap.Modal(document.getElementById('resultModal'));
+    modal.show();
+}
+
+function getCsrfToken() {
+    // 当前项目未启用 CSRF Token，返回空字符串
+    return '';
+}
+
+function postJSON(url, data) {
+    var formData = new FormData();
+    Object.keys(data).forEach(function(k) { formData.append(k, data[k]); });
+    return fetch(url, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(function(r) { return r.json(); });
+}
+
+function saveConfig(platform) {
+    var appKey = document.getElementById(platform + '_app_key').value.trim();
+    var appSecret = document.getElementById(platform + '_app_secret').value.trim();
+    var enabled = document.getElementById(platform + '_enabled').checked;
+    showLoading('正在保存配置...');
+    postJSON('{{ url_for("org_sync.save_config") }}', {
+        platform: platform,
+        app_key: appKey,
+        app_secret: appSecret,
+        enabled: enabled ? 'true' : 'false'
+    }).then(function(res) {
+        hideLoading();
+        if (res.success) {
+            showResult('保存成功', '<div class="alert alert-success mb-0">' + (res.message || '配置已保存') + '</div>');
+            setTimeout(function() { location.reload(); }, 1200);
+        } else {
+            showResult('保存失败', '<div class="alert alert-danger mb-0">' + (res.message || '保存失败') + '</div>');
+        }
+    }).catch(function(err) {
+        hideLoading();
+        showResult('保存失败', '<div class="alert alert-danger mb-0">' + err + '</div>');
+    });
+}
+
+function testConnection(platform) {
+    showLoading('正在测试连接...');
+    fetch('{{ url_for("org_sync.test_connection") }}?platform=' + platform, {
+        credentials: 'same-origin'
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        hideLoading();
+        var cls = res.success ? 'success' : 'danger';
+        showResult(res.success ? '连接成功' : '连接失败',
+            '<div class="alert alert-' + cls + ' mb-0">' + (res.message || '') + '</div>');
+    }).catch(function(err) {
+        hideLoading();
+        showResult('连接失败', '<div class="alert alert-danger mb-0">' + err + '</div>');
+    });
+}
+
+function syncNow(platform) {
+    if (!confirm('确定要立即同步' + platform + '的组织架构吗？此操作可能耗时。')) return;
+    showLoading('正在同步组织架构，请耐心等待...');
+    postJSON('{{ url_for("org_sync.sync", platform="PLACEHOLDER") }}'.replace('PLACEHOLDER', platform), {})
+        .then(function(res) {
+            hideLoading();
+            var cls = res.success ? 'success' : 'danger';
+            var body = '<div class="alert alert-' + cls + ' mb-3">' + (res.message || '') + '</div>';
+            if (res.success) {
+                body += '<dl class="row small mb-0">' +
+                    '<dt class="col-sm-5">新增部门</dt><dd class="col-sm-7">' + (res.new_depts || 0) + '</dd>' +
+                    '<dt class="col-sm-5">更新部门</dt><dd class="col-sm-7">' + (res.updated_depts || 0) + '</dd>' +
+                    '<dt class="col-sm-5">新增用户</dt><dd class="col-sm-7">' + (res.new_users || 0) + '</dd>' +
+                    '<dt class="col-sm-5">更新用户</dt><dd class="col-sm-7">' + (res.updated_users || 0) + '</dd>';
+                if (res.errors && res.errors.length) {
+                    body += '<dt class="col-sm-5">错误信息</dt><dd class="col-sm-7"><ul class="mb-0">';
+                    res.errors.forEach(function(e) { body += '<li>' + e + '</li>'; });
+                    body += '</ul></dd>';
+                }
+                body += '</dl>';
+            }
+            showResult(res.success ? '同步完成' : '同步失败', body);
+            if (res.success) setTimeout(function() { location.reload(); }, 2000);
+        }).catch(function(err) {
+            hideLoading();
+            showResult('同步失败', '<div class="alert alert-danger mb-0">' + err + '</div>');
+        });
+}
+</script>
+{% endblock %}

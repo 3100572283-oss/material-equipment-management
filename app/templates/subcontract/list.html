@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}分包扣款台账 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-md-between align-items-start align-items-md-center gap-2">
+        <div>
+            <h5 class="mb-0"><i class="bi bi-cash-coin me-2"></i>分包扣款台账</h5>
+            <small class="text-muted">按月汇总各分包单位的领料扣款记录</small>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('subcontract.generate') }}" class="btn btn-sm btn-primary">
+                <i class="bi bi-magic me-1"></i>生成月度汇总
+            </a>
+            <a href="{{ url_for('subcontract.units') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-building me-1"></i>分包单位管理
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET">
+            <div class="col-md-3">
+                <input type="month" class="form-control form-control-sm" name="period" value="{{ period or '' }}" placeholder="月份">
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="usage_unit_id">
+                    <option value="0">全部分包单位</option>
+                    {% for u in units %}
+                    <option value="{{ u.id }}" {% if usage_unit_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    <option value="draft" {% if status == 'draft' %}selected{% endif %}>待确认</option>
+                    <option value="confirmed" {% if status == 'confirmed' %}selected{% endif %}>已确认</option>
+                    <option value="paid" {% if status == 'paid' %}selected{% endif %}>已结算</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('subcontract.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>月份</th>
+                        <th>分包单位</th>
+                        <th>单位编码</th>
+                        <th>分包合同</th>
+                        <th class="text-end">领料数量</th>
+                        <th class="text-end">扣款金额(元)</th>
+                        <th class="text-center">状态</th>
+                        <th class="text-center">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in deductions %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ d.period }}</span></td>
+                        <td>{{ d.usage_unit.name if d.usage_unit else '-' }}</td>
+                        <td><code class="font-monospace">{{ d.usage_unit.code or '-' if d.usage_unit else '-' }}</code></td>
+                        <td>
+                            {% if d.usage_unit and d.usage_unit.subcontract_contract %}
+                                <span class="badge bg-info text-dark">{{ d.usage_unit.subcontract_contract }}</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end fw-bold">{{ d.total_quantity|fmt_number(4) }}</td>
+                        <td class="text-end fw-bold text-danger">{{ d.total_amount|fmt_amount }}</td>
+                        <td class="text-center">
+                            {% if d.status == 'draft' %}
+                                <span class="badge bg-warning text-dark">待确认</span>
+                            {% elif d.status == 'confirmed' %}
+                                <span class="badge bg-success text-white">已确认</span>
+                            {% elif d.status == 'paid' %}
+                                <span class="badge bg-primary text-white">已结算</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ d.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('subcontract.detail', id=d.id) }}" class="btn btn-outline-primary" title="查看明细">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="{{ url_for('subcontract.export', id=d.id) }}" class="btn btn-outline-success" title="导出扣款单">
+                                    <i class="bi bi-file-earmark-excel"></i>
+                                </a>
+                                {% if d.status == 'draft' %}
+                                <form method="POST" action="{{ url_for('subcontract.confirm', id=d.id) }}" class="d-inline"
+                                      onsubmit="return confirm('确认该月份扣款记录？确认后不可撤销。');">
+                                    <button type="submit" class="btn btn-outline-warning" title="确认扣款">
+                                        <i class="bi bi-check2-circle"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">暂无扣款记录，请先<a href="{{ url_for('subcontract.generate') }}">生成月度汇总</a></td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if deductions %}
+                <tfoot class="table-light">
+                    <tr class="fw-bold">
+                        <td colspan="4" class="text-end">合计</td>
+                        <td class="text-end">{{ deductions|sum(attribute='total_quantity')|fmt_number(4) }}</td>
+                        <td class="text-end text-danger">{{ deductions|sum(attribute='total_amount')|fmt_amount }}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

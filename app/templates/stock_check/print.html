@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}库存盘点表 - {{ stock_check.check_no }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}" media="print,screen">
+<style>
+    /* 盘点单为纵向打印,覆盖默认横向设置 */
+    @page { size: A4 portrait; }
+    .print-sheet {
+        max-width: 210mm;
+        min-height: 297mm;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="print-sheet">
+    <div class="no-print mb-3 text-end">
+        <button class="btn btn-primary" onclick="window.print();"><i class="bi bi-printer me-1"></i>打印</button>
+        <button class="btn btn-secondary" onclick="window.close();">关闭</button>
+    </div>
+
+    <div class="print-title">库存盘点表</div>
+
+    <div class="print-header">
+        <div class="left">盘点单号：<strong>{{ stock_check.check_no }}</strong></div>
+        <div class="right">打印日期：{{ now_date or '' }}</div>
+    </div>
+
+    <div class="print-info">
+        <table>
+            <tr>
+                <td style="width:15%">盘点日期</td>
+                <td style="width:35%">{{ stock_check.check_date or '-' }}</td>
+                <td style="width:15%">盘点范围</td>
+                <td style="width:35%">
+                    {% if stock_check.check_type == 'full' %}全库盘点{% else %}{{ category_name or '按分类' }}{% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td>仓库</td>
+                <td>{{ stock_check.warehouse.name if stock_check.warehouse else '-' }}</td>
+                <td>盘点人</td>
+                <td>{{ stock_check.checker or '-' }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="print-table">
+        <thead>
+            <tr>
+                <th style="width:5%">序号</th>
+                <th style="width:12%">物资编码</th>
+                <th style="width:18%">物资名称</th>
+                <th style="width:14%">规格</th>
+                <th style="width:6%">单位</th>
+                <th style="width:11%">账面数量</th>
+                <th style="width:11%">实盘数量</th>
+                <th style="width:10%">差异数量</th>
+                <th style="width:13%">备注</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for it in stock_check.items %}
+            {% set diff = it.diff_qty %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ it.material.code if it.material and it.material.code else '-' }}</td>
+                <td>{{ it.material_name or (it.material.name if it.material else '-') }}</td>
+                <td>{{ it.specification or '-' }}</td>
+                <td>{{ it.unit or '-' }}</td>
+                <td>{{ it.book_qty }}</td>
+                <td>{{ it.actual_qty if it.actual_qty is not none else '-' }}</td>
+                <td>
+                    {% if it.actual_qty is not none %}
+                    {{ '+' if diff > 0 else '' }}{{ diff }}
+                    {% else %}-{% endif %}
+                </td>
+                <td>{{ it.diff_reason or '' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" style="text-align:center;">暂无明细</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if stock_check.remark %}
+    <div style="margin-top:10px; font-size:12pt;">备注：{{ stock_check.remark }}</div>
+    {% endif %}
+
+    <div class="sign-area">
+        <table>
+            <tr>
+                <td>盘点人：<div class="sign-line"></div></td>
+                <td>监盘人：<div class="sign-line"></div></td>
+                <td>部门负责人：<div class="sign-line"></div></td>
+                <td>日期：<div class="sign-line"></div></td>
+            </tr>
+        </table>
+    </div>
+</div>
+{% endblock %}

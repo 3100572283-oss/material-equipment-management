@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if work_number else '新增' }}工号 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">{{ '编辑' if work_number else '新增' }}工号</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">工号编码 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" value="{{ work_number.code if work_number else default_code }}" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">分部工程名称</label>
+                            <input type="text" class="form-control" name="division_name" value="{{ work_number.division_name if work_number else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">分项工程名称</label>
+                            <input type="text" class="form-control" name="item_name" value="{{ work_number.item_name if work_number else '' }}">
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">保存</button>
+                        <a href="{{ url_for('work_number.index') }}" class="btn btn-secondary ms-2">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

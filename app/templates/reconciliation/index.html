@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}对账管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-journal-check me-2"></i>对账管理</h5>
+        {% if current_user.can_edit() %}
+        <a href="{{ url_for('reconciliation.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新建对账</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET">
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="supplier_id">
+                    <option value="0">全部供应商</option>
+                    {% for s in suppliers %}
+                    <option value="{{ s.id }}" {% if s.id == supplier_id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    <option value="草稿" {% if status == '草稿' %}selected{% endif %}>草稿</option>
+                    <option value="已确认" {% if status == '已确认' %}selected{% endif %}>已确认</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('reconciliation.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>对账单号</th>
+                        <th>供应商</th>
+                        <th>关联合同</th>
+                        <th>对账期间</th>
+                        <th>状态</th>
+                        <th class="text-end">对账金额</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in pagination.items %}
+                    <tr>
+                        <td><a href="{{ url_for('reconciliation.detail', id=r.id) }}" class="text-decoration-none fw-bold">{{ r.code }}</a></td>
+                        <td>{{ r.supplier.name if r.supplier else '-' }}</td>
+                        <td>{% if r.contract %}<a href="{{ url_for('contract.detail', id=r.contract_id) }}">{{ r.contract.code }}</a>{% else %}-{% endif %}</td>
+                        <td>{{ r.start_date }} ~ {{ r.end_date }}</td>
+                        <td>{% if r.status == '草稿' %}<span class="badge bg-secondary">{{ r.status }}</span>{% else %}<span class="badge bg-success">{{ r.status }}</span>{% endif %}</td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(r.total_amount or 0) }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('reconciliation.detail', id=r.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            {% if r.status == '已确认' %}
+                            <a href="{{ url_for('reconciliation.print_reconciliation', id=r.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-printer"></i></a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_pagination.html' %}
+    </div>
+</div>
+{% endblock %}

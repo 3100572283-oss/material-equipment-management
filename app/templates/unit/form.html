@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if unit else '新增' }}用料单位 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">{{ '编辑' if unit else '新增' }}用料单位</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">单位名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name" value="{{ unit.name if unit else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">单位编码</label>
+                            <input type="text" class="form-control" name="code" value="{{ unit.code if unit else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">负责人</label>
+                            <input type="text" class="form-control" name="manager" value="{{ unit.manager if unit else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">联系电话</label>
+                            <input type="text" class="form-control" name="contact_phone" value="{{ unit.contact_phone if unit else '' }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">授权文件</label>
+                            <input type="file" class="form-control" name="auth_file" accept="image/*,.pdf">
+                            {% if unit and unit.auth_file %}
+                            <div class="mt-2">
+                                <a href="{{ url_for('static', filename=unit.auth_file) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-file-earmark"></i> 查看当前文件</a>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">保存</button>
+                        <a href="{{ url_for('unit.index') }}" class="btn btn-secondary ms-2">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}页面未找到 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-search text-muted" style="font-size: 4rem;"></i>
+        <h4 class="mt-4 text-muted">页面未找到</h4>
+        <p class="text-muted mb-0">您访问的页面不存在或已被移动。</p>
+        <a href="{{ url_for('main.index') }}" class="btn btn-primary mt-4"><i class="bi bi-arrow-left me-1"></i>返回首页</a>
+    </div>
+</div>
+{% endblock %}

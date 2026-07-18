@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if application else '新建' }}付款申请 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>{{ '编辑' if application else '新建' }}付款申请</h5>
+        <a href="{{ url_for('payment_application.index') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>返回列表
+        </a>
+    </div>
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data" id="pa-form">
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">申请单号</label>
+                    <input type="text" class="form-control" value="{{ application.application_code if application else '自动生成' }}" disabled>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">申请日期 <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" name="apply_date" required
+                           value="{{ application.apply_date if application and application.apply_date else '' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">申请人</label>
+                    <input type="text" class="form-control" value="{{ application.applicant_name if application else current_user.name or current_user.username }}" disabled>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">预计付款日期</label>
+                    <input type="date" class="form-control" name="expected_payment_date"
+                           value="{{ application.expected_payment_date if application and application.expected_payment_date else '' }}">
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">供应商 <span class="text-danger">*</span></label>
+                    <select class="form-select" name="supplier_id" id="supplier-select" required>
+                        <option value="">请选择供应商</option>
+                        {% for s in suppliers %}
+                        <option value="{{ s.id }}" {% if application and application.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">关联合同 <span class="text-danger">*</span></label>
+                    <select class="form-select" name="contract_id" id="contract-select" required>
+                        <option value="">请先选择供应商</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">付款方式</label>
+                    <select class="form-select" name="payment_method">
+                        {% for method in ['银行转账', '现金', '承兑汇票', '支票', '其他'] %}
+                        <option value="{{ method }}" {% if application and application.payment_method == method %}selected{% endif %}>{{ method }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header bg-light py-2">
+                    <h6 class="mb-0"><i class="bi bi-list-check me-1"></i>关联对账单（可多选，金额自动汇总）</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div id="recon-list" class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:40px;"></th>
+                                    <th>对账单号</th>
+                                    <th>对账期间</th>
+                                    <th>合同号</th>
+                                    <th class="text-end">对账金额(含税)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recon-tbody">
+                                <tr><td colspan="5" class="text-center text-muted py-3">请先选择供应商</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">申请付款金额(元) <span class="text-danger">*</span></label>
+                    <input type="number" step="0.01" min="0" class="form-control form-control-lg" name="apply_amount" id="apply-amount" required
+                           value="{{ application.apply_amount if application else 0 }}">
+                    <small class="text-muted" id="amount-hint">从对账单自动汇总，可手动调整</small>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">附件</label>
+                    <input type="file" class="form-control" name="attachment" accept=".pdf,.png,.jpg,.jpeg,.gif,.doc,.docx,.xls,.xlsx">
+                    {% if application and application.attachment %}
+                    <small class="text-muted d-block mt-1">已有附件：<a href="{{ url_for('main.uploaded_file', filename=application.attachment) }}" target="_blank">查看</a></small>
+                    {% endif %}
+                </div>
+                <div class="col-md-4"></div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">付款说明</label>
+                <textarea class="form-control" name="payment_description" rows="3"
+                          placeholder="简要说明付款用途、进度等">{{ application.payment_description if application else '' }}</textarea>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">备注</label>
+                <textarea class="form-control" name="remark" rows="2">{{ application.remark if application else '' }}</textarea>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>保存</button>
+                <a href="{{ url_for('payment_application.index') }}" class="btn btn-outline-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const supplierSelect = document.getElementById('supplier-select');
+const contractSelect = document.getElementById('contract-select');
+const reconTbody = document.getElementById('recon-tbody');
+const applyAmountInput = document.getElementById('apply-amount');
+
+let currentSupplierId = {{ application.supplier_id if application else 0 }};
+let currentContractId = {{ application.contract_id if application else 0 }};
+let currentReconIds = {{ application.reconciliation_ids | tojson if application and application.reconciliation_ids else '[]' }};
+if (typeof currentReconIds === 'string' && currentReconIds) {
+    currentReconIds = currentReconIds.split(',').map(Number);
+}
+
+async function loadContracts(supplierId) {
+    if (!supplierId) return;
+    const res = await fetch(`/contract/api/by_supplier/${supplierId}`);
+    const data = await res.json();
+    let html = '<option value="">请选择合同</option>';
+    data.forEach(c => {
+        html += `<option value="${c.id}" ${c.id == currentContractId ? 'selected' : ''}>${c.code} - ${c.name}</option>`;
+    });
+    contractSelect.innerHTML = html;
+}
+
+async function loadReconciliations(supplierId) {
+    if (!supplierId) {
+        reconTbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">请先选择供应商</td></tr>';
+        return;
+    }
+    const res = await fetch(`/payment_application/api/reconciliations/${supplierId}`);
+    const data = await res.json();
+    if (!data.length) {
+        reconTbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">暂无已确认的对账单</td></tr>';
+        return;
+    }
+    let html = '';
+    let total = 0;
+    data.forEach(r => {
+        const checked = currentReconIds.includes(r.id) ? 'checked' : '';
+        if (currentReconIds.includes(r.id)) {
+            total += parseFloat(r.total_amount || 0);
+        }
+        html += `
+        <tr>
+            <td><input type="checkbox" class="form-check-input recon-check" name="reconciliation_ids" value="${r.id}" ${checked} data-amount="${r.total_amount}"></td>
+            <td>${r.code}</td>
+            <td>${r.start_date} ~ ${r.end_date}</td>
+            <td>${r.contract_code}</td>
+            <td class="text-end">${parseFloat(r.total_amount || 0).toFixed(2)}</td>
+        </tr>`;
+    });
+    reconTbody.innerHTML = html;
+
+    // 绑定checkbox事件
+    document.querySelectorAll('.recon-check').forEach(cb => {
+        cb.addEventListener('change', updateTotalAmount);
+    });
+
+    if (currentReconIds.length > 0 && !{{ 0 if application else 1 }}) {
+        // 编辑状态且已选对账单，已在上面计算total
+    }
+}
+
+function updateTotalAmount() {
+    let total = 0;
+    document.querySelectorAll('.recon-check:checked').forEach(cb => {
+        total += parseFloat(cb.dataset.amount || 0);
+    });
+    if (total > 0) {
+        applyAmountInput.value = total.toFixed(2);
+    }
+}
+
+supplierSelect.addEventListener('change', async function() {
+    currentSupplierId = this.value;
+    currentContractId = 0;
+    currentReconIds = [];
+    await loadContracts(this.value);
+    await loadReconciliations(this.value);
+});
+
+// 初始化
+if (currentSupplierId) {
+    loadContracts(currentSupplierId);
+    loadReconciliations(currentSupplierId);
+}
+</script>
+{% endblock %}

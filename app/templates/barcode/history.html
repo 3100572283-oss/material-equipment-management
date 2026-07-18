@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}打印历史 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>打印历史</h5>
+        <a href="{{ url_for('barcode.index') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新建标签</a>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:5%">序号</th>
+                        <th style="width:15%">日期</th>
+                        <th>物资名称</th>
+                        <th style="width:12%">物资编码</th>
+                        <th style="width:14%">规格</th>
+                        <th style="width:10%">标签尺寸</th>
+                        <th style="width:8%">数量</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in labels %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ l.created_at.strftime('%Y-%m-%d %H:%M') if l.created_at else '-' }}</td>
+                        <td>{{ l.material_name or '-' }}</td>
+                        <td><span class="badge bg-secondary">{{ l.material_code or '-' }}</span></td>
+                        <td>{{ l.spec or '-' }}</td>
+                        <td>{{ l.label_size or '-' }}</td>
+                        <td>{{ l.quantity or 1 }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无打印历史</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}出库单详情 - {{ stock_out.code }}{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-box-arrow-in-up me-2"></i>出库单详情 - {{ stock_out.code }}
+            {% if stock_out.approval_status == 'draft' %}<span class="badge bg-secondary ms-2">草稿</span>
+            {% elif stock_out.approval_status == 'pending' %}<span class="badge bg-warning text-dark ms-2">待审批</span>
+            {% elif stock_out.approval_status == 'approving' %}<span class="badge bg-warning text-dark ms-2">审批中</span>
+            {% elif stock_out.approval_status == 'passed' %}<span class="badge bg-success ms-2">已通过</span>
+            {% elif stock_out.approval_status == 'rejected' %}<span class="badge bg-danger ms-2">已驳回</span>
+            {% elif stock_out.approval_status == 'withdrawn' %}<span class="badge bg-secondary ms-2">已撤回</span>
+            {% endif %}
+        </h5>
+        <div>
+            <a href="{{ url_for('stock_out.create', copy_from=stock_out.id) }}" class="btn btn-sm btn-outline-success"><i class="bi bi-files me-1"></i>复制新增</a>
+            <a href="{{ url_for('stock_out.print_stock_out', id=stock_out.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-printer me-1"></i>打印</a>
+            {% if current_user.can_edit() and stock_out.approval_status == 'draft' %}
+            <form method="POST" action="{{ url_for('approval.submit', biz_type='stockout', biz_id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定提交审批？提交后将进入审批流程。');">
+                <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-send me-1"></i>提交审批</button>
+            </form>
+            {% endif %}
+            {% if stock_out.approval_status in ('pending', 'approving') and approval_instance %}
+            <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}" class="btn btn-sm btn-outline-info"><i class="bi bi-clipboard-check me-1"></i>查看审批</a>
+            {% endif %}
+            {% if current_user.can_edit() and stock_out.approval_status in ('rejected', 'withdrawn') %}
+            <form method="POST" action="{{ url_for('approval.submit', biz_type='stockout', biz_id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定重新提交审批？');">
+                <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-arrow-repeat me-1"></i>重新提交审批</button>
+            </form>
+            {% endif %}
+            {% if current_user.can_edit() and not stock_out.is_reconciled %}
+            <a href="{{ url_for('stock_out.edit', id=stock_out.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
+            <form method="POST" action="{{ url_for('stock_out.delete', id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
+            </form>
+            {% endif %}
+            {% if stock_out.is_reconciled %}<span class="badge bg-secondary me-2">已对账</span>{% endif %}
+            <a href="{{ url_for('stock_out.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">出库日期</div><div>{{ stock_out.stock_out_date or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">出库类型</div><div>
+                {% if stock_out.stock_out_type == '工程领用' %}<span class="badge bg-primary">{{ stock_out.stock_out_type }}</span>
+                {% elif stock_out.stock_out_type == '调拨出库' %}<span class="badge bg-info">{{ stock_out.stock_out_type }}</span>
+                {% else %}<span class="badge bg-warning text-dark">{{ stock_out.stock_out_type }}</span>{% endif %}
+            </div></div>
+            <div class="col-md-3"><div class="text-muted small">领料单位</div><div>{{ stock_out.usage_unit.name if stock_out.usage_unit else '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">工号</div><div>{{ stock_out.work_number.code if stock_out.work_number else '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">发料部位</div><div>{{ stock_out.issue_location or (stock_out.work_number.division_name if stock_out.work_number else '') or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">用途</div><div>{{ stock_out.purpose or (stock_out.work_number.item_name if stock_out.work_number else '') or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">经办人</div><div>{{ stock_out.operator or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">总数量</div><div class="fw-bold">{{ stock_out.total_quantity }}</div></div>
+            {% if stock_out.remark %}
+            <div class="col-12"><div class="text-muted small">备注</div><div>{{ stock_out.remark }}</div></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white"><h6 class="mb-0">物资明细</h6></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>物资名称</th>
+                        <th>规格型号</th>
+                        <th>单位</th>
+                        <th class="text-end">数量</th>
+                        <th class="text-end">含税单价</th>
+                        <th class="text-end">金额</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for it in stock_out.items %}
+                    <tr>
+                        <td>{{ it.material.name if it.material else '-' }}</td>
+                        <td>{{ it.material.specification if it.material else '-' }}</td>
+                        <td>{{ it.material.unit if it.material else '-' }}</td>
+                        <td class="text-end">{{ it.quantity }}</td>
+                        <td class="text-end">{{ '%.4f'|format(it.display_unit_price or it.unit_price or 0) }}</td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(it.display_amount or it.amount or 0) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted">暂无明细</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <td colspan="3" class="text-end fw-bold">合计</td>
+                        <td class="text-end fw-bold">{{ stock_out.total_quantity }}</td>
+                        <td></td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format((stock_out.items | sum(attribute='display_amount') or 0) + (stock_out.total_amount or 0)) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

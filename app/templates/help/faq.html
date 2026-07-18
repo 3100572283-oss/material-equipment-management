@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}常见问题 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-md-3 mb-4">
+        <div class="list-group">
+            <a href="{{ url_for('help.index') }}" class="list-group-item list-group-item-action">
+                <i class="bi bi-house me-2"></i>系统概述
+            </a>
+            <a href="{{ url_for('help.guide') }}" class="list-group-item list-group-item-action">
+                <i class="bi bi-book me-2"></i>使用指南
+            </a>
+            <a href="{{ url_for('help.faq') }}" class="list-group-item list-group-item-action active">
+                <i class="bi bi-question-circle me-2"></i>常见问题
+            </a>
+        </div>
+    </div>
+    
+    <div class="col-md-9">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-question-circle me-2"></i>常见问题 FAQ</h5>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="faqAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">1. 如何新增项目？</button>
+                        </h2>
+                        <div id="faq1" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">点击左侧菜单"项目管理"，进入项目列表页，点击右上角"新增项目"按钮，填写项目名称、项目编号等信息后保存即可。新增项目后需在右上角切换到该项目才能进行后续操作。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">2. 如何批量导入材料？</button>
+                        </h2>
+                        <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">进入"常用材料"页面，点击"模板"按钮下载导入模板，按模板格式填写材料信息，然后点击"导入"按钮上传填写好的Excel文件即可。系统会自动校验数据并提示导入结果。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">3. 如何进行入库操作？</button>
+                        </h2>
+                        <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">进入"入库管理"，点击"新增入库单"，选择供应商和合同（如有），填写入库日期、经办人等信息，在物资明细区域选择物资并填写数量和单价，支持动态添加多行明细，最后点击保存即可。入库单保存后进入审批流程，审批通过后库存会自动增加。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">4. 出库时库存不足怎么办？</button>
+                        </h2>
+                        <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">系统默认不允许负库存出库。如果出库数量超过当前库存，系统会在输入框标红提示，并阻止保存。管理员可以在"系统管理-系统配置"中开启"允许负库存"选项，但不建议在生产环境中开启。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq5">5. 如何进行对账操作？</button>
+                        </h2>
+                        <div id="faq5" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">进入"对账管理"，点击"新建对账"，选择供应商和合同，设置对账起止日期。进入对账详情页后，点击"拉取数据"按钮，系统会自动查找该时间段内未对账的入库记录并汇总显示。可以编辑单价，点击"确认对账"完成对账，对账单可以打印存档。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq6">6. 如何备份数据？</button>
+                        </h2>
+                        <div id="faq6" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">管理员登录后，进入"系统管理-数据备份"，点击"立即备份"按钮即可下载当前数据库备份文件（.db格式）。建议定期备份，备份文件存储在项目的backups目录中。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq7">7. 如何导出报表？</button>
+                        </h2>
+                        <div id="faq7" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">进入相应的统计报表页面（入库统计、出库统计、物资动态表、高级分析等），设置筛选条件后点击"导出Excel"按钮即可下载报表文件。导出的Excel包含加粗表头、背景色、自动列宽、千分位格式。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq8">8. 如何添加常用功能？</button>
+                        </h2>
+                        <div id="faq8" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">鼠标悬停在侧边栏的普通菜单项上，右侧会显示空心五角星图标，点击即可加入"常用功能"分组。常用功能最多添加10个。在常用功能分组中，鼠标悬停在菜单项上会显示移除图标，点击即可移除。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq9">9. 为什么有些入库单不能删除？</button>
+                        </h2>
+                        <div id="faq9" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">已对账的入库单不能删除，因为对账是财务结算的重要环节，删除会影响账目一致性。如确需删除，需要管理员先在对账管理中撤销对应对账单的确认状态。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq10">10. 如何添加新用户？</button>
+                        </h2>
+                        <div id="faq10" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">管理员进入"系统管理-用户管理"，点击"新增用户"按钮，填写用户名、密码、姓名，选择角色（管理员/录入员/查看员）后保存。管理员拥有所有权限，录入员可以增删改数据，查看员只能查看数据。还可以设置数据权限范围（全部/本项目/本人/本部门）。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq11">11. 如何查看库存流水？</button>
+                        </h2>
+                        <div id="faq11" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">进入"库存查询"页面，找到要查看的物资，点击操作列的"流水"按钮，即可查看该物资的所有出入库记录，包括日期、单据编号、类型、数量和金额。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq12">12. 如何修改密码？</button>
+                        </h2>
+                        <div id="faq12" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">点击右上角用户名，选择"修改密码"，输入原密码和新密码后提交即可。修改密码后需要重新登录。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq13">13. 系统支持多项目吗？</button>
+                        </h2>
+                        <div id="faq13" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">支持。系统可以创建多个项目，每个项目的供应商、材料、合同、出入库数据完全隔离。在右上角下拉菜单中可以切换当前操作的项目。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq14">14. 审批流程如何配置？</button>
+                        </h2>
+                        <div id="faq14" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">管理员进入"审批流程管理"，选择业务类型后可以配置审批流程。支持添加多个审批节点，每个节点可设置审批角色（管理员/录入员/查看员）或指定具体审批人。启用流程后，对应业务单据提交后会自动进入审批流程。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq15">15. 为什么我提交的审批看不到？</button>
+                        </h2>
+                        <div id="faq15" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">系统规则：用户不能审批自己提交的单据。如果您提交了采购申请等单据，需要用其他用户账号（如管理员）登录才能在"我的审批"中看到并审批。管理员可以查看全部审批记录。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq16">16. 入库数量超过合同数量怎么办？</button>
+                        </h2>
+                        <div id="faq16" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">入库数量超过合同剩余量时系统会弹出警告，提供"调整数量"和"强制提交（需管理员权限）"两个选项。录入员无强制提交权限。管理员可以在"系统管理-系统配置"中设置允许超量比例（contract_over_ratio），默认0%即不允许超量。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq17">17. 如何进行盘点操作？</button>
+                        </h2>
+                        <div id="faq17" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">进入"盘点管理"，点击"新建盘点单"，选择盘点类型（全库盘点或按分类盘点），系统自动生成盘点明细。录入实盘数量后点击"确认盘点"，系统自动生成盘盈入库单或盘亏出库单调整实际库存。如需修改，可先作废盘点单（同时冲销生成的出入库单），再重新创建。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq18">18. 如何进行项目调拨？</button>
+                        </h2>
+                        <div id="faq18" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">在调出项目中创建调拨单，选择调入项目和物资明细，调拨数量不能超过调出项目库存。提交审批通过后，调出方确认出库（扣减库存），调入方确认入库（增加库存，可修改实际入库数量）。调拨差异（入库量小于出库量）记录为运输损耗。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq19">19. 供应商评价等级如何计算？</button>
+                        </h2>
+                        <div id="faq19" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">供应商评价总分 = 质量分×权重 + 价格分×权重 + 交货期分×权重 + 服务分×权重。默认权重：质量40%、价格20%、交货期25%、服务15%。评级规则：A≥90、B≥80、C≥60、D<60。D级供应商新增合同时会弹出风险提示。管理员可在"系统管理-系统配置"中调整权重和分数线。</div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq20">20. 如何在手机端使用系统？</button>
+                        </h2>
+                        <div id="faq20" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                            <div class="accordion-body">系统支持移动端适配，在手机浏览器中直接访问系统地址即可使用。点击左上角汉堡按钮打开侧边栏菜单，所有功能在手机端均可用，权限控制和数据校验与桌面端完全一致。建议使用微信或手机自带浏览器访问。</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

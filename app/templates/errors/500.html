@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}服务器错误 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-server text-danger" style="font-size: 4rem;"></i>
+        <h4 class="mt-4 text-muted">服务器内部错误</h4>
+        <p class="text-muted mb-0">系统遇到了一个意外错误，请稍后重试。</p>
+        {% if error %}
+        <p class="text-muted small mt-2">{{ error }}</p>
+        {% endif %}
+        <a href="{{ url_for('main.index') }}" class="btn btn-primary mt-4"><i class="bi bi-arrow-left me-1"></i>返回首页</a>
+    </div>
+</div>
+{% endblock %}

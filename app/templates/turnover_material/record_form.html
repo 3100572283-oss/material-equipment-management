@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{% if record %}编辑{% else %}新增{% endif %}周转记录{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>{% if record %}编辑{% else %}新增{% endif %}周转记录</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('turnover_material.create_record') }}">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">周转材 <span class="text-danger">*</span></label>
+                    <select class="form-select" name="material_id" id="materialSelect" required>
+                        <option value="">请选择</option>
+                    </select>
+                    <div class="form-text" id="stockInfo"></div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">班组 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="team" value="{{ record.team if record else '' }}" placeholder="如：钢筋班组" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">数量 <span class="text-danger">*</span></label>
+                    <input type="number" class="form-control" name="qty" min="1" value="{{ record.qty if record else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">领用日期 <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" name="out_date" value="{{ record.out_date if record else today }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">预计归还日期</label>
+                    <input type="date" class="form-control" name="expect_return_date" value="{{ record.expect_return_date if record else '' }}">
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">备注</label>
+                    <textarea class="form-control" name="remark" rows="2">{{ record.remark if record else '' }}</textarea>
+                </div>
+            </div>
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                <button type="submit" class="btn btn-primary">保存</button>
+                <a href="{{ url_for('turnover_material.record_index') }}" class="btn btn-secondary">返回</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const select = document.getElementById('materialSelect');
+    const info = document.getElementById('stockInfo');
+
+    const materials = {{ materials|tojson }};
+    materials.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.name + ' (' + (m.specification || '无规格') + ')';
+        opt.dataset.stock = 0;
+        opt.dataset.unit = m.unit || '';
+        if ('{{ record.material_id if record else "" }}' == m.id) {
+            opt.selected = true;
+        }
+        select.appendChild(opt);
+    });
+
+    function updateInfo() {
+        const opt = select.selectedOptions[0];
+        if (opt && opt.dataset.stock !== undefined) {
+            info.textContent = '在库：' + opt.dataset.stock + ' ' + (opt.dataset.unit || '');
+        } else {
+            info.textContent = '';
+        }
+    }
+
+    select.addEventListener('change', function() {
+        const materialId = select.value;
+        if (materialId) {
+            fetch('{{ url_for("turnover_material.api_inventory", material_id=0) }}'.replace('/0', '/' + materialId))
+                .then(r => r.json())
+                .then(data => {
+                    const opt = select.selectedOptions[0];
+                    if (opt) {
+                        opt.dataset.stock = data.quantity || 0;
+                        info.textContent = '在库：' + (data.quantity || 0) + ' ' + (opt.dataset.unit || '');
+                    }
+                });
+        } else {
+            info.textContent = '';
+        }
+    });
+
+    if (select.value) {
+        select.dispatchEvent(new Event('change'));
+    }
+});
+</script>
+{% endblock %}

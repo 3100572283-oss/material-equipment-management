@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}复制角色 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.dashboard') }}">系统管理</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('system.roles') }}">角色管理</a></li>
+            <li class="breadcrumb-item active">复制角色</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="card shadow-sm" style="max-width:600px;">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-files me-2"></i>复制角色</h6>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('system.copy_role', id=src_role.id) }}">
+            <div class="mb-3">
+                <label class="form-label">源角色</label>
+                <div class="form-control bg-light">
+                    {{ src_role.role_name }}（{{ src_role.role_code }}）
+                </div>
+                <div class="form-text">将复制该角色的菜单权限和数据权限</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">新角色编码 <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="role_code" required
+                       value="{{ src_role.role_code }}_copy" placeholder="请输入角色编码">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">新角色名称 <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="role_name" required
+                       value="{{ src_role.role_name }}副本" placeholder="请输入角色名称">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">数据权限</label>
+                <div class="form-control bg-light">
+                    {% if src_role.data_scope == 'all' %}全部数据
+                    {% elif src_role.data_scope == 'dept' %}本部门数据
+                    {% elif src_role.data_scope == 'dept_and_sub' %}本部门及下级
+                    {% elif src_role.data_scope == 'custom' %}自定义数据权限
+                    {% elif src_role.data_scope == 'self' %}仅本人数据
+                    {% else %}{{ src_role.data_scope }}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">排序</label>
+                <input type="number" class="form-control" name="sort" value="{{ src_role.sort or 0 }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">备注</label>
+                <textarea class="form-control" name="remark" rows="3">{{ src_role.remark or '' }}</textarea>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>保存</button>
+                <a href="{{ url_for('system.roles') }}" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

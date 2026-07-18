@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}合同台账 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>合同台账</h5>
+        <div>
+            <a href="{{ url_for('contract.invoices') }}" class="btn btn-outline-info btn-sm"><i class="bi bi-receipt me-1"></i>发票台账</a>
+            <a href="{{ url_for('contract.payments') }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-cash-coin me-1"></i>付款台账</a>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('contract.create') }}" class="btn btn-primary btn-sm ms-2"><i class="bi bi-plus-lg me-1"></i>新增合同</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('contract.index') }}">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索合同编号/名称" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="supplier_id">
+                    <option value="0">全部供应商</option>
+                    {% for s in suppliers %}
+                    <option value="{{ s.id }}" {% if s.id == supplier_id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    {% for label, value in get_dict_items('contract_status') %}
+                    <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('contract.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <!-- 批量操作栏 -->
+        <div class="batch-toolbar mb-2 py-2 px-3 bg-light rounded d-none" id="batchToolbar">
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-muted small"><i class="bi bi-check2-square me-1"></i>已选择 <strong id="selectedCount">0</strong> 项</span>
+                <div class="ms-auto d-flex gap-2">
+                    {% if current_user.can_edit() %}
+                    <form method="POST" action="{{ url_for('contract.batch_delete') }}" class="d-inline" id="batchDeleteForm">
+                        <input type="hidden" name="ids" id="batchDeleteIds">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmBatchDelete()">
+                            <i class="bi bi-trash me-1"></i>批量删除
+                        </button>
+                    </form>
+                    {% endif %}
+                    <a href="#" class="btn btn-sm btn-outline-success" id="batchExportBtn">
+                        <i class="bi bi-download me-1"></i>批量导出
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">
+                        <i class="bi bi-x-lg me-1"></i>取消
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px;">
+                            <input type="checkbox" class="form-check-input" id="selectAll" onchange="toggleSelectAll(this)">
+                        </th>
+                        <th>合同编号</th>
+                        <th>合同名称</th>
+                        <th>供应商</th>
+                        <th>类型</th>
+                        <th class="text-end">含税金额</th>
+                        <th class="text-end">已发生</th>
+                        <th class="text-end">开票</th>
+                        <th class="text-end">支付</th>
+                        <th class="text-end">欠款</th>
+                        <th class="text-center">入库完成率</th>
+                        <th>履约状态</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in pagination.items %}
+                    {% set st = c.stats %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="form-check-input row-checkbox" data-id="{{ c.id }}" onchange="updateSelection()">
+                        </td>
+                        <td><a href="{{ url_for('contract.detail', id=c.id) }}" class="text-decoration-none fw-bold">{{ c.code }}</a></td>
+                        <td>{{ c.name }}</td>
+                        <td>{{ c.supplier.name if c.supplier else '-' }}</td>
+                        <td>{{ c.contract_type or '-' }}</td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(c.amount_with_tax or 0) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(st.occurred_total) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(st.invoice_total) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(st.payment_total) }}</td>
+                        <td class="text-end {% if st.owing_total > 0 %}text-danger fw-bold{% endif %}">{{ '%.2f'|format(st.owing_total) }}</td>
+                        <td class="text-center" style="min-width:140px;">
+                            {% set ir = st.inbound_rate %}
+                            <div class="progress" style="height: 18px;">
+                                <div class="progress-bar {% if ir >= 100 %}bg-success{% elif ir >= 80 %}bg-info{% else %}bg-primary{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ ir if ir <= 100 else 100 }}%">
+                                    {{ "%.2f%%"|format(ir) }}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if c.status == '正常履约' %}<span class="badge bg-success">{{ c.status }}</span>
+                            {% elif c.status == '已终止' %}<span class="badge bg-secondary">{{ c.status }}</span>
+                            {% elif c.status == '已结算' %}<span class="badge bg-info">{{ c.status }}</span>
+                            {% else %}<span class="badge bg-warning text-dark">{{ c.status }}</span>{% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('contract.detail', id=c.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('contract.create', copy_from=c.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
+                            <a href="{{ url_for('contract.edit', id=c.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('contract.delete', id=c.id) }}" class="d-inline" onsubmit="return confirm('确定删除此合同？相关明细/发票/付款都将被删除。');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="13" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_pagination.html' %}
+    </div>
+</div>
+
+<script>
+function toggleSelectAll(el) {
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) {
+        cb.checked = el.checked;
+    });
+    updateSelection();
+}
+
+function updateSelection() {
+    var checkboxes = document.querySelectorAll('.row-checkbox');
+    var checked = document.querySelectorAll('.row-checkbox:checked');
+    var selectAll = document.getElementById('selectAll');
+    var toolbar = document.getElementById('batchToolbar');
+    var countEl = document.getElementById('selectedCount');
+    var exportBtn = document.getElementById('batchExportBtn');
+
+    var count = checked.length;
+    countEl.textContent = count;
+
+    if (count > 0) {
+        toolbar.classList.remove('d-none');
+    } else {
+        toolbar.classList.add('d-none');
+    }
+
+    if (checkboxes.length > 0 && count === checkboxes.length) {
+        selectAll.checked = true;
+        selectAll.indeterminate = false;
+    } else if (count > 0) {
+        selectAll.checked = false;
+        selectAll.indeterminate = true;
+    } else {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+    }
+
+    var ids = Array.from(checked).map(function(cb) { return cb.dataset.id; }).join(',');
+    document.getElementById('batchDeleteIds').value = ids;
+    exportBtn.href = '{{ url_for("contract.batch_export") }}?ids=' + encodeURIComponent(ids);
+}
+
+function clearSelection() {
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = false; });
+    document.getElementById('selectAll').checked = false;
+    updateSelection();
+}
+
+function confirmBatchDelete() {
+    var count = document.querySelectorAll('.row-checkbox:checked').length;
+    if (count === 0) {
+        alert('请先选择要删除的记录');
+        return;
+    }
+    if (confirm('确定批量删除选中的 ' + count + ' 条记录？相关明细/发票/付款都将被删除。')) {
+        document.getElementById('batchDeleteForm').submit();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}标签预览 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-eye me-2"></i>标签预览</h5>
+        <div>
+            <button type="button" class="btn btn-success btn-sm" onclick="window.print();"><i class="bi bi-printer me-1"></i>打印</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="window.close();">关闭</button>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if not libs_available %}
+        <div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-1"></i>请安装 qrcode python-barcode Pillow 库，否则二维码/条形码将无法生成图片。</div>
+        {% endif %}
+
+        <div class="mb-2 text-muted small">
+            共 {{ materials|length }} 个物资，每个 {{ quantity }} 张，尺寸 {{ label_size }}mm，类型：{% if label_type == 'barcode' %}条形码{% else %}二维码{% endif %}
+        </div>
+
+        <div id="print-area">
+            {% if materials %}
+            <div class="label-grid">
+                {% for m in materials %}
+                {% for i in range(quantity) %}
+                <div class="label-item label-{{ label_size }}">
+                    {% if label_type == 'barcode' and barcode_available %}
+                    <img src="{{ url_for('barcode.api_barcode', material_id=m.id) }}" alt="{{ m.name }}" style="max-width:90%; max-height:55%;">
+                    {% else %}
+                    <img src="{{ url_for('barcode.api_qrcode', material_id=m.id) }}" alt="{{ m.name }}" style="max-width:90%; max-height:55%;">
+                    {% endif %}
+                    <div class="small fw-bold text-truncate">{{ m.name }}</div>
+                    <div class="small text-muted text-truncate">{{ m.code or '' }}</div>
+                    {% if m.specification %}<div class="small text-muted text-truncate">{{ m.specification }}</div>{% endif %}
+                    <div class="small text-muted">单位：{{ m.unit or '-' }}</div>
+                </div>
+                {% endfor %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-5">未选择任何物资，无法预览。</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

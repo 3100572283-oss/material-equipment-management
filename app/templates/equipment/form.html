@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if equipment else '新增' }}设备 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-11">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-gear me-2"></i>{{ '编辑' if equipment else '新增' }}设备</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data" id="eqForm" novalidate>
+                    {# ========== 共用字段 ========== #}
+                    <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-info-circle me-1"></i>基本信息</h6>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">设备编号 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="code"
+                                   value="{{ equipment.code if equipment else default_code }}"
+                                   {{ 'readonly' if equipment else '' }} required>
+                            {% if not equipment %}<div class="form-text">由系统自动生成，可手动修改。</div>{% endif %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">设备名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name"
+                                   value="{{ equipment.name if equipment else '' }}" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">设备来源 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="source_type" id="sourceType" required>
+                                {% for label, value in source_items %}
+                                <option value="{{ value }}" {% if (equipment and equipment.source_type == value) or (not equipment and value == 'self') %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">规格型号</label>
+                            <input type="text" class="form-control" name="specification"
+                                   value="{{ equipment.specification if equipment else '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">设备分类</label>
+                            <select class="form-select" name="category">
+                                <option value="">-- 请选择 --</option>
+                                {% for label, value in category_items %}
+                                <option value="{{ value }}" {% if equipment and equipment.category == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">制造商</label>
+                            <input type="text" class="form-control" name="manufacturer"
+                                   value="{{ equipment.manufacturer if equipment else '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">责任人</label>
+                            <input type="text" class="form-control" name="responsible"
+                                   value="{{ equipment.responsible if equipment else '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">存放地点</label>
+                            <input type="text" class="form-control" name="location"
+                                   value="{{ equipment.location if equipment else '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">设备状态 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="status" required>
+                                {% for label, value in status_items %}
+                                <option value="{{ value }}" {% if (equipment and equipment.status == value) or (not equipment and value == 'in_use') %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">设备照片</label>
+                            <input type="file" class="form-control" name="photo" accept="image/*">
+                            {% if equipment and equipment.photo %}
+                            <div class="mt-1">
+                                <a href="{{ url_for('static', filename=equipment.photo) }}" target="_blank" class="btn btn-sm btn-outline-info">
+                                    <i class="bi bi-image me-1"></i>查看现有照片
+                                </a>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">备注</label>
+                            <textarea class="form-control" name="remark" rows="2">{{ equipment.remark if equipment else '' }}</textarea>
+                        </div>
+                    </div>
+
+                    {# ========== 自有设备字段 ========== #}
+                    <div class="source-section mt-4" data-source="self" style="display:none;">
+                        <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-cash-coin me-1"></i>自有设备-资产信息</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">设备原值（元）</label>
+                                <input type="number" step="0.01" class="form-control" name="original_value" id="originalValue"
+                                       value="{{ equipment.original_value if equipment and equipment.original_value else '' }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">购置日期</label>
+                                <input type="date" class="form-control" name="purchase_date" id="purchaseDate"
+                                       value="{{ equipment.purchase_date.strftime('%Y-%m-%d') if equipment and equipment.purchase_date else '' }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">预计使用年限（年）</label>
+                                <input type="number" class="form-control" name="use_years" id="useYears"
+                                       value="{{ equipment.use_years if equipment and equipment.use_years else '' }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">残值率（%）</label>
+                                <input type="number" step="0.01" class="form-control" name="residual_rate" id="residualRate"
+                                       value="{{ equipment.residual_rate if equipment and equipment.residual_rate is not none else 5 }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">月折旧额（元）</label>
+                                <input type="text" class="form-control bg-light" id="monthlyDep" readonly value="0.00">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">累计折旧（元）</label>
+                                <input type="text" class="form-control bg-light" id="accumulatedDep" readonly value="0.00">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">设备净值（元）</label>
+                                <input type="text" class="form-control bg-light" id="netValue" readonly value="0.00">
+                            </div>
+                        </div>
+                    </div>
+
+                    {# ========== 租赁设备字段 ========== #}
+                    <div class="source-section mt-4" data-source="rent" style="display:none;">
+                        <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-truck me-1"></i>租赁设备-租赁信息</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">供应商 <span class="text-danger">*</span></label>
+                                <select class="form-select" name="supplier_id">
+                                    <option value="">-- 请选择 --</option>
+                                    {% for s in suppliers %}
+                                    <option value="{{ s.id }}" {% if equipment and equipment.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">进场日期</label>
+                                <input type="date" class="form-control" name="entry_date"
+                                       value="{{ equipment.entry_date.strftime('%Y-%m-%d') if equipment and equipment.entry_date else '' }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">租赁方式</label>
+                                <select class="form-select" name="rent_type">
+                                    <option value="">-- 请选择 --</option>
+                                    {% for label, value in rent_type_items %}
+                                    <option value="{{ value }}" {% if equipment and equipment.rent_type == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">租赁单价（元）</label>
+                                <input type="number" step="0.01" class="form-control" name="rent_unit_price"
+                                       value="{{ equipment.rent_unit_price if equipment and equipment.rent_unit_price else '' }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">租赁期限</label>
+                                <input type="number" class="form-control" name="rent_period"
+                                       value="{{ equipment.rent_period if equipment and equipment.rent_period else '' }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">预计退场日期</label>
+                                <input type="date" class="form-control" name="expected_exit_date"
+                                       value="{{ equipment.expected_exit_date.strftime('%Y-%m-%d') if equipment and equipment.expected_exit_date else '' }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">进出场费（元）</label>
+                                <input type="number" step="0.01" class="form-control" name="entry_exit_fee"
+                                       value="{{ equipment.entry_exit_fee if equipment and equipment.entry_exit_fee else '' }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">押金（元，可选）</label>
+                                <input type="number" step="0.01" class="form-control" name="deposit"
+                                       value="{{ equipment.deposit if equipment and equipment.deposit else '' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    {# ========== 劳务队自带字段 ========== #}
+                    <div class="source-section mt-4" data-source="labor" style="display:none;">
+                        <h6 class="text-primary border-bottom pb-2 mb-3"><i class="bi bi-people me-1"></i>劳务队自带-进场信息</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">所属劳务队 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="labor_team"
+                                       value="{{ equipment.labor_team if equipment and equipment.labor_team else '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">进场日期</label>
+                                <input type="date" class="form-control" name="entry_date"
+                                       value="{{ equipment.entry_date.strftime('%Y-%m-%d') if equipment and equipment.entry_date else '' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>保存</button>
+                        <a href="{{ url_for('equipment.index') }}" class="btn btn-secondary ms-2"><i class="bi bi-arrow-left me-1"></i>返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+    var sourceSelect = document.getElementById('sourceType');
+    var sections = document.querySelectorAll('.source-section');
+
+    function toggleSections() {
+        var val = sourceSelect.value;
+        sections.forEach(function (sec) {
+            var isMatch = sec.getAttribute('data-source') === val;
+            sec.style.display = isMatch ? '' : 'none';
+            // 切换必填属性
+            sec.querySelectorAll('input, select, textarea').forEach(function (el) {
+                if (!isMatch) {
+                    // 隐藏时移除 required，避免无法提交
+                    if (el.hasAttribute('data-was-required')) {
+                        // 已处理
+                    }
+                    if (el.hasAttribute('required')) {
+                        el.setAttribute('data-was-required', '1');
+                        el.removeAttribute('required');
+                    }
+                } else {
+                    // 显示时还原 required
+                    if (el.hasAttribute('data-was-required')) {
+                        el.setAttribute('required', 'required');
+                        el.removeAttribute('data-was-required');
+                    }
+                }
+            });
+        });
+        if (val === 'self') {
+            calcDepreciation();
+        }
+    }
+
+    function toNum(v) {
+        var n = parseFloat(v);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function calcDepreciation() {
+        var original = toNum(document.getElementById('originalValue').value);
+        var useYears = toNum(document.getElementById('useYears').value);
+        var residualRate = toNum(document.getElementById('residualRate').value);
+        var purchaseDate = document.getElementById('purchaseDate').value;
+
+        var monthlyDep = 0, accumulated = 0, net = 0;
+        if (original > 0 && useYears > 0) {
+            var residual = original * residualRate / 100;
+            var depreciable = original - residual;
+            monthlyDep = depreciable / (useYears * 12);
+        }
+        if (purchaseDate && original > 0) {
+            var d = new Date(purchaseDate);
+            var today = new Date();
+            var months = (today.getFullYear() - d.getFullYear()) * 12 + (today.getMonth() - d.getMonth());
+            if (months < 0) months = 0;
+            var totalMonths = useYears * 12;
+            if (totalMonths > 0 && months >= totalMonths) months = totalMonths;
+            accumulated = monthlyDep * months;
+        }
+        net = original - accumulated;
+        document.getElementById('monthlyDep').value = monthlyDep.toFixed(2);
+        document.getElementById('accumulatedDep').value = accumulated.toFixed(2);
+        document.getElementById('netValue').value = net.toFixed(2);
+    }
+
+    sourceSelect.addEventListener('change', toggleSections);
+    ['originalValue', 'useYears', 'residualRate', 'purchaseDate'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', calcDepreciation);
+            el.addEventListener('change', calcDepreciation);
+        }
+    });
+    toggleSections();
+})();
+</script>
+{% endblock %}

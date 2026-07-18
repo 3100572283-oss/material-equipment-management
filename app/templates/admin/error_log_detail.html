@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}错误日志详情 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-bug me-2"></i>错误日志详情 #{{ log.id }}</h5>
+        <a href="{{ url_for('admin.error_logs') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+    </div>
+    <div class="card-body">
+        <h6 class="text-primary border-bottom pb-2"><i class="bi bi-info-circle me-1"></i>基本信息</h6>
+        <div class="row mb-3">
+            <div class="col-md-3 mb-2"><strong>错误时间：</strong>{{ log.error_time.strftime('%Y-%m-%d %H:%M:%S') if log.error_time else '-' }}</div>
+            <div class="col-md-3 mb-2"><strong>错误类型：</strong>{{ log.error_type or '-' }}</div>
+            <div class="col-md-3 mb-2"><strong>请求URL：</strong>{{ log.request_url or '-' }}</div>
+            <div class="col-md-3 mb-2"><strong>请求方法：</strong>{{ log.request_method or '-' }}</div>
+            <div class="col-md-3 mb-2"><strong>操作用户：</strong>{{ log.username or '-' }}</div>
+            <div class="col-md-3 mb-2"><strong>IP地址：</strong>{{ log.ip_address or '-' }}</div>
+            <div class="col-md-3 mb-2"><strong>处理状态：</strong>
+                {% if log.handled %}<span class="badge bg-success">已处理</span>
+                {% else %}<span class="badge bg-warning text-dark">未处理</span>{% endif %}
+            </div>
+            {% if log.user_agent %}<div class="col-12 mb-2"><strong>User-Agent：</strong><small class="text-muted">{{ log.user_agent }}</small></div>{% endif %}
+        </div>
+
+        <h6 class="text-primary border-bottom pb-2"><i class="bi bi-exclamation-triangle me-1"></i>错误信息</h6>
+        <div class="bg-light p-3 rounded mb-3">
+            <pre class="mb-0 small text-danger">{{ log.error_message or '-' }}</pre>
+        </div>
+
+        <h6 class="text-primary border-bottom pb-2"><i class="bi bi-stack me-1"></i>堆栈信息</h6>
+        <div class="bg-light p-3 rounded mb-3" style="max-height: 300px; overflow-y: auto;">
+            <pre class="mb-0 small">{{ log.stack_trace or '-' }}</pre>
+        </div>
+
+        {% if log.handled %}
+        <h6 class="text-primary border-bottom pb-2"><i class="bi bi-check-circle me-1"></i>处理信息</h6>
+        <div class="row mb-3">
+            <div class="col-md-3 mb-2"><strong>处理人：</strong>{{ log.handled_by or '-' }}</div>
+            <div class="col-md-3 mb-2"><strong>处理时间：</strong>{{ log.handled_at.strftime('%Y-%m-%d %H:%M:%S') if log.handled_at else '-' }}</div>
+            <div class="col-12 mb-2"><strong>处理备注：</strong></div>
+            <div class="col-12">
+                <div class="bg-light p-3 rounded">
+                    {{ log.handle_remark or '-' }}
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <h6 class="text-primary border-bottom pb-2"><i class="bi bi-pencil-square me-1"></i>处理</h6>
+        <form method="POST" action="{{ url_for('admin.handle_error_log', id=log.id) }}">
+            <div class="mb-3">
+                <label class="form-label small text-muted">处理备注</label>
+                <textarea class="form-control" name="handle_remark" rows="3" placeholder="请输入处理备注..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" onclick="return confirm('确认标记为已处理？');">
+                <i class="bi bi-check-lg me-1"></i>标记已处理
+            </button>
+            <a href="{{ url_for('admin.error_logs') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

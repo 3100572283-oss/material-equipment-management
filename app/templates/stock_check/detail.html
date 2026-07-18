@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}盘点单详情 - {{ stock_check.check_no }}{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-clipboard-check me-2"></i>盘点单详情 - {{ stock_check.check_no }}
+            {% if stock_check.status == 'draft' %}<span class="badge bg-secondary ms-2">草稿</span>
+            {% elif stock_check.status == 'ongoing' %}<span class="badge bg-warning text-dark ms-2">进行中</span>
+            {% elif stock_check.status == 'confirmed' %}<span class="badge bg-success ms-2">已确认</span>
+            {% elif stock_check.status == 'cancelled' %}<span class="badge bg-danger ms-2">已作废</span>
+            {% endif %}
+        </h5>
+        <div>
+            <a href="{{ url_for('stock_check.export', id=stock_check.id) }}" class="btn btn-sm btn-outline-info"><i class="bi bi-file-earmark-excel me-1"></i>导出Excel</a>
+            {% if current_user.can_edit() and stock_check.status in ('draft', 'ongoing') %}
+            <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#scanModal"><i class="bi bi-qr-code-scan me-1"></i>扫码录入</button>
+            <button type="submit" form="checkForm" class="btn btn-sm btn-primary"><i class="bi bi-save me-1"></i>保存实盘</button>
+            {% endif %}
+            {% if current_user.can_edit() and stock_check.status in ('draft', 'ongoing') %}
+            <form method="POST" action="{{ url_for('stock_check.confirm', id=stock_check.id) }}" class="d-inline" onsubmit="return confirm('确定确认盘点？确认后库存将自动调整，且不可直接修改。');">
+                <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-circle me-1"></i>确认盘点</button>
+            </form>
+            {% endif %}
+            {% if current_user.can_edit() and stock_check.status == 'confirmed' %}
+            <form method="POST" action="{{ url_for('stock_check.cancel', id=stock_check.id) }}" class="d-inline" onsubmit="return confirm('确定作废此盘点单？库存将冲销回原状态。');">
+                <button type="submit" class="btn btn-sm btn-warning"><i class="bi bi-x-circle me-1"></i>作废</button>
+            </form>
+            {% endif %}
+            {% if current_user.can_edit() and stock_check.status in ('draft', 'ongoing') %}
+            <form method="POST" action="{{ url_for('stock_check.delete', id=stock_check.id) }}" class="d-inline" onsubmit="return confirm('确定删除此盘点单？');">
+                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
+            </form>
+            {% endif %}
+            <a href="{{ url_for('stock_check.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-2"><div class="text-muted small">盘点日期</div><div>{{ stock_check.check_date or '-' }}</div></div>
+            <div class="col-md-2"><div class="text-muted small">盘点方式</div><div>
+                {% if stock_check.check_type == 'full' %}<span class="badge bg-primary">全库盘点</span>
+                {% else %}<span class="badge bg-info">按分类</span>{% endif %}
+            </div></div>
+            <div class="col-md-2"><div class="text-muted small">盘点分类</div><div>{{ category_name or '-' }}</div></div>
+            <div class="col-md-2"><div class="text-muted small">盘点人</div><div>{{ stock_check.checker or '-' }}</div></div>
+            <div class="col-md-2"><div class="text-muted small">物资总数</div><div class="fw-bold">{{ stock_check.items.count() }}</div></div>
+            <div class="col-md-2"><div class="text-muted small">差异笔数</div><div class="fw-bold {% if stock_check.diff_count > 0 %}text-danger{% endif %}">{{ stock_check.diff_count }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">创建时间</div><div>{{ stock_check.created_at.strftime('%Y-%m-%d %H:%M') if stock_check.created_at else '-' }}</div></div>
+            {% if stock_check.remark %}
+            <div class="col-12"><div class="text-muted small">备注</div><div>{{ stock_check.remark }}</div></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0">盘点明细</h6>
+        <div class="text-muted small">
+            账面数量只读，实盘数量可编辑；红色行表示有差异。
+        </div>
+    </div>
+    <div class="card-body">
+        <form id="checkForm" method="POST" action="{{ url_for('stock_check.save', id=stock_check.id) }}">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle" id="detailTable">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:5%" class="text-center">序号</th>
+                        <th style="width:20%">物资名称</th>
+                        <th style="width:15%">规格型号</th>
+                        <th style="width:8%">单位</th>
+                        <th style="width:12%" class="text-end">账面数量</th>
+                        <th style="width:12%" class="text-end">实盘数量</th>
+                        <th style="width:10%" class="text-end">差异数量</th>
+                        <th style="width:18%">差异原因</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in stock_check.items %}
+                    {% set has_diff = item.actual_qty is not none and item.actual_qty != item.book_qty %}
+                    <tr class="{% if has_diff %}table-danger{% endif %}" data-item-id="{{ item.id }}" data-material-id="{{ item.material_id }}">
+                        <td class="text-center">{{ loop.index }}</td>
+                        <td>{{ item.material_name }}</td>
+                        <td>{{ item.specification or '-' }}</td>
+                        <td>{{ item.unit or '-' }}</td>
+                        <td class="text-end fw-bold">{{ item.book_qty }}</td>
+                        <td class="text-end">
+                            {% if stock_check.status in ('draft', 'ongoing') and current_user.can_edit() %}
+                            <input type="hidden" name="item_id[]" value="{{ item.id }}">
+                            <input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end actual-input" name="actual_qty[]" value="{{ item.actual_qty if item.actual_qty is not none else '' }}">
+                            {% else %}
+                            <span class="fw-bold">{{ item.actual_qty if item.actual_qty is not none else '-' }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end diff-cell">
+                            {% if item.actual_qty is not none %}
+                            {% set diff = item.actual_qty - item.book_qty %}
+                            <span class="fw-bold {% if diff > 0 %}text-success{% elif diff < 0 %}text-danger{% endif %}">
+                                {{ '+' if diff > 0 else '' }}{{ diff }}
+                            </span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>
+                            {% if stock_check.status in ('draft', 'ongoing') and current_user.can_edit() %}
+                            <input type="text" class="form-control form-control-sm" name="diff_reason[]" value="{{ item.diff_reason or '' }}" placeholder="差异原因">
+                            {% else %}
+                            {{ item.diff_reason or '-' }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">暂无明细</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        </form>
+    </div>
+</div>
+
+<!-- Scan Modal -->
+<div class="modal fade" id="scanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">扫码录入实盘数量</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="qr-reader" style="width:100%"></div>
+                <div id="scan-status" class="text-center mt-2 text-muted small"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const rows = document.querySelectorAll('#detailTable tbody tr');
+
+    function recalcRow(tr) {
+        const actualInput = tr.querySelector('.actual-input');
+        const diffCell = tr.querySelector('.diff-cell');
+        if (!actualInput || !diffCell) return;
+
+        const bookQty = parseFloat(tr.querySelector('td:nth-child(5)').textContent.trim()) || 0;
+        const actualVal = actualInput.value.trim();
+
+        if (actualVal === '') {
+            diffCell.innerHTML = '-';
+            tr.classList.remove('table-danger');
+            return;
+        }
+
+        const actualQty = parseFloat(actualVal) || 0;
+        const diff = actualQty - bookQty;
+
+        if (diff !== 0) {
+            tr.classList.add('table-danger');
+        } else {
+            tr.classList.remove('table-danger');
+        }
+
+        const sign = diff > 0 ? '+' : '';
+        const colorClass = diff > 0 ? 'text-success' : (diff < 0 ? 'text-danger' : '');
+        diffCell.innerHTML = `<span class="fw-bold ${colorClass}">${sign}${diff.toFixed(4).replace(/\.?0+$/, '')}</span>`;
+    }
+
+    rows.forEach(tr => {
+        const input = tr.querySelector('.actual-input');
+        if (input) {
+            input.addEventListener('input', () => recalcRow(tr));
+        }
+    });
+
+    // ===== 扫码录入 =====
+    let html5QrCode = null;
+    const scanModal = document.getElementById('scanModal');
+    const scanStatus = document.getElementById('scan-status');
+
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+
+    async function startScanner() {
+        if (!window.Html5Qrcode) {
+            try {
+                await loadScript('https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js');
+            } catch (e) {
+                scanStatus.textContent = '加载扫码库失败，请检查网络。';
+                return;
+            }
+        }
+        if (html5QrCode) {
+            await html5QrCode.stop();
+            html5QrCode.clear();
+        }
+        html5QrCode = new Html5Qrcode('qr-reader');
+        scanStatus.textContent = '正在启动摄像头…';
+        try {
+            await html5QrCode.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                onScanSuccess,
+                () => {}
+            );
+            scanStatus.textContent = '请将二维码对准摄像头';
+        } catch (e) {
+            scanStatus.textContent = '无法启动摄像头：' + e.message;
+        }
+    }
+
+    async function stopScanner() {
+        if (html5QrCode) {
+            try { await html5QrCode.stop(); } catch (e) {}
+            html5QrCode.clear();
+            html5QrCode = null;
+        }
+    }
+
+    async function onScanSuccess(decodedText) {
+        scanStatus.textContent = '识别成功，正在查询…';
+        if (html5QrCode) {
+            await html5QrCode.stop();
+        }
+        let code = decodedText;
+        try {
+            const parsed = JSON.parse(decodedText);
+            if (parsed && parsed.code) code = parsed.code;
+        } catch (e) {}
+        try {
+            const res = await fetch('/material/api/scan_lookup?code=' + encodeURIComponent(code));
+            const data = await res.json();
+            if (!res.ok) {
+                scanStatus.textContent = data.error || '查询失败';
+                if (html5QrCode) await html5QrCode.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 250, height: 250 } }, onScanSuccess, () => {});
+                return;
+            }
+            const row = document.querySelector('#detailTable tbody tr[data-material-id="' + data.id + '"]');
+            if (!row) {
+                scanStatus.textContent = '当前盘点单中未找到该物资：' + data.name;
+                if (html5QrCode) await html5QrCode.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 250, height: 250 } }, onScanSuccess, () => {});
+                return;
+            }
+            const actualInput = row.querySelector('.actual-input');
+            if (!actualInput) {
+                scanStatus.textContent = '该行实盘数量不可编辑。';
+                return;
+            }
+            actualInput.focus();
+            scanStatus.textContent = '已定位到：' + data.name + '，请输入实盘数量后关闭窗口。';
+            setTimeout(() => {
+                const modalEl = document.getElementById('scanModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+            }, 1200);
+        } catch (e) {
+            scanStatus.textContent = '网络错误：' + e.message;
+            if (html5QrCode) await html5QrCode.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 250, height: 250 } }, onScanSuccess, () => {});
+        }
+    }
+
+    if (scanModal) {
+        scanModal.addEventListener('shown.bs.modal', startScanner);
+        scanModal.addEventListener('hidden.bs.modal', stopScanner);
+    }
+});
+</script>
+{% endblock %}

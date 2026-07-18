@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}项目成本构成{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-pie-chart me-2"></i>成本分类占比（最近12个月）</h5>
+            </div>
+            <div class="card-body">
+                <div id="pieChart" style="height: 400px;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-bar-chart-line me-2"></i>月度入库趋势（最近12个月）</h5>
+            </div>
+            <div class="card-body">
+                <div id="trendChart" style="height: 400px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script>
+    var pieChart = echarts.init(document.getElementById('pieChart'));
+    var pieOption = {
+        tooltip: { trigger: 'item', formatter: '{b}: {c}元 ({d}%)' },
+        legend: { bottom: '0%' },
+        series: [{
+            type: 'pie',
+            radius: ['40%', '70%'],
+            data: {{ pie_data | tojson }},
+            emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } }
+        }]
+    };
+    pieChart.setOption(pieOption);
+    window.addEventListener('resize', function() { pieChart.resize(); });
+
+    var trendChart = echarts.init(document.getElementById('trendChart'));
+    var trendData = {{ trend_data | tojson }};
+    var trendOption = {
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: trendData.map(function(d) { return d.month; }) },
+        yAxis: { type: 'value', name: '金额(元)' },
+        series: [{
+            data: trendData.map(function(d) { return d.amount; }),
+            type: 'bar',
+            itemStyle: { color: '#ffc107' }
+        }]
+    };
+    trendChart.setOption(trendOption);
+    window.addEventListener('resize', function() { trendChart.resize(); });
+</script>
+{% endblock %}

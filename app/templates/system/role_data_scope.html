@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}数据权限 - {{ role.role_name }} - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('system.roles') }}">角色管理</a></li>
+            <li class="breadcrumb-item active">数据权限</li>
+        </ol>
+    </nav>
+    <a href="{{ url_for('system.roles') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>返回
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-scope me-2"></i>{{ role.role_name }} - 数据权限配置</h6>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('system.save_role_data_scope', id=role.id) }}">
+            <div class="row mb-3">
+                <label class="col-sm-2 col-form-label">数据权限范围</label>
+                <div class="col-sm-10">
+                    <select class="form-select" name="data_scope" id="dataScopeSelect">
+                        {% for label, value in get_dict_items('data_scope') %}
+                        <option value="{{ value }}" {% if role.data_scope == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <label class="col-sm-2 col-form-label">可见部门</label>
+                <div class="col-sm-10">
+                    <div class="tree-view">
+                        {% for dept in depts if dept.parent_id == 0 %}
+                        <div class="mb-2">
+                            <label class="d-flex align-items-center">
+                                <input type="checkbox" class="form-check-input me-2" name="dept_ids"
+                                       value="{{ dept.id }}" {% if dept.id in selected_depts %}checked{% endif %}>
+                                <i class="bi bi-folder-fill text-primary me-1"></i>
+                                <strong>{{ dept.dept_name }}</strong>
+                            </label>
+                            {% set dept_children = dept.children.order_by(dept.__class__.sort).all() %}
+                            {% if dept_children %}
+                            <div class="ml-4">
+                                {% for child in dept_children %}
+                                <div class="mb-1">
+                                    <label class="d-flex align-items-center">
+                                        <input type="checkbox" class="form-check-input me-2" name="dept_ids"
+                                               value="{{ child.id }}" {% if child.id in selected_depts %}checked{% endif %}>
+                                        <i class="bi bi-folder text-primary me-1"></i>
+                                        {{ child.dept_name }}
+                                    </label>
+                                    {% set child_children = child.children.order_by(child.__class__.sort).all() %}
+                                    {% if child_children %}
+                                    <div class="ml-4">
+                                        {% for sub in child_children %}
+                                        <div class="mb-1">
+                                            <label class="d-flex align-items-center">
+                                                <input type="checkbox" class="form-check-input me-2" name="dept_ids"
+                                                       value="{{ sub.id }}" {% if sub.id in selected_depts %}checked{% endif %}>
+                                                <i class="bi bi-folder-open text-primary me-1"></i>
+                                                {{ sub.dept_name }}
+                                            </label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-sm-10 offset-sm-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>保存数据权限
+                    </button>
+                    <a href="{{ url_for('system.roles') }}" class="btn btn-secondary ms-2">
+                        <i class="bi bi-x-lg me-1"></i>取消
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('dataScopeSelect').addEventListener('change', function() {
+    const selected = this.value;
+    const deptCheckboxes = document.querySelectorAll('input[name="dept_ids"]');
+    
+    if (selected === 'custom') {
+        deptCheckboxes.forEach(cb => cb.disabled = false);
+    } else {
+        deptCheckboxes.forEach(cb => cb.disabled = true);
+    }
+});
+</script>
+{% endblock %}

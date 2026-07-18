@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}角色管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.dashboard') }}">系统管理</a></li>
+            <li class="breadcrumb-item active">角色管理</li>
+        </ol>
+    </nav>
+    <a href="{{ url_for('system.create_role') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>新增角色
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-shield me-2"></i>角色列表</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr>
+                        <th>角色编码</th>
+                        <th>角色名称</th>
+                        <th>数据权限</th>
+                        <th>状态</th>
+                        <th>排序</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for role in roles %}
+                    <tr>
+                        <td>{{ role.role_code }}</td>
+                        <td>{{ role.role_name }}</td>
+                        <td>
+                            {% if role.data_scope == 'all' %}全部数据
+                            {% elif role.data_scope == 'dept' %}本部门数据
+                            {% elif role.data_scope == 'dept_and_sub' %}本部门及下级
+                            {% elif role.data_scope == 'custom' %}自定义数据权限
+                            {% elif role.data_scope == 'self' %}仅本人数据
+                            {% else %}{{ role.data_scope }}{% endif %}
+                        </td>
+                        <td>
+                            {% if role.status %}
+                            <span class="badge bg-success">启用</span>
+                            {% else %}
+                            <span class="badge bg-secondary">禁用</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ role.sort }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('system.copy_role', id=role.id) }}" class="btn btn-outline-success" title="复制">
+                                    <i class="bi bi-files"></i>
+                                </a>
+                                <a href="{{ url_for('system.edit_role', id=role.id) }}" class="btn btn-outline-primary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <a href="{{ url_for('system.role_permissions', id=role.id) }}" class="btn btn-outline-info">
+                                    <i class="bi bi-key"></i>权限
+                                </a>
+                                {% if role.data_scope == 'custom' %}
+                                <a href="{{ url_for('system.role_data_scope', id=role.id) }}" class="btn btn-outline-warning">
+                                    <i class="bi bi-scope"></i>数据
+                                </a>
+                                {% endif %}
+                                {% if role.role_code != 'super_admin' %}
+                                <form method="POST" action="{{ url_for('system.toggle_role', id=role.id) }}" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-secondary">
+                                        <i class="bi {% if role.status %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('system.delete_role', id=role.id) }}" 
+                                      class="d-inline" onsubmit="return confirm('确定删除角色「{{ role.role_name }}」？');">
+                                    <button type="submit" class="btn btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if not roles %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox d-block mb-2" style="font-size:2.5rem;"></i>
+            <p>暂无角色数据</p>
+            <a href="{{ url_for('system.create_role') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i>添加第一个角色
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

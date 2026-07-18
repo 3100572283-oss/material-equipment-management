@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}通知配置 - 物资设备管理系统{% endblock %}
+{% block content %}
+<form method="POST" action="{{ url_for('admin.notify_config') }}">
+    <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-bell me-2"></i>通知配置</h5>
+            <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-save me-1"></i>保存配置</button>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <!-- 钉钉 -->
+                <div class="col-md-6">
+                    <div class="card border-info h-100">
+                        <div class="card-header bg-light">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="notify_dingtalk_enabled" value="true" id="dingtalk_enabled" {% if configs.get('notify_dingtalk_enabled') == 'true' %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="dingtalk_enabled"><i class="bi bi-chat-dots me-1"></i>钉钉</label>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-2">
+                                <label class="form-label small">Webhook 地址</label>
+                                <input type="text" class="form-control form-control-sm" name="notify_dingtalk_webhook" value="{{ configs.get('notify_dingtalk_webhook', '') }}" placeholder="https://oapi.dingtalk.com/robot/send?access_token=...">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small">加签密钥（可选）</label>
+                                <input type="text" class="form-control form-control-sm" name="notify_dingtalk_secret" value="{{ configs.get('notify_dingtalk_secret', '') }}">
+                            </div>
+                            <button type="submit" formaction="{{ url_for('admin.notify_test') }}" name="channel" value="dingtalk" class="btn btn-sm btn-outline-info"><i class="bi bi-send me-1"></i>测试发送</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 企业微信 -->
+                <div class="col-md-6">
+                    <div class="card border-success h-100">
+                        <div class="card-header bg-light">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="notify_wechat_enabled" value="true" id="wechat_enabled" {% if configs.get('notify_wechat_enabled') == 'true' %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="wechat_enabled"><i class="bi bi-wechat me-1"></i>企业微信</label>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-2">
+                                <label class="form-label small">Webhook 地址</label>
+                                <input type="text" class="form-control form-control-sm" name="notify_wechat_webhook" value="{{ configs.get('notify_wechat_webhook', '') }}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+                            </div>
+                            <button type="submit" formaction="{{ url_for('admin.notify_test') }}" name="channel" value="wechat" class="btn btn-sm btn-outline-success"><i class="bi bi-send me-1"></i>测试发送</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 飞书 -->
+                <div class="col-md-6">
+                    <div class="card border-warning h-100">
+                        <div class="card-header bg-light">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="notify_feishu_enabled" value="true" id="feishu_enabled" {% if configs.get('notify_feishu_enabled') == 'true' %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="feishu_enabled"><i class="bi bi-messenger me-1"></i>飞书</label>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-2">
+                                <label class="form-label small">Webhook 地址</label>
+                                <input type="text" class="form-control form-control-sm" name="notify_feishu_webhook" value="{{ configs.get('notify_feishu_webhook', '') }}" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+                            </div>
+                            <button type="submit" formaction="{{ url_for('admin.notify_test') }}" name="channel" value="feishu" class="btn btn-sm btn-outline-warning"><i class="bi bi-send me-1"></i>测试发送</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 邮件 -->
+                <div class="col-md-6">
+                    <div class="card border-secondary h-100">
+                        <div class="card-header bg-light">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="notify_email_enabled" value="true" id="email_enabled" {% if configs.get('notify_email_enabled') == 'true' %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="email_enabled"><i class="bi bi-envelope me-1"></i>邮件</label>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-2">
+                                <div class="col-md-8">
+                                    <label class="form-label small">SMTP 服务器</label>
+                                    <input type="text" class="form-control form-control-sm" name="notify_email_smtp_host" value="{{ configs.get('notify_email_smtp_host', '') }}" placeholder="smtp.qq.com">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small">端口</label>
+                                    <input type="text" class="form-control form-control-sm" name="notify_email_smtp_port" value="{{ configs.get('notify_email_smtp_port', '') }}" placeholder="465">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small">发件账号</label>
+                                    <input type="text" class="form-control form-control-sm" name="notify_email_account" value="{{ configs.get('notify_email_account', '') }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small">授权码/密码</label>
+                                    <input type="password" class="form-control form-control-sm" name="notify_email_password" value="{{ configs.get('notify_email_password', '') }}">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small">收件人（多个用逗号分隔）</label>
+                                    <input type="text" class="form-control form-control-sm" name="notify_email_recipients" value="{{ configs.get('notify_email_recipients', '') }}" placeholder="a@example.com,b@example.com">
+                                </div>
+                            </div>
+                            <button type="submit" formaction="{{ url_for('admin.notify_test') }}" name="channel" value="email" class="btn btn-sm btn-outline-secondary mt-2"><i class="bi bi-send me-1"></i>测试发送</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-4">
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label"><i class="bi bi-tag me-1"></i>消息标题前缀</label>
+                    <input type="text" class="form-control" name="notify_title_prefix" value="{{ configs.get('notify_title_prefix', '') }}" placeholder="例如：[物资系统]">
+                    <small class="text-muted">所有通知消息标题前会自动添加此前缀</small>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer bg-white text-end">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>保存配置</button>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>最近通知记录</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>时间</th>
+                        <th>渠道</th>
+                        <th>标题</th>
+                        <th>状态</th>
+                        <th>错误信息</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in recent_logs %}
+                    <tr>
+                        <td><small>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '-' }}</small></td>
+                        <td>
+                            {% if log.channel == 'dingtalk' %}<span class="badge bg-info">钉钉</span>
+                            {% elif log.channel == 'wechat' %}<span class="badge bg-success">企业微信</span>
+                            {% elif log.channel == 'feishu' %}<span class="badge bg-warning text-dark">飞书</span>
+                            {% elif log.channel == 'email' %}<span class="badge bg-secondary">邮件</span>
+                            {% else %}<span class="badge bg-light text-dark">{{ log.channel }}</span>{% endif %}
+                        </td>
+                        <td>{{ log.title or '-' }}</td>
+                        <td>
+                            {% if log.status == 'success' %}<span class="badge bg-success">成功</span>
+                            {% elif log.status == 'failed' %}<span class="badge bg-danger">失败</span>
+                            {% else %}<span class="badge bg-secondary">{{ log.status or '-' }}</span>{% endif %}
+                        </td>
+                        <td><small class="text-danger">{{ log.error_msg or '-' }}</small></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted">暂无通知记录</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

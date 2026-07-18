@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}工号详情 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-hash me-2"></i>工号详情</h5>
+        <div>
+            <a href="{{ url_for('work_number.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('work_number.edit', id=work_number.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-3"><strong>工号编码：</strong>{{ work_number.code }}</div>
+            <div class="col-md-3"><strong>分部工程名称：</strong>{{ work_number.division_name or '-' }}</div>
+            <div class="col-md-3"><strong>分项工程名称：</strong>{{ work_number.item_name or '-' }}</div>
+            <div class="col-md-3"><strong>施工班组：</strong>{{ work_number.team_name or '-' }}</div>
+        </div>
+
+        <ul class="nav nav-tabs mb-3" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="quota-tab" data-bs-toggle="tab" data-bs-target="#quota" type="button">材料限额</button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="quota">
+                {% if enable_quota %}
+                {% if current_user.can_edit() %}
+                <div class="mb-3">
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addQuotaModal">
+                        <i class="bi bi-plus-lg me-1"></i>添加限额
+                    </button>
+                </div>
+                {% endif %}
+
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>物资编码</th>
+                                <th>物资名称</th>
+                                <th>规格型号</th>
+                                <th>单位</th>
+                                <th>限额类型</th>
+                                <th>限额数量</th>
+                                <th>已领数量</th>
+                                <th>使用进度</th>
+                                <th class="text-end">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for q in quota_list %}
+                            <tr>
+                                <td>{{ q.material_code or '-' }}</td>
+                                <td>{{ q.material_name }}</td>
+                                <td>{{ q.specification or '-' }}</td>
+                                <td>{{ q.unit or '-' }}</td>
+                                <td>
+                                    {% if q.quota_type == 'quantity' %}
+                                    <span class="badge bg-info">数量限额</span>
+                                    {% elif q.quota_type == 'amount' %}
+                                    <span class="badge bg-warning text-dark">金额限额</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">双限额</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ q.quota_quantity }}</td>
+                                <td>{{ q.used_quantity }}</td>
+                                <td style="min-width:180px;">
+                                    <div class="progress" style="height:20px;">
+                                        {% set pct = q.qty_ratio %}
+                                        {% set cls = 'bg-success' %}
+                                        {% if pct >= 100 %}{% set cls = 'bg-danger' %}
+                                        {% elif pct >= 80 %}{% set cls = 'bg-warning text-dark' %}
+                                        {% endif %}
+                                        <div class="progress-bar {{ cls }}" role="progressbar"
+                                             style="width: {{ pct if pct <= 100 else 100 }}%">
+                                            {{ pct }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-end">
+                                    {% if current_user.can_edit() %}
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal"
+                                            data-bs-target="#editQuotaModal{{ q.id }}">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <form method="POST" action="{{ url_for('work_number.delete_quota', qid=q.id) }}"
+                                          class="d-inline" onsubmit="return confirm('确定删除该限额？');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="9" class="text-center text-muted">暂无限额设置</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-info-circle me-1"></i>限额领料功能未启用，请在系统配置中开启。
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if current_user.can_edit() and enable_quota %}
+<div class="modal fade" id="addQuotaModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('work_number.add_quota', id=work_number.id) }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加材料限额</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">选择物资 <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" name="material_id" required>
+                            <option value="">请选择物资</option>
+                            {% for m in materials %}
+                            <option value="{{ m.id }}">{{ m.name }}（{{ m.code or '-' }}）{{ m.specification or '' }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">限额类型 <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" name="quota_type" required>
+                            <option value="quantity">数量限额</option>
+                            <option value="amount">金额限额</option>
+                            <option value="both">数量+金额双限额</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">限额数量</label>
+                        <input type="number" step="0.0001" class="form-control form-control-sm" name="quota_quantity" value="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">限额金额（元）</label>
+                        <input type="number" step="0.01" class="form-control form-control-sm" name="quota_amount" value="0">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-sm btn-primary">确定</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% for q in quota_list %}
+<div class="modal fade" id="editQuotaModal{{ q.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('work_number.edit_quota', qid=q.id) }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">编辑限额</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">物资</label>
+                        <input type="text" class="form-control form-control-sm" value="{{ q.material_name }}" disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">限额类型</label>
+                        <select class="form-select form-select-sm" name="quota_type">
+                            <option value="quantity" {% if q.quota_type == 'quantity' %}selected{% endif %}>数量限额</option>
+                            <option value="amount" {% if q.quota_type == 'amount' %}selected{% endif %}>金额限额</option>
+                            <option value="both" {% if q.quota_type == 'both' %}selected{% endif %}>数量+金额双限额</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">限额数量</label>
+                        <input type="number" step="0.0001" class="form-control form-control-sm" name="quota_quantity" value="{{ q.quota_quantity }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">限额金额（元）</label>
+                        <input type="number" step="0.01" class="form-control form-control-sm" name="quota_amount" value="{{ q.quota_amount }}">
+                    </div>
+                    <div class="row text-muted small">
+                        <div class="col-6">已领数量：{{ q.used_quantity }}</div>
+                        <div class="col-6">已领金额：{{ q.used_amount }}</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-sm btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endblock %}

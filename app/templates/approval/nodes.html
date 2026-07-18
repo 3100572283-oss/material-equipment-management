@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}节点配置 - {{ flow.flow_name }} - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('approval.flows') }}">审批流程</a></li>
+            <li class="breadcrumb-item active">节点配置</li>
+        </ol>
+    </nav>
+    <button type="button" class="btn btn-primary btn-sm" id="btnCreateNode"
+            data-bs-toggle="modal" data-bs-target="#nodeModal">
+        <i class="bi bi-plus-lg me-1"></i>新增节点
+    </button>
+</div>
+
+<div class="row">
+    <!-- 左侧：流程基本信息 -->
+    <div class="col-lg-4 mb-3">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>流程信息</h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-2"><span class="text-muted">流程名称：</span><strong>{{ flow.flow_name }}</strong></p>
+                <p class="mb-2"><span class="text-muted">流程编码：</span><code>{{ flow.flow_code }}</code></p>
+                <p class="mb-2"><span class="text-muted">业务类型：</span>
+                    <span class="badge bg-info text-dark">{{ biz_names.get(flow.biz_type, flow.biz_type) }}</span>
+                </p>
+                <p class="mb-2"><span class="text-muted">状态：</span>
+                    {% if flow.enabled %}
+                    <span class="badge bg-success">启用</span>
+                    {% else %}
+                    <span class="badge bg-secondary">禁用</span>
+                    {% endif %}
+                </p>
+                <p class="mb-2"><span class="text-muted">节点数：</span>{{ nodes|length }}</p>
+                {% if flow.description %}
+                <p class="mb-0"><span class="text-muted">说明：</span>{{ flow.description }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：节点列表（流程图式） -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>审批节点流程</h6>
+            </div>
+            <div class="card-body">
+                {% if nodes %}
+                <div class="approval-flow-chart">
+                    {% for node in nodes %}
+                    <div class="node-card-wrapper">
+                        <div class="card node-card {% if loop.last %}node-card-last{% endif %}"
+                             data-node-id="{{ node.id }}"
+                             data-node-name="{{ node.node_name }}"
+                             data-approve-type="{{ node.approve_type }}"
+                             data-pass-rule="{{ node.pass_rule or 'ANY' }}"
+                             data-approve-roles="{{ node.approve_role or '' }}"
+                             data-approve-user-id="{{ node.approve_user_id or '' }}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <span class="badge bg-primary rounded-circle me-2">{{ node.node_order }}</span>
+                                        <strong>{{ node.node_name }}</strong>
+                                        {% if node.pass_rule == 'ALL' %}
+                                        <span class="badge bg-info ms-1">会签</span>
+                                        {% elif node.pass_rule == 'ANY' %}
+                                        <span class="badge bg-info ms-1">或签</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-secondary btn-move"
+                                                data-id="{{ node.id }}" data-direction="up"
+                                                {% if loop.first %}disabled{% endif %} title="上移">
+                                            <i class="bi bi-arrow-up"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-move"
+                                                data-id="{{ node.id }}" data-direction="down"
+                                                {% if loop.last %}disabled{% endif %} title="下移">
+                                            <i class="bi bi-arrow-down"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary btn-edit-node"
+                                                data-bs-toggle="modal" data-bs-target="#nodeModal" title="编辑">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <form method="POST" action="{{ url_for('approval.delete_node', id=node.id) }}"
+                                              class="d-inline" onsubmit="return confirm('确定删除节点「{{ node.node_name }}」？');">
+                                            <button type="submit" class="btn btn-outline-danger" title="删除">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                                <div class="mt-2 text-muted small">
+                                    {% if node.approve_type == 'role' %}
+                                    <i class="bi bi-people me-1"></i>审批方式：按角色
+                                    {% set roles = (node.approve_role or '').split(',') %}
+                                    {% set role_names = {'admin': '管理员', 'editor': '录入员', 'viewer': '查看员'} %}
+                                    {% for r in roles %}
+                                        {% if r.strip() %}
+                                        <span class="badge bg-light text-dark border ms-1">{{ role_names.get(r.strip(), r.strip()) }}</span>
+                                        {% endif %}
+                                    {% endfor %}
+                                    {% else %}
+                                    <i class="bi bi-person me-1"></i>审批方式：指定人员
+                                    <span class="badge bg-light text-dark border ms-1">
+                                        {{ node.approver_user.name or node.approver_user.username if node.approver_user else '未设置' }}
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% if not loop.last %}
+                        <div class="text-center text-primary my-1">
+                            <i class="bi bi-arrow-down" style="font-size:1.2rem;"></i>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox d-block mb-2" style="font-size:2.5rem;"></i>
+                    <p>暂无审批节点</p>
+                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#nodeModal">
+                        <i class="bi bi-plus-lg me-1"></i>添加第一个节点
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include 'approval/node_form.html' %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 上移/下移节点
+document.querySelectorAll('.btn-move').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var id = this.dataset.id;
+        var direction = this.dataset.direction;
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{{ url_for("approval.move_node", id=0) }}'.replace('/0', '/' + id);
+        var inputDir = document.createElement('input');
+        inputDir.type = 'hidden';
+        inputDir.name = 'direction';
+        inputDir.value = direction;
+        form.appendChild(inputDir);
+        document.body.appendChild(form);
+        form.submit();
+    });
+});
+
+// 编辑节点：填充模态框
+var nodeModal = document.getElementById('nodeModal');
+nodeModal.addEventListener('show.bs.modal', function(event) {
+    var trigger = event.relatedTarget;
+    var isEdit = trigger && trigger.classList.contains('btn-edit-node');
+    var card = trigger ? trigger.closest('.node-card') : null;
+
+    var form = document.getElementById('nodeForm');
+    var nodeIdInput = document.getElementById('nodeIdInput');
+
+    if (isEdit && card) {
+        // 编辑模式
+        form.action = '{{ url_for("approval.edit_node", id=0) }}'.replace('/0', '/' + card.dataset.nodeId);
+        document.getElementById('nodeModalTitle').textContent = '编辑节点';
+        document.querySelector('input[name="node_name"]').value = card.dataset.nodeName;
+        var approveType = card.dataset.approveType;
+        document.querySelector('input[name="approve_type"][value="' + approveType + '"]').checked = true;
+        toggleApproveType(approveType);
+
+        // 通过规则回填
+        var passRule = card.dataset.passRule || 'ANY';
+        document.querySelector('input[name="pass_rule"][value="' + passRule + '"]').checked = true;
+
+        // 角色多选回填
+        var roles = card.dataset.approveRoles.split(',');
+        document.querySelectorAll('input[name="approve_role"]').forEach(function(cb) {
+            cb.checked = roles.indexOf(cb.value) >= 0;
+        });
+
+        // 指定人员回填
+        var userId = card.dataset.approveUserId;
+        var userSelect = document.querySelector('select[name="approve_user_id"]');
+        if (userId) {
+            userSelect.value = userId;
+        } else {
+            userSelect.value = '';
+        }
+    } else {
+        // 新增模式
+        form.action = '{{ url_for("approval.create_node", id=flow.id) }}';
+        document.getElementById('nodeModalTitle').textContent = '新增节点';
+        form.reset();
+        toggleApproveType('role');
+        document.querySelector('input[name="approve_type"][value="role"]').checked = true;
+    }
+});
+
+// 切换审批方式显示
+function toggleApproveType(type) {
+    var roleSection = document.getElementById('roleSection');
+    var userSection = document.getElementById('userSection');
+    if (type === 'role') {
+        roleSection.style.display = '';
+        userSection.style.display = 'none';
+    } else {
+        roleSection.style.display = 'none';
+        userSection.style.display = '';
+    }
+}
+
+document.querySelectorAll('input[name="approve_type"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        toggleApproveType(this.value);
+    });
+});
+</script>
+{% endblock %}

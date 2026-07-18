@@ -1,0 +1,60 @@
+{% extends "wizard/base_wizard.html" %}
+{% block title %}确认配置{% endblock %}
+{% block content %}
+{% if errors %}
+<div class="alert alert-danger">
+    {% for err in errors %}
+    <div>{{ err }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+<div class="mb-4">
+    <h5 class="mb-3"><i class="bi bi-check2-circle me-2 text-success"></i>确认配置信息</h5>
+    <p class="text-muted small">请确认以下配置信息，确认无误后点击完成。</p>
+</div>
+<div class="card bg-light mb-3">
+    <div class="card-body">
+        <div class="row mb-2">
+            <div class="col-4 text-muted">管理员账号</div>
+            <div class="col-8">{{ session.get('wizard_admin', {}).get('username', '-') }}</div>
+        </div>
+        <div class="row mb-2">
+            <div class="col-4 text-muted">管理员姓名</div>
+            <div class="col-8">{{ session.get('wizard_admin', {}).get('name', '-') }}</div>
+        </div>
+        <div class="row mb-2">
+            <div class="col-4 text-muted">部门</div>
+            <div class="col-8">
+                {% set dept = session.get('wizard_dept') %}
+                {% if dept %}
+                {{ dept.dept_name }} ({{ dept.dept_code }})
+                {% else %}
+                <span class="text-muted">（跳过）</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-4 text-muted">项目</div>
+            <div class="col-8">
+                {% set proj = session.get('wizard_project') %}
+                {% if proj %}
+                {{ proj.project_name }} ({{ proj.project_code }})
+                {% else %}
+                <span class="text-muted">（跳过）</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<form method="POST" action="{{ url_for('main.wizard_submit') }}" id="finishForm">
+    <input type="hidden" name="action" value="finish">
+</form>
+{% endblock %}
+{% block footer %}
+<div class="wizard-footer">
+    <a href="{{ url_for('main.wizard', step='4') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>上一步</a>
+    <button type="submit" form="finishForm" class="btn btn-success">
+        <i class="bi bi-check-lg me-1"></i>完成配置
+    </button>
+</div>
+{% endblock %}

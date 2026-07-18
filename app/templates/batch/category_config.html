@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}批次管理分类配置 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-gear me-2"></i>批次管理分类配置</h5>
+        <a href="{{ url_for('batch.index') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>返回批次库存
+        </a>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-1"></i>
+            勾选需要启用批次管理的物资分类（如水泥、外加剂等有保质期的物资）。启用后，该分类下物资的入库、出库将按批次维度进行管理。
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th class="w-15">分类编码</th>
+                        <th>分类名称</th>
+                        <th class="text-center w-15">物资数量</th>
+                        <th class="text-center w-15">排序号</th>
+                        <th class="text-center w-20">批次管理</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in categories %}
+                    <tr>
+                        <td><code class="font-monospace text-primary fw-bold">{{ c.category_code or '-' }}</code></td>
+                        <td><span class="fw-bold">{{ c.name }}</span></td>
+                        <td class="text-center">
+                            <span class="badge bg-info text-white">{{ c.material_count }} 个</span>
+                        </td>
+                        <td class="text-center">{{ c.sort_order }}</td>
+                        <td class="text-center">
+                            <div class="form-check form-switch d-inline-block">
+                                <input class="form-check-input" type="checkbox"
+                                       id="batchSwitch{{ c.id }}"
+                                       {% if c.batch_management %}checked{% endif %}
+                                       onchange="toggleBatch({{ c.id }})">
+                                <label class="form-check-label" for="batchSwitch{{ c.id }}">
+                                    {% if c.batch_management %}
+                                        <span class="badge bg-success text-white">已启用</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark">未启用</span>
+                                    {% endif %}
+                                </label>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted py-4">暂无分类数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleBatch(categoryId) {
+    fetch('{{ url_for("batch.toggle_category_batch", category_id=0) }}'.replace('/0', '/' + categoryId), {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': ''
+        }
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (data.success) {
+            var label = document.querySelector('label[for="batchSwitch' + categoryId + '"]');
+            if (data.enabled) {
+                label.innerHTML = '<span class="badge bg-success text-white">已启用</span>';
+                showToast('已启用批次管理', 'success');
+            } else {
+                label.innerHTML = '<span class="badge bg-light text-dark">未启用</span>';
+                showToast('已关闭批次管理', 'secondary');
+            }
+        } else {
+            alert('操作失败：' + (data.message || '未知错误'));
+            location.reload();
+        }
+    }).catch(function(err) {
+        console.error(err);
+        alert('请求失败，请稍后重试');
+        location.reload();
+    });
+}
+
+function showToast(message, type) {
+    var toast = document.createElement('div');
+    toast.className = 'toast align-items-center text-bg-' + (type || 'success') + ' border-0 position-fixed';
+    toast.style.cssText = 'top: 70px; right: 20px; z-index: 9999; min-width: 200px;';
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = '<div class="d-flex"><div class="toast-body">' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+    document.body.appendChild(toast);
+    var bsToast = new bootstrap.Toast(toast, { delay: 2000 });
+    bsToast.show();
+    toast.addEventListener('hidden.bs.toast', function() { toast.remove(); });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}物资出库单 - {{ stock_out.code }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}" media="print,screen">
+<style>
+    /* 出库单签字区为 5 列(20%),覆盖默认 4 列 */
+    .sign-area td { width: 20%; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="print-sheet">
+    <div class="no-print mb-3 text-end">
+        <button class="btn btn-primary" onclick="window.print();"><i class="bi bi-printer me-1"></i>打印</button>
+        <button class="btn btn-secondary" onclick="window.close();">关闭</button>
+    </div>
+
+    <div class="print-title">物资出库单</div>
+
+    <div class="print-header">
+        <div class="left">出库单号：<strong>{{ stock_out.code }}</strong></div>
+        <div class="right">打印日期：{{ now_date or '' }}</div>
+    </div>
+
+    <div class="print-info">
+        <table>
+            <tr>
+                <td style="width:15%">领料单位</td>
+                <td style="width:35%">{{ stock_out.usage_unit.name if stock_out.usage_unit else '-' }}</td>
+                <td style="width:15%">出库日期</td>
+                <td style="width:35%">{{ stock_out.stock_out_date or '-' }}</td>
+            </tr>
+            <tr>
+                <td>出库类型</td>
+                <td>{{ stock_out.stock_out_type or '-' }}</td>
+                <td>经办人</td>
+                <td>{{ stock_out.operator or '-' }}</td>
+            </tr>
+            <tr>
+                <td>发料部位</td>
+                <td>{{ stock_out.issue_location or (stock_out.work_number.division_name if stock_out.work_number else '') or '-' }}</td>
+                <td>工号</td>
+                <td>{{ stock_out.work_number.code if stock_out.work_number else '-' }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="print-table">
+        <thead>
+            <tr>
+                <th style="width:5%">序号</th>
+                <th style="width:12%">物资编码</th>
+                <th style="width:16%">物资名称</th>
+                <th style="width:14%">规格型号</th>
+                <th style="width:6%">单位</th>
+                <th style="width:12%">请领数量</th>
+                <th style="width:12%">实发数量</th>
+                <th style="width:13%">备注</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for it in stock_out.items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ it.material.code if it.material and it.material.code else '-' }}</td>
+                <td>{{ it.material.name if it.material else '-' }}</td>
+                <td>{{ it.material.specification if it.material and it.material.specification else '-' }}</td>
+                <td>{{ it.material.unit if it.material else '-' }}</td>
+                <td>{{ it.quantity }}</td>
+                <td>{{ it.quantity }}</td>
+                <td>{{ it.remark or '' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" style="text-align:center;">暂无明细</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="5" style="text-align:right;"><strong>合计</strong></td>
+                <td><strong>{{ stock_out.total_quantity or 0 }}</strong></td>
+                <td><strong>{{ stock_out.total_quantity or 0 }}</strong></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    {% if stock_out.remark %}
+    <div style="margin-top:10px; font-size:12pt;">备注：{{ stock_out.remark }}</div>
+    {% endif %}
+
+    <div class="sign-area">
+        <table>
+            <tr>
+                <td>物资部长：<div class="sign-line"></div></td>
+                <td>领料人：<div class="sign-line"></div></td>
+                <td>发料人：<div class="sign-line"></div></td>
+                <td>制表：<div class="sign-line"></div></td>
+                <td>日期：<div class="sign-line"></div></td>
+            </tr>
+        </table>
+    </div>
+</div>
+{% endblock %}

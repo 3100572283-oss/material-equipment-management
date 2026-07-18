@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}用料单位 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-shop me-2"></i>用料单位</h5>
+        {% if current_user.can_edit() %}
+        <a href="{{ url_for('unit.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增单位</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('unit.index') }}">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索单位名称/编码" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('unit.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>单位名称</th>
+                        <th>单位编码</th>
+                        <th>负责人</th>
+                        <th>联系电话</th>
+                        <th>授权文件</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in pagination.items %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('unit.detail', id=u.id) }}">{{ u.name }}</a>
+                        </td>
+                        <td>{{ u.code or '-' }}</td>
+                        <td>{{ u.manager or '-' }}</td>
+                        <td>{{ u.contact_phone or '-' }}</td>
+                        <td>
+                            {% if u.auth_file %}
+                            <a href="{{ url_for('static', filename=u.auth_file) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-file-earmark"></i> 查看</a>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('unit.detail', id=u.id) }}" class="btn btn-sm btn-outline-info" title="详情"><i class="bi bi-eye"></i></a>
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('unit.edit', id=u.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('unit.delete', id=u.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <nav>
+            <ul class="pagination pagination-sm justify-content-center">
+                {% if pagination.has_prev %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('unit.index', page=pagination.prev_num, keyword=keyword) }}">上一页</a></li>
+                {% endif %}
+                {% for p in pagination.iter_pages() %}
+                    {% if p %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('unit.index', page=p, keyword=keyword) }}">{{ p }}</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+                {% if pagination.has_next %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('unit.index', page=pagination.next_num, keyword=keyword) }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

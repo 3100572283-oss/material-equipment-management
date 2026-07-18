@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block title %}基础信息管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-collection me-2"></i>基础信息管理</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <!-- 左侧：字典类型列表 -->
+            <div class="col-md-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">字典类型</h6>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#typeCreateModal">
+                        <i class="bi bi-plus-lg me-1"></i>新增类型
+                    </button>
+                </div>
+                <div class="list-group" style="max-height:600px; overflow-y:auto;">
+                    {% for dt in dict_types %}
+                    <a href="{{ url_for('dict_mgr.index', type_id=dt.id) }}"
+                       class="list-group-item list-group-item-action {% if selected_type and selected_type.id == dt.id %}active{% endif %}">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="me-auto">
+                                <div class="fw-bold">{{ dt.dict_name }}</div>
+                                <div class="small {% if selected_type and selected_type.id == dt.id %}text-white-50{% else %}text-muted{% endif %}">{{ dt.dict_type }}</div>
+                            </div>
+                            <span class="badge {% if dt.is_active %}bg-success{% else %}bg-secondary{% endif %} {% if selected_type and selected_type.id == dt.id %}text-bg-light{% endif %}">
+                                {{ '启用' if dt.is_active else '禁用' }}
+                            </span>
+                        </div>
+                    </a>
+                    {% else %}
+                    <div class="list-group-item text-center text-muted">暂无字典类型</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 右侧：字典项列表 -->
+            <div class="col-md-8">
+                {% if selected_type %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">
+                        {{ selected_type.dict_name }} <span class="text-muted small">({{ selected_type.dict_type }})</span>
+                    </h6>
+                    <div>
+                        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#typeEditModal"
+                                data-id="{{ selected_type.id }}"
+                                data-dict_type="{{ selected_type.dict_type }}"
+                                data-dict_name="{{ selected_type.dict_name }}"
+                                data-remark="{{ selected_type.remark or '' }}"
+                                data-is_active="{{ 'true' if selected_type.is_active else 'false' }}">
+                            <i class="bi bi-pencil me-1"></i>编辑类型
+                        </button>
+                        <form method="POST" action="{{ url_for('dict_mgr.type_delete', id=selected_type.id) }}" class="d-inline" onsubmit="return confirm('确定删除该字典类型？');">
+                            <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i>删除类型</button>
+                        </form>
+                        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#itemCreateModal">
+                            <i class="bi bi-plus-lg me-1"></i>新增字典项
+                        </button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>标签</th>
+                                <th>值</th>
+                                <th>排序号</th>
+                                <th>状态</th>
+                                <th class="text-end">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for it in items %}
+                            <tr>
+                                <td>{{ it.item_label }}</td>
+                                <td>{{ it.item_value }}</td>
+                                <td>{{ it.sort_order }}</td>
+                                <td>
+                                    {% if it.is_active %}<span class="badge bg-success">启用</span>
+                                    {% else %}<span class="badge bg-secondary">禁用</span>{% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#itemEditModal"
+                                            data-id="{{ it.id }}"
+                                            data-item_label="{{ it.item_label }}"
+                                            data-item_value="{{ it.item_value }}"
+                                            data-sort_order="{{ it.sort_order }}"
+                                            data-is_active="{{ 'true' if it.is_active else 'false' }}">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <form method="POST" action="{{ url_for('dict_mgr.item_toggle', id=it.id) }}" class="d-inline">
+                                        <button type="submit" class="btn btn-sm {% if it.is_active %}btn-outline-warning{% else %}btn-outline-success{% endif %}"
+                                                title="{{ '禁用' if it.is_active else '启用' }}">
+                                            <i class="bi {% if it.is_active %}bi-pause-circle{% else %}bi-play-circle{% endif %}"></i>
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('dict_mgr.item_delete', id=it.id) }}" class="d-inline" onsubmit="return confirm('确定删除该字典项？');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center text-muted">暂无字典项</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-arrow-left-circle me-2"></i>请选择左侧的字典类型，或新增一个字典类型。
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增字典类型 Modal -->
+<div class="modal fade" id="typeCreateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('dict_mgr.type_create') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-lg me-1"></i>新增字典类型</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">类型编码 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="dict_type" required placeholder="如 contract_type">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">类型名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="dict_name" required placeholder="如 合同类型">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <textarea class="form-control" name="remark" rows="2"></textarea>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" name="is_active" id="typeCreateActive" checked>
+                        <label class="form-check-label" for="typeCreateActive">启用</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑字典类型 Modal -->
+<div class="modal fade" id="typeEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="typeEditForm" method="POST" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil me-1"></i>编辑字典类型</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">类型编码 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="dict_type" id="edit_dict_type" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">类型名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="dict_name" id="edit_dict_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <textarea class="form-control" name="remark" id="edit_remark" rows="2"></textarea>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" name="is_active" id="edit_type_active">
+                        <label class="form-check-label" for="edit_type_active">启用</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 新增字典项 Modal -->
+{% if selected_type %}
+<div class="modal fade" id="itemCreateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('dict_mgr.item_create') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-lg me-1"></i>新增字典项</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="dict_type_id" value="{{ selected_type.id }}">
+                    <div class="mb-3">
+                        <label class="form-label">标签 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="item_label" required placeholder="显示文字">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">值 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="item_value" required placeholder="存储值">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">排序号</label>
+                        <input type="number" class="form-control" name="sort_order" value="0" min="0">
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" name="is_active" id="itemCreateActive" checked>
+                        <label class="form-check-label" for="itemCreateActive">启用</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑字典项 Modal -->
+<div class="modal fade" id="itemEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="itemEditForm" method="POST" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil me-1"></i>编辑字典项</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">标签 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="item_label" id="edit_item_label" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">值 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="item_value" id="edit_item_value" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">排序号</label>
+                        <input type="number" class="form-control" name="sort_order" id="edit_sort_order" min="0">
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" name="is_active" id="edit_item_active">
+                        <label class="form-check-label" for="edit_item_active">启用</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block extra_js %}
+<script>
+document.getElementById('typeEditModal').addEventListener('show.bs.modal', function (event) {
+    const button = event.relatedTarget;
+    const typeId = button.getAttribute('data-id');
+    const actionUrl = "{{ url_for('dict_mgr.type_edit', id=0) }}".replace('/0', '/' + typeId);
+    document.getElementById('typeEditForm').action = actionUrl;
+    document.getElementById('edit_dict_type').value = button.getAttribute('data-dict_type') || '';
+    document.getElementById('edit_dict_name').value = button.getAttribute('data-dict_name') || '';
+    document.getElementById('edit_remark').value = button.getAttribute('data-remark') || '';
+    document.getElementById('edit_type_active').checked = button.getAttribute('data-is_active') === 'true';
+});
+
+{% if selected_type %}
+document.getElementById('itemEditModal').addEventListener('show.bs.modal', function (event) {
+    const button = event.relatedTarget;
+    const itemId = button.getAttribute('data-id');
+    const actionUrl = "{{ url_for('dict_mgr.item_edit', id=0) }}".replace('/0', '/' + itemId);
+    document.getElementById('itemEditForm').action = actionUrl;
+    document.getElementById('edit_item_label').value = button.getAttribute('data-item_label') || '';
+    document.getElementById('edit_item_value').value = button.getAttribute('data-item_value') || '';
+    document.getElementById('edit_sort_order').value = button.getAttribute('data-sort_order') || 0;
+    document.getElementById('edit_item_active').checked = button.getAttribute('data-is_active') === 'true';
+});
+{% endif %}
+</script>
+{% endblock %}

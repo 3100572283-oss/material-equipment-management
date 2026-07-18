@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}AI调用日志 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>AI调用日志</h5>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-4">
+            <div class="col-md-3">
+                <select class="form-select" name="module">
+                    <option value="">全部模块</option>
+                    <option value="chat" {% if request.args.get('module') == 'chat' %}selected{% endif %}>智能问答</option>
+                    <option value="analysis" {% if request.args.get('module') == 'analysis' %}selected{% endif %}>报表分析</option>
+                    <option value="input" {% if request.args.get('module') == 'input' %}selected{% endif %}>智能录入</option>
+                    <option value="summary" {% if request.args.get('module') == 'summary' %}selected{% endif %}>单据摘要</option>
+                    <option value="approval" {% if request.args.get('module') == 'approval' %}selected{% endif %}>审批意见</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" name="success">
+                    <option value="">全部状态</option>
+                    <option value="true" {% if request.args.get('success') == 'true' %}selected{% endif %}>成功</option>
+                    <option value="false" {% if request.args.get('success') == 'false' %}selected{% endif %}>失败</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">筛选</button>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>时间</th>
+                        <th>用户</th>
+                        <th>模块</th>
+                        <th>输入Token</th>
+                        <th>输出Token</th>
+                        <th>耗时(ms)</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in pagination.items %}
+                    <tr>
+                        <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '-' }}</td>
+                        <td>{{ log.username or '-' }}</td>
+                        <td>
+                            {% set module_names = {'chat':'智能问答', 'analysis':'报表分析', 'input':'智能录入', 'summary':'单据摘要', 'approval':'审批意见'} %}
+                            <span class="badge bg-info text-dark">{{ module_names.get(log.module, log.module or '-') }}</span>
+                        </td>
+                        <td>{{ log.input_tokens }}</td>
+                        <td>{{ log.output_tokens }}</td>
+                        <td>{{ log.cost_time }}</td>
+                        <td>
+                            {% if log.success %}
+                            <span class="badge bg-success">成功</span>
+                            {% else %}
+                            <span class="badge bg-danger">失败</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#detailModal{{ log.id }}">详情</button>
+                        </td>
+                    </tr>
+                    <div class="modal fade" id="detailModal{{ log.id }}" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">调用详情</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row mb-3">
+                                        <div class="col-md-4">
+                                            <div class="text-muted small">用户</div>
+                                            <div>{{ log.username or '-' }}</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="text-muted small">模块</div>
+                                            <div>{{ module_names.get(log.module, log.module or '-') }}</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="text-muted small">状态</div>
+                                            <div>{% if log.success %}<span class="badge bg-success">成功</span>{% else %}<span class="badge bg-danger">失败</span>{% endif %}</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="text-muted small">输入内容</div>
+                                        <div class="border rounded p-3 bg-light" style="max-height:150px;overflow-y:auto;">{{ log.prompt or '-' }}</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="text-muted small">输出内容</div>
+                                        <div class="border rounded p-3 bg-light" style="max-height:150px;overflow-y:auto;">{{ log.response or '-' }}</div>
+                                    </div>
+                                    {% if log.error_msg %}
+                                    <div class="alert alert-danger">
+                                        <div class="text-muted small">错误信息</div>
+                                        <div>{{ log.error_msg }}</div>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">暂无调用日志</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <div class="d-flex justify-content-center mt-4">
+            <nav>
+                <ul class="pagination">
+                    {% if pagination.has_prev %}
+                    <li class="page-item"><a class="page-link" href="{{ url_for('ai.logs', page=pagination.prev_num, module=request.args.get('module'), success=request.args.get('success')) }}">上一页</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><a class="page-link" href="#">上一页</a></li>
+                    {% endif %}
+                    {% for page in pagination.iter_pages() %}
+                    {% if page %}
+                    <li class="page-item {% if page == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('ai.logs', page=page, module=request.args.get('module'), success=request.args.get('success')) }}">{{ page }}</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><a class="page-link" href="#">...</a></li>
+                    {% endif %}
+                    {% endfor %}
+                    {% if pagination.has_next %}
+                    <li class="page-item"><a class="page-link" href="{{ url_for('ai.logs', page=pagination.next_num, module=request.args.get('module'), success=request.args.get('success')) }}">下一页</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><a class="page-link" href="#">下一页</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

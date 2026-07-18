@@ -1,0 +1,150 @@
+{
+  "groups": [
+    {
+      "id": "workbench",
+      "title": "工作台",
+      "icon": "bi-speedometer2",
+      "items": [
+        {"title": "首页", "endpoint": "main.index", "active": "main.index"},
+        {"title": "我的审批", "endpoint": "approval.my_approvals", "active": "approval.my_approvals", "badge": "approval_pending_count"}
+      ]
+    },
+    {
+      "id": "basic_data",
+      "title": "基础数据",
+      "icon": "bi-database",
+      "items": [
+        {"title": "项目管理", "endpoint": "project.index", "active": "project."},
+        {"title": "供应商管理", "endpoint": "supplier.index", "active": "supplier."},
+        {"title": "物资分类", "endpoint": "category.index", "active": "category."},
+        {"title": "常用材料表", "endpoint": "material.index", "active": "material."},
+        {"title": "用料单位", "endpoint": "unit.index", "active": "unit."},
+        {"title": "工号管理", "endpoint": "work_number.index", "active": "work_number."}
+      ]
+    },
+    {
+      "id": "purchase_contract",
+      "title": "采购合同",
+      "icon": "bi-file-earmark-text",
+      "items": [
+        {"title": "采购申请", "endpoint": "purchase_requisition.index", "active": "purchase_requisition."},
+        {"title": "合同台账", "endpoint": "contract.index", "active": "contract.index"},
+        {"title": "对账管理", "endpoint": "reconciliation.index", "active": "reconciliation."},
+        {"title": "发票台账", "endpoint": "contract.invoices", "active": "contract.invoices"},
+        {"title": "付款申请", "endpoint": "payment_application.index", "active": "payment_application."},
+        {"title": "付款台账", "endpoint": "contract.payments", "active": "contract.payments"},
+        {"title": "价格方案", "endpoint": "price_formula.index", "active": "price_formula."}
+      ]
+    },
+    {
+      "id": "inventory",
+      "title": "库存管理",
+      "icon": "bi-box-seam",
+      "items": [
+        {"title": "入库管理", "endpoint": "stock_in.index", "active": "stock_in."},
+        {"title": "出库管理", "endpoint": "stock_out.index", "active": "stock_out."},
+        {"title": "库存查询", "endpoint": "inventory.index", "active": "inventory."},
+        {"title": "库存盘点", "endpoint": "stock_check.index", "active": "stock_check."},
+        {"title": "项目调拨", "endpoint": "material_transfer.index", "active": "material_transfer."},
+        {"title": "批次管理", "endpoint": "batch.index", "active": "batch."},
+        {"title": "到期提醒", "endpoint": "batch.expiry_alerts", "active": "batch.expiry_alerts"},
+        {"title": "物资报废", "endpoint": "scrap.index", "active": "scrap."},
+        {"title": "期末结账", "endpoint": "period_close.index", "active": "period_close."}
+      ]
+    },
+    {
+      "id": "turnover_material",
+      "title": "周转材管理",
+      "icon": "bi-arrow-repeat",
+      "module": "module_turnover_enabled",
+      "items": [
+        {"title": "周转材台账", "endpoint": "turnover_material.index", "active": "turnover_material.index"},
+        {"title": "领用归还", "endpoint": "turnover_material.record_index", "active": "turnover_material.record"},
+        {"title": "租赁费结算", "endpoint": "turnover_material.rental_bill", "active": "turnover_material.rental_bill"}
+      ]
+    },
+    {
+      "id": "equipment",
+      "title": "设备管理",
+      "icon": "bi-gear",
+      "module": "module_equipment_enabled",
+      "items": [
+        {"title": "设备台账", "endpoint": "equipment.index", "active": "equipment.index"},
+        {"title": "租赁结算", "endpoint": "equipment.rent_settle", "active": "equipment.rent_settle"},
+        {"title": "设备折旧", "endpoint": "equipment.depreciation", "active": "equipment.depreciation"}
+      ]
+    },
+    {
+      "id": "industry_tools",
+      "title": "行业工具",
+      "icon": "bi-tools",
+      "items": [
+        {"title": "商砼小票", "endpoint": "concrete.index", "active": "concrete."},
+        {"title": "商砼对账", "endpoint": "concrete.reconcile", "active": "concrete.reconcile"},
+        {"title": "钢材换算", "endpoint": "steel.index", "active": "steel."},
+        {"title": "规格表管理", "endpoint": "steel.specs", "active": "steel.specs"},
+        {"title": "条码标签", "endpoint": "barcode.index", "active": "barcode."},
+        {"title": "批量打印", "endpoint": "barcode.batch_print", "active": "barcode.batch_print"}
+      ]
+    },
+    {
+      "id": "report",
+      "title": "统计报表",
+      "icon": "bi-bar-chart-line",
+      "items": [
+        {"title": "入库统计", "endpoint": "report.stock_in_report", "active": "report.stock_in"},
+        {"title": "出库统计", "endpoint": "report.stock_out_report", "active": "report.stock_out"},
+        {"title": "物资动态表", "endpoint": "report.material_movement", "active": "report.material_movement"},
+        {"title": "收发存汇总表", "endpoint": "report.receive_issue", "active": "report.receive_issue"},
+        {"title": "物资明细账", "endpoint": "report.ledger", "active": "report.ledger"},
+        {"title": "工号成本统计", "endpoint": "report.work_number_cost", "active": "report.work_number_cost"},
+        {"title": "供应商往来", "endpoint": "report.supplier_ledger", "active": "report.supplier_ledger"},
+        {"title": "分包扣款台账", "endpoint": "subcontract.index", "active": "subcontract."},
+        {"title": "浇筑部位统计", "endpoint": "concrete.stats", "active": "concrete.stats"},
+        {"title": "高级分析", "endpoint": "report.advanced", "active": "report.advanced"}
+      ]
+    },
+    {
+      "id": "system",
+      "title": "系统管理",
+      "icon": "bi-gear-wide-connected",
+      "require_admin": true,
+      "divider_before": true,
+      "items": [
+        {"title": "用户管理", "endpoint": "admin.users", "active": "admin.users", "section": "用户与权限"},
+        {"title": "部门管理", "endpoint": "system.depts", "active": "system.depts"},
+        {"title": "角色管理", "endpoint": "system.roles", "active": "system.roles"},
+        {"title": "菜单管理", "endpoint": "system.menus", "active": "system.menus"},
+        {"title": "基础信息管理", "endpoint": "dict_mgr.index", "active": "dict_mgr.", "section": "业务配置"},
+        {"title": "审批流程管理", "endpoint": "approval.flows", "active": "approval.flows"},
+        {"title": "批次分类配置", "endpoint": "batch.category_config", "active": "batch.category_config"},
+        {"title": "系统配置", "endpoint": "admin.config_list", "active": "admin.config"},
+        {"title": "公告管理", "endpoint": "admin.announcements", "active": "admin.announcements", "section": "系统工具"},
+        {"title": "通知配置", "endpoint": "admin.notify_config", "active": "admin.notify_config"},
+        {"title": "AI配置", "endpoint": "ai.config", "active": "ai.config"},
+        {"title": "附件管理", "endpoint": "admin.attachments", "active": "admin.attachments"},
+        {"title": "组织架构同步", "endpoint": "org_sync.index", "active": "org_sync."},
+        {"title": "数据备份", "endpoint": "admin.backup_index", "active": "admin.backup", "section": "数据管理"},
+        {"title": "数据回收站", "endpoint": "admin.recycle_bin", "active": "admin.recycle_bin"},
+        {"title": "项目归档", "endpoint": "admin.archive_index", "active": "admin.archive"},
+        {"title": "数据库迁移", "endpoint": "admin.db_migrations", "active": "admin.db_migrations"},
+        {"title": "操作日志", "endpoint": "admin.audit_logs", "active": "admin.audit_logs", "section": "日志审计"},
+        {"title": "登录日志", "endpoint": "admin.login_logs", "active": "admin.login_logs"},
+        {"title": "在线用户", "endpoint": "admin.online_users", "active": "admin.online_users"},
+        {"title": "错误日志", "endpoint": "admin.error_logs", "active": "admin.error_logs"},
+        {"title": "单据编号检查", "endpoint": "admin.code_check", "active": "admin.code_check"},
+        {"title": "AI调用日志", "endpoint": "ai.logs", "active": "ai.logs"},
+        {"title": "同步日志", "endpoint": "org_sync.sync_log", "active": "org_sync.sync_log"}
+      ]
+    },
+    {
+      "id": "help",
+      "title": "帮助中心",
+      "icon": "bi-question-circle",
+      "items": [
+        {"title": "使用说明", "endpoint": "help.index", "active": "help."},
+        {"title": "移动端录入", "endpoint": "mobile.index", "active": "mobile."}
+      ]
+    }
+  ]
+}

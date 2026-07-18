@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}设备租赁结算 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>设备租赁结算</h5>
+        {% if current_user.can_edit() %}
+        <a href="{{ url_for('equipment.rent_settle_create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增结算单</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET">
+            <div class="col-md-2">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="结算单号/设备名称" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="supplier_id">
+                    <option value="0">全部供应商</option>
+                    {% for s in suppliers %}
+                    <option value="{{ s.id }}" {% if s.id == supplier_id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <input type="text" class="form-control form-control-sm" name="settle_period" placeholder="结算期间，如2025年7月" value="{{ settle_period or '' }}">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    <option value="draft" {% if status == 'draft' %}selected{% endif %}>草稿</option>
+                    <option value="confirmed" {% if status == 'confirmed' %}selected{% endif %}>已确认</option>
+                    <option value="invoiced" {% if status == 'invoiced' %}selected{% endif %}>已开票</option>
+                    <option value="paid" {% if status == 'paid' %}selected{% endif %}>已付款</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('equipment.rent_settle') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>结算单号</th><th>设备名称</th><th>供应商</th><th>结算期间</th>
+                        <th>租赁方式</th><th class="text-end">数量</th><th class="text-end">租赁费</th>
+                        <th class="text-end">其他费用</th><th class="text-end">总金额</th>
+                        <th>状态</th><th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set total_amount = namespace(val=0) %}
+                    {% for s in pagination.items %}
+                    {% set total_amount.val = total_amount.val + (s.total_amount or 0) %}
+                    <tr>
+                        <td class="fw-bold">{{ s.settle_no }}</td>
+                        <td>{{ s.equipment.name if s.equipment else '-' }}</td>
+                        <td>{{ s.supplier.name if s.supplier else '-' }}</td>
+                        <td>{{ s.settle_period or '-' }}</td>
+                        <td>
+                            {% for label, value in rent_type_items %}
+                                {% if value == s.rent_type %}{{ label }}{% endif %}
+                            {% endfor %}
+                            {% if not s.rent_type %}-{% endif %}
+                        </td>
+                        <td class="text-end">{{ s.quantity or 0 }}</td>
+                        <td class="text-end">{{ '%.2f'|format(s.rent_amount or 0) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(s.other_fee or 0) }}</td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(s.total_amount or 0) }}</td>
+                        <td>
+                            {% if s.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif s.status == 'confirmed' %}<span class="badge bg-success">已确认</span>
+                            {% elif s.status == 'invoiced' %}<span class="badge bg-info text-dark">已开票</span>
+                            {% elif s.status == 'paid' %}<span class="badge bg-primary">已付款</span>{% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('equipment.rent_settle_edit', id=s.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
+                            {% if s.status == 'draft' %}
+                            <form method="POST" action="{{ url_for('equipment.rent_settle_confirm', id=s.id) }}" class="d-inline" onsubmit="return confirm('确定确认该结算单？');">
+                                <button type="submit" class="btn btn-sm btn-outline-success" title="确认"><i class="bi bi-check-lg"></i></button>
+                            </form>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('equipment.rent_settle_delete', id=s.id) }}" class="d-inline" onsubmit="return confirm('确定删除该结算单？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="11" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if pagination.items %}
+                <tfoot class="table-group-divider">
+                    <tr class="fw-bold">
+                        <td colspan="8" class="text-end">合计</td>
+                        <td class="text-end">{{ '%.2f'|format(total_amount.val) }}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+
+        {% include '_pagination.html' %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+{% block title %}分支配置 - {{ flow.flow_name }} - 物资设备管理系统{% endblock %}
+{% block content %}
+{% set field_labels = {
+    'total_amount': '总金额',
+    'amount': '金额',
+    'contract_type': '合同类型',
+    'business_type': '业务类型',
+    'supplier': '供应商',
+    'supplier_category': '供应商分类',
+    'stock_in_type': '入库类型',
+    'stock_out_type': '出库类型',
+    'usage_unit_id': '领料单位',
+    'apply_dept': '申请部门',
+    'payment_method': '付款方式'
+} %}
+{% set operator_labels = {
+    '>': '大于',
+    '<': '小于',
+    '>=': '大于等于',
+    '<=': '小于等于',
+    '==': '等于',
+    '!=': '不等于',
+    'contains': '包含',
+    'not_contains': '不包含',
+    'between': '在范围内'
+} %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('approval.flows') }}">审批流程</a></li>
+            <li class="breadcrumb-item active">分支配置</li>
+        </ol>
+    </nav>
+    <div class="btn-group">
+        <button type="button" class="btn btn-primary btn-sm" id="btnCreateBranch"
+                data-bs-toggle="modal" data-bs-target="#branchModal">
+            <i class="bi bi-plus-lg me-1"></i>新增分支
+        </button>
+        <form method="POST" action="{{ url_for('approval.toggle_branch_mode', id=flow.id) }}" class="d-inline">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+                {% if flow.has_branch %}
+                <i class="bi bi-toggle-on me-1"></i>关闭分支
+                {% else %}
+                <i class="bi bi-toggle-off me-1"></i>启用分支
+                {% endif %}
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-4 mb-3">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>流程信息</h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-2"><span class="text-muted">流程名称：</span><strong>{{ flow.flow_name }}</strong></p>
+                <p class="mb-2"><span class="text-muted">业务类型：</span>
+                    <span class="badge bg-info text-dark">{{ biz_names.get(flow.biz_type, flow.biz_type) }}</span>
+                </p>
+                <p class="mb-2"><span class="text-muted">分支模式：</span>
+                    {% if flow.has_branch %}
+                    <span class="badge bg-success">已启用</span>
+                    {% else %}
+                    <span class="badge bg-secondary">未启用</span>
+                    {% endif %}
+                </p>
+                <p class="mb-2"><span class="text-muted">分支数：</span>{{ branch_list|length }}</p>
+                {% if flow.has_branch %}
+                <div class="alert alert-info small">
+                    <i class="bi bi-lightbulb me-1"></i>启用分支后，提交审批时系统会根据条件自动选择分支
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>审批分支流程</h6>
+            </div>
+            <div class="card-body">
+                {% if branch_list %}
+                <div class="approval-flow-chart">
+                    <div class="node-card-wrapper">
+                        <div class="card node-card" style="border-left-color: #6c757d;">
+                            <div class="card-body text-center">
+                                <i class="bi bi-circle-fill text-secondary me-1"></i>
+                                <strong>开始</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-center text-secondary my-1">
+                        <i class="bi bi-arrow-down" style="font-size:1.2rem;"></i>
+                    </div>
+                    <div class="node-card-wrapper">
+                        <div class="card" style="border-left-color: #ffc107;">
+                            <div class="card-body text-center">
+                                <i class="bi bi-graph-down text-warning me-1"></i>
+                                <strong>条件判断</strong>
+                            </div>
+                        </div>
+                    </div>
+                    {% for branch in branch_list %}
+                    <div class="my-3">
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-warning text-dark me-2">{{ branch.priority }}</span>
+                            <strong>{{ branch.branch_name }}</strong>
+                            {% if branch.is_default %}
+                            <span class="badge bg-secondary ms-1">默认</span>
+                            {% endif %}
+                            <div class="btn-group btn-group-sm ms-auto">
+                                {% if not branch.is_default and branch.priority > 1 %}
+                                <form method="POST" action="{{ url_for('approval.move_branch', id=branch.id) }}" class="d-inline">
+                                    <input type="hidden" name="direction" value="up">
+                                    <button type="submit" class="btn btn-outline-secondary" title="上移">
+                                        <i class="bi bi-arrow-up"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% if not branch.is_default and branch.priority < branch_list|length %}
+                                <form method="POST" action="{{ url_for('approval.move_branch', id=branch.id) }}" class="d-inline">
+                                    <input type="hidden" name="direction" value="down">
+                                    <button type="submit" class="btn btn-outline-secondary" title="下移">
+                                        <i class="bi bi-arrow-down"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                                <button type="button" class="btn btn-outline-primary btn-edit-branch"
+                                        data-bs-toggle="modal" data-bs-target="#branchModal"
+                                        data-id="{{ branch.id }}" data-name="{{ branch.branch_name }}"
+                                        data-logic="{{ branch.condition_logic or 'AND' }}"
+                                        data-default="{{ 'true' if branch.is_default else 'false' }}"
+                                        data-priority="{{ branch.priority }}"
+                                        data-conditions="{{ branch.conditions.all() | map(attribute='condition_field') | list | join(',') }}"
+                                        data-operators="{{ branch.conditions.all() | map(attribute='condition_operator') | list | join(',') }}"
+                                        data-values="{{ branch.conditions.all() | map(attribute='condition_value') | list | join(',') }}">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                {% if not branch.is_default %}
+                                <form method="POST" action="{{ url_for('approval.delete_branch', id=branch.id) }}"
+                                      class="d-inline" onsubmit="return confirm('确定删除分支「{{ branch.branch_name }}」？');">
+                                    <button type="submit" class="btn btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% set conditions = branch.conditions.all() %}
+                        {% if conditions %}
+                        <div class="text-muted small mb-2 ms-6">
+                            条件：
+                            {% set logic_label = '且' if branch.condition_logic == 'AND' else '或' %}
+                            {% for cond in conditions %}
+                            {{ field_labels.get(cond.condition_field, cond.condition_field) }} {{ operator_labels.get(cond.condition_operator, cond.condition_operator) }} {{ cond.condition_value }}{% if not loop.last %} {{ logic_label }} {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% elif branch.condition_field %}
+                        <div class="text-muted small mb-2 ms-6">
+                            条件：{{ field_labels.get(branch.condition_field, branch.condition_field) }} {{ operator_labels.get(branch.condition_operator, branch.condition_operator) }} {{ branch.condition_value }}
+                        </div>
+                        {% endif %}
+                        <div class="ms-6">
+                            {% if branch.nodes %}
+                            {% for node in branch.nodes|sort(attribute='node_order') %}
+                            <div class="card node-card {% if loop.last %}node-card-last{% endif %} mb-2"
+                                 data-node-id="{{ node.id }}"
+                                 data-node-name="{{ node.node_name }}"
+                                 data-approve-type="{{ node.approve_type }}"
+                                 data-pass-rule="{{ node.pass_rule or 'ANY' }}"
+                                 data-approve-roles="{{ node.approve_role or '' }}"
+                                 data-approve-user-id="{{ node.approve_user_id or '' }}"
+                                 data-branch-id="{{ branch.id }}">
+                                <div class="card-body p-3">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <span class="badge bg-primary rounded-circle me-2">{{ node.node_order }}</span>
+                                            <strong>{{ node.node_name }}</strong>
+                                            {% if node.pass_rule == 'ALL' %}
+                                            <span class="badge bg-info ms-1">会签</span>
+                                            {% elif node.pass_rule == 'ANY' %}
+                                            <span class="badge bg-info ms-1">或签</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-primary btn-edit-node"
+                                                    data-bs-toggle="modal" data-bs-target="#nodeModal">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <form method="POST" action="{{ url_for('approval.delete_branch_node', id=node.id) }}"
+                                                  class="d-inline" onsubmit="return confirm('确定删除节点「{{ node.node_name }}」？');">
+                                                <button type="submit" class="btn btn-outline-danger">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                    <div class="mt-2 text-muted small">
+                                        {% if node.approve_type == 'role' %}
+                                        <i class="bi bi-people me-1"></i>审批方式：按角色
+                                        {% set roles = (node.approve_role or '').split(',') %}
+                                        {% set role_names = {'admin': '管理员', 'editor': '录入员', 'viewer': '查看员'} %}
+                                        {% for r in roles %}
+                                            {% if r.strip() %}
+                                            <span class="badge bg-light text-dark border ms-1">{{ role_names.get(r.strip(), r.strip()) }}</span>
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% else %}
+                                        <i class="bi bi-person me-1"></i>审批方式：指定人员
+                                        <span class="badge bg-light text-dark border ms-1">
+                                            {{ node.approver_user.name or node.approver_user.username if node.approver_user else '未设置' }}
+                                        </span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% if not loop.last %}
+                            <div class="text-center text-primary my-1 ms-6">
+                                <i class="bi bi-arrow-down" style="font-size:1rem;"></i>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                            {% else %}
+                            <div class="text-center text-muted py-3">
+                                <button type="button" class="btn btn-primary btn-sm btn-add-node"
+                                        data-branch-id="{{ branch.id }}"
+                                        data-bs-toggle="modal" data-bs-target="#nodeModal">
+                                    <i class="bi bi-plus-lg me-1"></i>添加节点
+                                </button>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <div class="text-center text-success my-3">
+                        <i class="bi bi-check-circle" style="font-size:1.5rem;"></i>
+                        <span class="ms-1">结束</span>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox d-block mb-2" style="font-size:2.5rem;"></i>
+                    <p>暂无分支，请点击上方按钮添加</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include 'approval/branch_form.html' %}
+{% include 'approval/node_form.html' %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var branchModal = document.getElementById('branchModal');
+branchModal.addEventListener('show.bs.modal', function(event) {
+    var trigger = event.relatedTarget;
+    var isEdit = trigger && trigger.classList.contains('btn-edit-branch');
+    var form = document.getElementById('branchForm');
+    var container = document.getElementById('conditionsContainer');
+
+    while (container.children.length > 1) {
+        container.removeChild(container.lastChild);
+    }
+
+    if (isEdit) {
+        form.action = '{{ url_for("approval.edit_branch", id=0) }}'.replace('/0', '/' + trigger.dataset.id);
+        document.getElementById('branchModalTitle').textContent = '编辑分支';
+        document.querySelector('input[name="branch_name"]').value = trigger.dataset.name;
+        document.querySelector('input[name="is_default"]').checked = trigger.dataset.default === 'true';
+        document.querySelector('input[name="priority"]').value = trigger.dataset.priority;
+        document.getElementById('branchFlowId').value = '{{ flow.id }}';
+
+        var logic = trigger.dataset.logic || 'AND';
+        document.querySelector('select[name="condition_logic"]').value = logic;
+
+        var conditions = trigger.dataset.conditions ? trigger.dataset.conditions.split(',') : [];
+        var operators = trigger.dataset.operators ? trigger.dataset.operators.split(',') : [];
+        var values = trigger.dataset.values ? trigger.dataset.values.split(',') : [];
+
+        var firstRow = container.querySelector('.condition-row');
+        if (conditions.length > 0) {
+            firstRow.querySelector('select[name="condition_fields[]"]').value = conditions[0];
+            firstRow.querySelector('select[name="condition_operators[]"]').value = operators[0];
+            firstRow.querySelector('input[name="condition_values[]"]').value = values[0];
+
+            for (var i = 1; i < conditions.length; i++) {
+                addCondition();
+                var rows = container.querySelectorAll('.condition-row');
+                var row = rows[rows.length - 1];
+                row.querySelector('select[name="condition_fields[]"]').value = conditions[i];
+                row.querySelector('select[name="condition_operators[]"]').value = operators[i];
+                row.querySelector('input[name="condition_values[]"]').value = values[i];
+            }
+        } else {
+            firstRow.querySelector('select[name="condition_fields[]"]').value = '';
+            firstRow.querySelector('select[name="condition_operators[]"]').value = '';
+            firstRow.querySelector('input[name="condition_values[]"]').value = '';
+        }
+        updateLogicSection();
+    } else {
+        form.action = '{{ url_for("approval.create_branch") }}';
+        document.getElementById('branchModalTitle').textContent = '新增分支';
+        form.reset();
+        document.getElementById('branchFlowId').value = '{{ flow.id }}';
+        document.querySelector('input[name="priority"]').value = '{{ branch_list|length + 1 }}';
+        document.querySelector('select[name="condition_logic"]').value = 'AND';
+        var firstRow = container.querySelector('.condition-row');
+        firstRow.querySelector('select[name="condition_fields[]"]').value = '';
+        firstRow.querySelector('select[name="condition_operators[]"]').value = '';
+        firstRow.querySelector('input[name="condition_values[]"]').value = '';
+        updateLogicSection();
+    }
+});
+
+var nodeModal = document.getElementById('nodeModal');
+nodeModal.addEventListener('show.bs.modal', function(event) {
+    var trigger = event.relatedTarget;
+    var isEdit = trigger && trigger.classList.contains('btn-edit-node');
+    var card = trigger ? trigger.closest('.node-card') : null;
+    var branchId = trigger ? (trigger.dataset.branchId || (card ? card.dataset.branchId : null)) : null;
+
+    var form = document.getElementById('nodeForm');
+
+    if (isEdit && card) {
+        form.action = '{{ url_for("approval.edit_branch_node", id=0) }}'.replace('/0', '/' + card.dataset.nodeId);
+        document.getElementById('nodeModalTitle').textContent = '编辑节点';
+        document.querySelector('input[name="node_name"]').value = card.dataset.nodeName;
+        var approveType = card.dataset.approveType;
+        document.querySelector('input[name="approve_type"][value="' + approveType + '"]').checked = true;
+        toggleApproveType(approveType);
+
+        var passRule = card.dataset.passRule || 'ANY';
+        document.querySelector('input[name="pass_rule"][value="' + passRule + '"]').checked = true;
+
+        var roles = card.dataset.approveRoles.split(',');
+        document.querySelectorAll('input[name="approve_role"]').forEach(function(cb) {
+            cb.checked = roles.indexOf(cb.value) >= 0;
+        });
+
+        var userId = card.dataset.approveUserId;
+        var userSelect = document.querySelector('select[name="approve_user_id"]');
+        if (userId) {
+            userSelect.value = userId;
+        } else {
+            userSelect.value = '';
+        }
+    } else if (branchId) {
+        form.action = '{{ url_for("approval.create_branch_node", branch_id=0) }}'.replace('/0', '/' + branchId);
+        document.getElementById('nodeModalTitle').textContent = '新增节点';
+        form.reset();
+        toggleApproveType('role');
+        document.querySelector('input[name="approve_type"][value="role"]').checked = true;
+    } else {
+        form.action = '{{ url_for("approval.create_node", id=flow.id) }}';
+        document.getElementById('nodeModalTitle').textContent = '新增节点';
+        form.reset();
+        toggleApproveType('role');
+        document.querySelector('input[name="approve_type"][value="role"]').checked = true;
+    }
+});
+
+function toggleApproveType(type) {
+    var roleSection = document.getElementById('roleSection');
+    var userSection = document.getElementById('userSection');
+    if (type === 'role') {
+        roleSection.style.display = '';
+        userSection.style.display = 'none';
+    } else {
+        roleSection.style.display = 'none';
+        userSection.style.display = '';
+    }
+}
+
+document.querySelectorAll('input[name="approve_type"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        toggleApproveType(this.value);
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}新建对账 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white"><h5 class="mb-0">新建对账单</h5></div>
+            <div class="card-body">
+                <form method="POST" id="reconciliationForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">供应商 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="supplier_id" id="supplierSelect" required>
+                                <option value="">-- 请选择 --</option>
+                                {% for s in suppliers %}
+                                <option value="{{ s.id }}">{{ s.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">关联合同 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="contract_id" id="contractSelect" required>
+                                <option value="">-- 请先选择供应商 --</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">价格方案</label>
+                            <select class="form-select" name="price_formula_id" id="formulaSelect">
+                                <option value="">手动输入单价（无方案）</option>
+                                {% for f in formulas %}
+                                <option value="{{ f.id }}" data-supplier="{{ f.supplier_id or 0 }}">{{ f.formula_name }}{% if f.supplier %}（{{ f.supplier.name }}）{% else %}（通用）{% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">选择后将自动按公式计算结算单价</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">对账开始日期 <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" name="start_date" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">对账结束日期 <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" name="end_date" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">备注</label>
+                            <textarea class="form-control" name="remark" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">保存并进入详情</button>
+                        <a href="{{ url_for('reconciliation.index') }}" class="btn btn-secondary ms-2">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.getElementById('supplierSelect').addEventListener('change', async function() {
+    const sid = this.value;
+    const sel = document.getElementById('contractSelect');
+    const fSel = document.getElementById('formulaSelect');
+    if (!sid) {
+        sel.innerHTML = '<option value="">-- 请先选择供应商 --</option>';
+        return;
+    }
+    try {
+        const res = await fetch(`/reconciliation/api/contracts_by_supplier/${sid}`);
+        const data = await res.json();
+        let html = '<option value="">-- 请选择合同 --</option>';
+        data.forEach(c => {
+            html += `<option value="${c.id}">${c.code} - ${c.name}</option>`;
+        });
+        sel.innerHTML = html;
+    } catch (e) { console.error(e); }
+    // 自动选择该供应商的价格方案
+    if (fSel) {
+        let matched = false;
+        for (const opt of fSel.options) {
+            if (opt.value && opt.dataset.supplier === sid) {
+                fSel.value = opt.value;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            // 尝试通用方案
+            for (const opt of fSel.options) {
+                if (opt.value && opt.dataset.supplier === '0') {
+                    fSel.value = opt.value;
+                    break;
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

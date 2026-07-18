@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑用户' if user else '新增用户' }} - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white"><h5 class="mb-0">{{ '编辑用户' if user else '新增用户' }}</h5></div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">用户名 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="username" value="{{ user.username if user else '' }}" {{ 'readonly' if user else 'required' }}>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">姓名</label>
+                            <input type="text" class="form-control" name="name" value="{{ user.name if user else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">所属部门</label>
+                            <select class="form-select" name="dept_id">
+                                <option value="">请选择部门</option>
+                                {% for dept in depts %}
+                                <option value="{{ dept.id }}" {% if user and user.dept_id == dept.id %}selected{% endif %}>
+                                    {{ dept.dept_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">角色 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="role_id" required>
+                                <option value="">请选择角色</option>
+                                {% for role in roles %}
+                                <option value="{{ role.id }}" {% if user and user.role_id == role.id %}selected{% endif %}>
+                                    {{ role.role_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">邮箱</label>
+                            <input type="email" class="form-control" name="email" value="{{ user.email if user else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">手机号</label>
+                            <input type="text" class="form-control" name="phone" value="{{ user.phone if user else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">{{ '新密码' if user else '密码' }} {% if not user %}<span class="text-danger">*</span>{% endif %}</label>
+                            <input type="password" class="form-control" name="{{ 'new_password' if user else 'password' }}" {{ 'placeholder="留空则不修改"' if user else 'required' }}>
+                        </div>
+                        {% if user and user.role_obj %}
+                        <div class="col-12">
+                            <div class="alert alert-info py-2">
+                                <i class="bi bi-info-circle me-1"></i>
+                                该用户的数据权限范围为：<strong>{{ user.role_obj.get_data_scope_display() }}</strong>
+                                ，由角色「{{ user.role_obj.role_name }}」决定，请在角色管理中修改。
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <button type="submit" class="btn btn-primary">保存</button>
+                        <a href="{{ url_for('admin.users') }}" class="btn btn-secondary">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

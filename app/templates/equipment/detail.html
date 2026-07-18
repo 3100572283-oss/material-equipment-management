@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+{% block title %}{{ equipment.name }} - 设备详情{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-gear me-2"></i>{{ equipment.name }}
+            {% if equipment.source_type == 'self' %}<span class="badge bg-primary ms-1">自有设备</span>
+            {% elif equipment.source_type == 'rent' %}<span class="badge bg-warning text-dark ms-1">租赁设备</span>
+            {% elif equipment.source_type == 'labor' %}<span class="badge ms-1" style="background-color:#6f42c1;color:#fff;">劳务队自带</span>{% endif %}
+        </h5>
+        <div>
+            {% if current_user.can_edit() %}
+            <button type="button" class="btn btn-sm btn-warning me-1" data-bs-toggle="modal" data-bs-target="#statusChangeModal"
+                    data-equipment-id="{{ equipment.id }}" data-equipment-name="{{ equipment.name }}"
+                    data-current-status="{{ equipment.status }}"><i class="bi bi-arrow-repeat me-1"></i>状态变更</button>
+            <a href="{{ url_for('equipment.edit', id=equipment.id) }}" class="btn btn-sm btn-primary me-1"><i class="bi bi-pencil me-1"></i>编辑</a>
+            {% endif %}
+            <a href="{{ url_for('equipment.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">编码</div><div class="fw-bold">{{ equipment.code or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">设备来源</div><div>{{ equipment.source_label }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">分类</div><div>{{ equipment.category or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">规格型号</div><div>{{ equipment.specification or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">制造商</div><div>{{ equipment.manufacturer or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">使用部门</div><div>{{ equipment.department or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">责任人</div><div>{{ equipment.responsible or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">存放地点</div><div>{{ equipment.location or '-' }}</div></div>
+            <div class="col-md-3">
+                <div class="text-muted small">当前状态</div>
+                <div>
+                    {% if equipment.status == 'in_use' %}<span class="badge bg-success">在用</span>
+                    {% elif equipment.status == 'idle' %}<span class="badge bg-secondary">闲置</span>
+                    {% elif equipment.status == 'repairing' %}<span class="badge bg-warning text-dark">维修中</span>
+                    {% elif equipment.status == 'exited' %}<span class="badge bg-secondary">已退场</span>
+                    {% elif equipment.status == 'scrapped' %}<span class="badge bg-danger">已报废</span>{% endif %}
+                </div>
+            </div>
+            {% if equipment.exit_date %}
+            <div class="col-md-3"><div class="text-muted small">实际退场日期</div><div>{{ equipment.exit_date }}</div></div>
+            {% endif %}
+            {% if equipment.photo %}
+            <div class="col-md-6">
+                <div class="text-muted small">设备照片</div>
+                <a href="{{ url_for('static', filename=equipment.photo) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-image me-1"></i>查看照片</a>
+            </div>
+            {% endif %}
+            {% if equipment.remark %}
+            <div class="col-12">
+                <div class="text-muted small">备注</div>
+                <div>{{ equipment.remark }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ========== 折旧信息卡片（自有设备） ========== #}
+{% if equipment.source_type == 'self' %}
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h4 class="text-primary fw-bold">{{ '%.2f'|format(equipment.original_value or 0) }}</h4>
+                <small class="text-muted">设备原值（元）</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h4 class="text-info fw-bold">{{ '%.2f'|format(equipment.monthly_depreciation) }}</h4>
+                <small class="text-muted">月折旧额（元）</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h4 class="text-warning fw-bold">{{ '%.2f'|format(equipment.accumulated_depreciation) }}</h4>
+                <small class="text-muted">累计折旧（元）</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h4 class="text-success fw-bold">{{ '%.2f'|format(equipment.net_value) }}</h4>
+                <small class="text-muted">设备净值（元）</small>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-cash-coin me-2"></i>资产信息</h6></div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">购置日期</div><div>{{ equipment.purchase_date or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">预计使用年限</div><div>{{ equipment.use_years or '-' }} 年</div></div>
+            <div class="col-md-3"><div class="text-muted small">残值率</div><div>{{ equipment.residual_rate or 0 }}%</div></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ========== 租赁信息卡片（租赁设备） ========== #}
+{% if equipment.source_type == 'rent' %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-truck me-2"></i>租赁信息</h6></div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">供应商</div><div>{{ equipment.supplier.name if equipment.supplier else '-' }}</div></div>
+            <div class="col-md-3">
+                <div class="text-muted small">租赁方式</div>
+                <div>
+                    {% set rt_map = {'shift':'台班','monthly':'月租','yearly':'年租'} %}
+                    {{ rt_map.get(equipment.rent_type, equipment.rent_type or '-') }}
+                </div>
+            </div>
+            <div class="col-md-3"><div class="text-muted small">租赁单价</div><div>{{ '%.2f'|format(equipment.rent_unit_price or 0) }} 元</div></div>
+            <div class="col-md-3"><div class="text-muted small">租赁期限</div><div>{{ equipment.rent_period or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">进场日期</div><div>{{ equipment.entry_date or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">预计退场日期</div><div>{{ equipment.expected_exit_date or '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">进出场费</div><div>{{ '%.2f'|format(equipment.entry_exit_fee or 0) }} 元</div></div>
+            <div class="col-md-3"><div class="text-muted small">押金</div><div>{{ '%.2f'|format(equipment.deposit or 0) }} 元</div></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ========== 劳务队信息卡片（劳务队自带） ========== #}
+{% if equipment.source_type == 'labor' %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-people me-2"></i>劳务队信息</h6></div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4"><div class="text-muted small">所属劳务队</div><div>{{ equipment.labor_team or '-' }}</div></div>
+            <div class="col-md-4"><div class="text-muted small">进场日期</div><div>{{ equipment.entry_date or '-' }}</div></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ========== 状态变更历史 ========== #}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>状态变更历史</h6></div>
+    <div class="card-body">
+        {% if status_logs %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>变更时间</th><th>原状态</th><th>新状态</th>
+                        <th>退场日期</th><th>操作人</th><th>备注</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in status_logs %}
+                    <tr>
+                        <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '-' }}</td>
+                        <td>
+                            {% if log.old_status == 'in_use' %}在用
+                            {% elif log.old_status == 'idle' %}闲置
+                            {% elif log.old_status == 'repairing' %}维修中
+                            {% elif log.old_status == 'exited' %}已退场
+                            {% elif log.old_status == 'scrapped' %}已报废
+                            {% elif log.old_status %}{{ log.old_status }}{% else %}-{% endif %}
+                        </td>
+                        <td>
+                            {% if log.new_status == 'in_use' %}<span class="badge bg-success">在用</span>
+                            {% elif log.new_status == 'idle' %}<span class="badge bg-secondary">闲置</span>
+                            {% elif log.new_status == 'repairing' %}<span class="badge bg-warning text-dark">维修中</span>
+                            {% elif log.new_status == 'exited' %}<span class="badge bg-secondary">已退场</span>
+                            {% elif log.new_status == 'scrapped' %}<span class="badge bg-danger">已报废</span>
+                            {% else %}{{ log.new_status }}{% endif %}
+                        </td>
+                        <td>{{ log.exit_date or '-' }}</td>
+                        <td>{{ log.operator_name or '-' }}</td>
+                        <td>{{ log.remark or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-3">暂无状态变更记录</div>
+        {% endif %}
+    </div>
+</div>
+
+{# ========== 租赁结算记录（租赁设备） ========== #}
+{% if equipment.source_type == 'rent' %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-receipt me-2"></i>租赁结算记录</h6>
+        {% if current_user.can_edit() %}
+        <a href="{{ url_for('equipment.rent_settle_create') }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-lg me-1"></i>新增结算</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% if rent_settles %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>结算单号</th><th>结算期间</th><th>租赁方式</th>
+                        <th class="text-end">数量</th><th class="text-end">租赁费</th>
+                        <th class="text-end">其他费用</th><th class="text-end">总金额</th><th>状态</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in rent_settles %}
+                    <tr>
+                        <td class="fw-bold">{{ s.settle_no }}</td>
+                        <td>{{ s.settle_period or '-' }}</td>
+                        <td>
+                            {% set rt_map = {'shift':'台班','monthly':'月租','yearly':'年租'} %}
+                            {{ rt_map.get(s.rent_type, s.rent_type or '-') }}
+                        </td>
+                        <td class="text-end">{{ s.quantity or 0 }}</td>
+                        <td class="text-end">{{ '%.2f'|format(s.rent_amount or 0) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(s.other_fee or 0) }}</td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(s.total_amount or 0) }}</td>
+                        <td>
+                            {% if s.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif s.status == 'confirmed' %}<span class="badge bg-success">已确认</span>
+                            {% elif s.status == 'invoiced' %}<span class="badge bg-info text-dark">已开票</span>
+                            {% elif s.status == 'paid' %}<span class="badge bg-primary">已付款</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-3">暂无结算记录</div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{# ========== 维保记录 ========== #}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-wrench me-2"></i>维保记录</h6></div>
+    <div class="card-body">
+        {% if maintenances %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>维保日期</th><th>类型</th><th>内容</th><th>费用（元）</th>
+                        <th>服务商</th><th>下次维保</th><th>操作人</th>
+                        {% if current_user.can_edit() %}<th class="text-end">操作</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in maintenances %}
+                    <tr>
+                        <td>{{ m.maintain_date }}</td>
+                        <td>{{ m.maintain_type }}</td>
+                        <td>{{ m.content or '-' }}</td>
+                        <td>{{ m.cost or '-' }}</td>
+                        <td>{{ m.vendor or '-' }}</td>
+                        <td class="next-maintain-cell">{{ m.next_maintain_date or '-' }}</td>
+                        <td>{{ m.operator or '-' }}</td>
+                        {% if current_user.can_edit() %}
+                        <td class="text-end">
+                            <form method="POST" action="{{ url_for('equipment.delete_maintenance', mid=m.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-3">暂无维保记录</div>
+        {% endif %}
+    </div>
+</div>
+
+{% if current_user.can_edit() %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-plus-lg me-2"></i>新增维保记录</h6></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('equipment.add_maintenance', id=equipment.id) }}">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">维保日期 <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" name="maintain_date" id="maintainDate" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">类型 <span class="text-danger">*</span></label>
+                    <select class="form-select" name="maintain_type" required>
+                        <option value="保养">保养</option>
+                        <option value="维修">维修</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">费用（元）</label>
+                    <input type="number" step="0.01" class="form-control" name="cost" value="0">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">服务商</label>
+                    <input type="text" class="form-control" name="vendor">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">维保内容</label>
+                    <textarea class="form-control" name="content" rows="2"></textarea>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">下次维保日期</label>
+                    <input type="date" class="form-control" name="next_maintain_date">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">操作人</label>
+                    <input type="text" class="form-control" name="operator" value="{{ current_user.name or current_user.username }}">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">备注</label>
+                    <textarea class="form-control" name="remark" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="mt-3">
+                <button type="submit" class="btn btn-primary btn-sm">添加记录</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% include 'equipment/_status_change_modal.html' %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    // 默认维保日期为今天
+    var today = new Date().toISOString().split('T')[0];
+    var md = document.getElementById('maintainDate');
+    if (md && !md.value) md.value = today;
+
+    // 标记过期维保日期
+    var cells = document.querySelectorAll('.next-maintain-cell');
+    cells.forEach(function (cell) {
+        var text = cell.textContent.trim();
+        if (text && text !== '-' && text < today) {
+            cell.classList.add('text-danger');
+        }
+    });
+})();
+</script>
+{% endblock %}

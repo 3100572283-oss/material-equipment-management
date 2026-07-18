@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}帮助中心 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-md-3 mb-4">
+        <div class="list-group">
+            <a href="{{ url_for('help.index') }}" class="list-group-item list-group-item-action active">
+                <i class="bi bi-house me-2"></i>系统概述
+            </a>
+            <a href="{{ url_for('help.guide') }}" class="list-group-item list-group-item-action">
+                <i class="bi bi-book me-2"></i>使用指南
+            </a>
+            <a href="{{ url_for('help.faq') }}" class="list-group-item list-group-item-action">
+                <i class="bi bi-question-circle me-2"></i>常见问题
+            </a>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-body">
+                <h6 class="card-title"><i class="bi bi-info-circle me-1"></i>版本信息</h6>
+                <p class="mb-1 small">版本号：V6.0</p>
+                <p class="mb-1 small">技术栈：Flask + SQLite</p>
+                <p class="mb-0 small">前端：Bootstrap 5 + ECharts</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-9">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-house me-2"></i>系统概述</h5>
+            </div>
+            <div class="card-body">
+                <h5>物资设备管理系统</h5>
+                <p>本系统是一款专为工程项目设计的物资设备管理软件，涵盖从项目立项、供应商管理、采购申请、合同台账、入库出库、库存查询、盘点管理、调拨管理、对账结算到统计报表的全流程管理功能，并集成了审批流程引擎、供应商评价体系、周转材和设备管理等高级模块。</p>
+                
+                <h6 class="mt-4">核心功能模块</h6>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="card border-primary h-100">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-folder me-1"></i>基础数据管理</h6>
+                                <ul class="small mb-0">
+                                    <li>项目管理</li>
+                                    <li>供应商管理（含评价）</li>
+                                    <li>物资分类（三级）</li>
+                                    <li>常用材料库</li>
+                                    <li>用料单位</li>
+                                    <li>工号管理</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-success h-100">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-file-earmark-text me-1"></i>采购合同</h6>
+                                <ul class="small mb-0">
+                                    <li>采购申请</li>
+                                    <li>合同登记</li>
+                                    <li>合同明细</li>
+                                    <li>发票管理</li>
+                                    <li>付款记录</li>
+                                    <li>对账管理</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-info h-100">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-box-arrow-in-down me-1"></i>库存管理</h6>
+                                <ul class="small mb-0">
+                                    <li>入库管理</li>
+                                    <li>出库管理</li>
+                                    <li>库存查询</li>
+                                    <li>库存流水</li>
+                                    <li>盘点管理</li>
+                                    <li>项目调拨</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-warning h-100">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-arrow-repeat me-1"></i>周转材管理</h6>
+                                <ul class="small mb-0">
+                                    <li>周转材台账</li>
+                                    <li>领用归还</li>
+                                    <li>租赁费结算</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-dark h-100">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-gear me-1"></i>设备管理</h6>
+                                <ul class="small mb-0">
+                                    <li>设备台账</li>
+                                    <li>维保记录</li>
+                                    <li>设备折旧</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-secondary h-100">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-bar-chart-line me-1"></i>统计报表</h6>
+                                <ul class="small mb-0">
+                                    <li>入库统计</li>
+                                    <li>出库统计</li>
+                                    <li>物资动态表</li>
+                                    <li>高级分析（ABC/周转/趋势）</li>
+                                    <li>Excel导出</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-danger h-100">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-diagram-2 me-1"></i>审批流程</h6>
+                                <ul class="small mb-0">
+                                    <li>流程配置</li>
+                                    <li>审批节点设置</li>
+                                    <li>我的审批</li>
+                                    <li>审批记录</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-purple h-100">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-people me-1"></i>系统管理</h6>
+                                <ul class="small mb-0">
+                                    <li>用户管理</li>
+                                    <li>数据备份</li>
+                                    <li>系统配置</li>
+                                    <li>操作日志</li>
+                                    <li>基础信息管理</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card border-teal h-100">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="bi bi-qr-code me-1"></i>特色功能</h6>
+                                <ul class="small mb-0">
+                                    <li>二维码扫描入库</li>
+                                    <li>移动端适配</li>
+                                    <li>常用功能收藏</li>
+                                    <li>显示密度切换</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h6 class="mt-4">特色功能</h6>
+                <ul>
+                    <li><strong>审批流程引擎</strong>：合同、入库、出库、采购申请等业务单据支持多级审批流转，审批通过后业务才正式生效</li>
+                    <li><strong>库存联动</strong>：入库出库自动更新库存，支持库存预警，盘点确认后自动调整实际库存</li>
+                    <li><strong>供应商评价体系</strong>：支持质量、价格、交货期、服务四维评价，自动计算评级（A/B/C/D）</li>
+                    <li><strong>采购申请管理</strong>：支持采购申请审批、部分转合同、多次转合同等灵活操作</li>
+                    <li><strong>项目调拨</strong>：支持跨项目物资调拨，记录运输损耗，完整的调拨流程追踪</li>
+                    <li><strong>高级分析报表</strong>：ABC分类分析、库存周转率、采购价格趋势、项目成本构成、供应商占比等多维度分析</li>
+                    <li><strong>数据导出</strong>：支持Excel导出，包含加粗表头、背景色、自动列宽、千分位格式</li>
+                    <li><strong>权限控制</strong>：管理员、录入员、查看员三级权限，支持数据权限范围控制</li>
+                    <li><strong>移动端适配</strong>：同一套代码适配手机端，所有功能在手机浏览器均可正常使用</li>
+                    <li><strong>操作审计日志</strong>：完整记录所有增删改操作，支持查询和导出</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

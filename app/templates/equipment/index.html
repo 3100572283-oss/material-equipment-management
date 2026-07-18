@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}设备台账 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row g-3 mb-3">
+    <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body text-center"><h5 class="text-primary fw-bold">{{ stats.total }}</h5><small class="text-muted">设备总数</small></div></div></div>
+    <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body text-center"><h5 class="text-primary fw-bold">{{ stats.self_count }}</h5><small class="text-muted">自有设备</small></div></div></div>
+    <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body text-center"><h5 class="text-warning fw-bold">{{ stats.rent_count }}</h5><small class="text-muted">租赁设备</small></div></div></div>
+    <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body text-center"><h5 class="text-success fw-bold">{{ stats.in_use }}</h5><small class="text-muted">在用数量</small></div></div></div>
+    <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body text-center"><h5 class="text-danger fw-bold">{{ stats.repairing }}</h5><small class="text-muted">维修中</small></div></div></div>
+    <div class="col-md-2"><div class="card border-0 shadow-sm"><div class="card-body text-center"><h5 class="text-secondary fw-bold">{{ stats.exited }}</h5><small class="text-muted">已退场</small></div></div></div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-gear me-2"></i>设备台账</h5>
+        <div>
+            <a href="{{ url_for('equipment.rent_settle') }}" class="btn btn-outline-info btn-sm me-2"><i class="bi bi-receipt me-1"></i>租赁结算</a>
+            <a href="{{ url_for('equipment.depreciation') }}" class="btn btn-outline-info btn-sm me-2"><i class="bi bi-calculator me-1"></i>折旧明细</a>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('equipment.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增设备</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET">
+            <div class="col-md-3"><input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索名称/编码" value="{{ keyword or '' }}"></div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="category">
+                    <option value="">全部分类</option>
+                    {% for label, value in category_items %}
+                    <option value="{{ value }}" {% if category == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    {% for label, value in status_items %}
+                    <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="source_type">
+                    <option value="">全部来源</option>
+                    {% for label, value in source_items %}
+                    <option value="{{ value }}" {% if source_type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('equipment.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>编码</th><th>名称</th><th>来源</th><th>分类</th><th>规格</th>
+                        <th>责任人</th><th>存放地点</th><th>状态</th><th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in pagination.items %}
+                    <tr class="{% if e.status == 'exited' %}table-secondary text-muted{% endif %}">
+                        <td>{{ e.code }}</td>
+                        <td class="fw-bold"><a href="{{ url_for('equipment.detail', id=e.id) }}" class="text-decoration-none">{{ e.name }}</a></td>
+                        <td>
+                            {% if e.source_type == 'self' %}<span class="badge bg-primary">自有设备</span>
+                            {% elif e.source_type == 'rent' %}<span class="badge bg-warning text-dark">租赁设备</span>
+                            {% elif e.source_type == 'labor' %}<span class="badge bg-purple text-white" style="background-color:#6f42c1;">劳务队自带</span>
+                            {% else %}<span class="badge bg-secondary">{{ e.source_type or '-' }}</span>{% endif %}
+                        </td>
+                        <td>{{ e.category or '-' }}</td>
+                        <td>{{ e.specification or '-' }}</td>
+                        <td>{{ e.responsible or '-' }}</td>
+                        <td>{{ e.location or '-' }}</td>
+                        <td>
+                            {% if e.status == 'in_use' %}<span class="badge bg-success">在用</span>
+                            {% elif e.status == 'idle' %}<span class="badge bg-secondary">闲置</span>
+                            {% elif e.status == 'repairing' %}<span class="badge bg-warning text-dark">维修中</span>
+                            {% elif e.status == 'exited' %}<span class="badge bg-secondary">已退场</span>
+                            {% elif e.status == 'scrapped' %}<span class="badge bg-danger">已报废</span>{% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('equipment.detail', id=e.id) }}" class="btn btn-sm btn-outline-primary" title="查看"><i class="bi bi-eye"></i></a>
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('equipment.edit', id=e.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
+                            <button type="button" class="btn btn-sm btn-outline-warning" title="状态变更"
+                                    data-bs-toggle="modal" data-bs-target="#statusChangeModal"
+                                    data-equipment-id="{{ e.id }}" data-equipment-name="{{ e.name }}"
+                                    data-current-status="{{ e.status }}"><i class="bi bi-arrow-repeat"></i></button>
+                            <form method="POST" action="{{ url_for('equipment.delete', id=e.id) }}" class="d-inline" onsubmit="return confirm('确定删除该设备？（软删除，可在回收站恢复）');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}<tr><td colspan="9" class="text-center text-muted">暂无数据</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include '_pagination.html' %}
+    </div>
+</div>
+
+{% include 'equipment/_status_change_modal.html' %}
+{% endblock %}

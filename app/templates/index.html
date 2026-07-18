@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+{% block title %}首页 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    {% if not current_project_id %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>请先选择项目以查看仪表盘数据
+    </div>
+    {% else %}
+    <!-- 关键指标卡片 -->
+    <div class="row g-3 mb-4">
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-primary bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-boxes text-primary fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ stats.material_count }}</h3>
+                        <small class="text-muted">物资种类总数</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-success bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-truck text-success fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ stats.supplier_count }}</h3>
+                        <small class="text-muted">供应商数量</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-info bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-shop text-info fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ stats.usage_unit_count }}</h3>
+                        <small class="text-muted">用料单位数量</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-warning bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-file-earmark-text text-warning fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ stats.contract_count }}</h3>
+                        <small class="text-muted">合同数量</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-primary bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-box-arrow-in-down text-primary fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ stats.stock_in_total }}</h3>
+                        <small class="text-muted">入库总金额（万元）<span class="text-primary ms-1">含税</span></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-secondary bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-file-earmark-text text-secondary fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ stats.contract_total }}</h3>
+                        <small class="text-muted">合同总金额（万元）<span class="text-primary ms-1">含税</span></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-dark bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-cash-stack text-dark fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ stats.payment_total }}</h3>
+                        <small class="text-muted">累计付款金额（万元）<span class="text-primary ms-1">含税</span></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-danger bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-exclamation-triangle text-danger fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold text-danger">{{ stats.warning_contracts }}</h3>
+                        <small class="text-muted">合同预警数量</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-warning bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-file-plus text-warning fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold text-warning">{{ stats.pending_pr_count }}</h3>
+                        <small class="text-muted">待审批采购申请</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% if stats.enable_quality_check %}
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <a href="{{ url_for('stock_in.index') }}?quality_status=pending" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="rounded-circle bg-orange bg-opacity-10 p-3 me-3" style="background-color: #fff3cd !important;">
+                            <i class="bi bi-shield-check fs-3" style="color: #fd7e14 !important;"></i>
+                        </div>
+                        <div>
+                            <h3 class="mb-0 fw-bold" style="color: #fd7e14;">{{ stats.pending_quality_count }}</h3>
+                            <small class="text-muted">待质检入库单</small>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endif %}
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <a href="{{ url_for('material_transfer.index') }}?status=out_done" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="rounded-circle bg-opacity-10 p-3 me-3" style="background-color: #e3f2fd;">
+                            <i class="bi bi-truck fs-3" style="color: #1976d2;"></i>
+                        </div>
+                        <div>
+                            <h3 class="mb-0 fw-bold" style="color: #1976d2;">{{ stats.pending_transfer_count }}</h3>
+                            <small class="text-muted">在途调入单</small>
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-info bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-arrow-repeat text-info fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold text-info">{{ stats.turnover_count }}</h3>
+                        <small class="text-muted">周转材种类</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-secondary bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-gear text-secondary fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold text-secondary">{{ stats.equipment_count }}</h3>
+                        <small class="text-muted">设备总数</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-danger bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-tools text-danger fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold text-danger">{{ stats.equipment_repairing }}</h3>
+                        <small class="text-muted">设备维修中</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if stats.expiring_suppliers %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-exclamation-circle text-danger me-2"></i>资质到期预警</h6></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th>供应商</th><th>资质类型</th><th>到期日期</th><th>状态</th></tr></thead>
+                    <tbody>
+                        {% for s in stats.expiring_suppliers %}
+                        <tr {% if s.status == 'expired' %}class="table-danger"{% else %}class="table-warning"{% endif %}>
+                            <td>{{ s.name }}</td><td>{{ s.type }}</td><td>{{ s.date }}</td>
+                            <td>{% if s.status == 'expired' %}<span class="badge bg-danger">已过期</span>{% else %}<span class="badge bg-warning">即将到期</span>{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if stats.expiring_maintenance %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-wrench text-warning me-2"></i>设备维保到期预警</h6></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th>设备名称</th><th>下次维保日期</th><th>状态</th></tr></thead>
+                    <tbody>
+                        {% for m in stats.expiring_maintenance %}
+                        <tr {% if m.status == 'expired' %}class="table-danger"{% else %}class="table-warning"{% endif %}>
+                            <td>{{ m.equipment_name }}</td><td>{{ m.next_date }}</td>
+                            <td>{% if m.status == 'expired' %}<span class="badge bg-danger">已过期</span>{% else %}<span class="badge bg-warning">即将到期</span>{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 图表区域 -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-pie-chart me-2"></i>物资分类库存分布</h6>
+                </div>
+                <div class="card-body">
+                    <div id="categoryChart" style="width:100%;height:320px;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>月度出入库趋势（万元）</h6>
+                </div>
+                <div class="card-body">
+                    <div id="trendChart" style="width:100%;height:320px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-graph-down me-2"></i>消耗量 Top 10</h6>
+                </div>
+                <div class="card-body">
+                    <div id="topConsumeChart" style="width:100%;height:320px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    {% if current_project_id %}
+    fetch('/api/dashboard_data')
+        .then(r => r.json())
+        .then(data => {
+            initCategoryChart(data.category_distribution);
+            initTrendChart(data.monthly_trend);
+            initTopConsumeChart(data.top_consumption);
+        });
+    {% endif %}
+});
+
+function initCategoryChart(data) {
+    const chart = echarts.init(document.getElementById('categoryChart'));
+    let currentLevel = 1;
+    let parentCategoryId = null;
+    
+    function render(data, title) {
+        const option = {
+            title: {
+                text: title,
+                left: 'center',
+                top: '5%',
+                textStyle: { fontSize: 14, fontWeight: 'bold' }
+            },
+            tooltip: { trigger: 'item', formatter: '{b}: {c}元 ({d}%)' },
+            legend: { bottom: '0%', left: 'center' },
+            color: ['#0d6efd', '#198754', '#0dcaf0', '#ffc107', '#fd7e14', '#6c757d', '#6610f2'],
+            series: [{
+                type: 'pie',
+                radius: ['40%', '70%'],
+                avoidLabelOverlap: false,
+                itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+                label: { show: false },
+                emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
+                data: data.length ? data : [{name:'暂无数据', value:0}]
+            }]
+        };
+        chart.setOption(option, true);
+    }
+    
+    render(data, '物资分类库存分布');
+    
+    chart.on('click', function(params) {
+        if (params.data && params.data.level1_id) {
+            fetch(`/api/dashboard_data?level1=${params.data.level1_id}`)
+                .then(r => r.json())
+                .then(res => {
+                    currentLevel = 2;
+                    parentCategoryId = params.data.level1_id;
+                    render(res.category_distribution, `二级分类 - ${params.name}`);
+                });
+        }
+    });
+    
+    chart.getZr().on('click', function(params) {
+        if (!params.target) {
+            if (currentLevel === 2) {
+                currentLevel = 1;
+                parentCategoryId = null;
+                render(data, '物资分类库存分布');
+            }
+        }
+    });
+    
+    window.addEventListener('resize', () => chart.resize());
+}
+
+function initTrendChart(data) {
+    const chart = echarts.init(document.getElementById('trendChart'));
+    const option = {
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        legend: { data: ['入库金额', '出库金额'], bottom: '0%' },
+        grid: { left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true },
+        xAxis: { type: 'category', data: data.months, axisTick: { alignWithLabel: true } },
+        yAxis: { type: 'value', name: '万元' },
+        series: [
+            {
+                name: '入库金额',
+                type: 'bar',
+                data: data.in_data,
+                itemStyle: { color: '#0d6efd', borderRadius: [4, 4, 0, 0] }
+            },
+            {
+                name: '出库金额',
+                type: 'bar',
+                data: data.out_data,
+                itemStyle: { color: '#dc3545', borderRadius: [4, 4, 0, 0] }
+            }
+        ]
+    };
+    chart.setOption(option);
+    window.addEventListener('resize', () => chart.resize());
+}
+
+function initTopConsumeChart(data) {
+    const chart = echarts.init(document.getElementById('topConsumeChart'));
+    const names = data.map(d => d.name);
+    const values = data.map(d => d.value);
+    const option = {
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
+        xAxis: { type: 'value', name: '数量' },
+        yAxis: { type: 'category', data: names.reverse(), axisLabel: { interval: 0 } },
+        series: [{
+            type: 'bar',
+            data: values.reverse(),
+            itemStyle: { color: '#0d6efd', borderRadius: [0, 4, 4, 0] },
+            label: { show: true, position: 'right' }
+        }]
+    };
+    chart.setOption(option);
+    window.addEventListener('resize', () => chart.resize());
+}
+</script>
+{% endblock %}

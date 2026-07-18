@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}项目管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-building me-2"></i>项目管理</h5>
+        {% if current_user.can_edit() %}
+        <a href="{{ url_for('project.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增项目</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('project.index') }}">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索项目名称/编号" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('project.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>项目名称</th>
+                        <th>项目编号</th>
+                        <th>项目地址</th>
+                        <th>开工日期</th>
+                        <th>计划完工</th>
+                        <th>项目经理</th>
+                        <th>联系电话</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pagination.items %}
+                    <tr>
+                        <td>{{ p.name }}</td>
+                        <td>{{ p.code or '-' }}</td>
+                        <td>{{ p.address or '-' }}</td>
+                        <td>{{ p.start_date or '-' }}</td>
+                        <td>{{ p.planned_end_date or '-' }}</td>
+                        <td>{{ p.manager or '-' }}</td>
+                        <td>{{ p.contact_phone or '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('main.set_project', project_id=p.id) }}" class="btn btn-sm btn-outline-success {% if p.id == session.get('current_project_id') %}disabled{% endif %}">
+                                <i class="bi bi-check-circle"></i> 切换
+                            </a>
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('project.edit', id=p.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            {% endif %}
+                            {% if current_user.is_admin() %}
+                            <form method="POST" action="{{ url_for('project.delete', id=p.id) }}" class="d-inline" onsubmit="return confirm('确定删除此项目？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <nav>
+            <ul class="pagination pagination-sm justify-content-center">
+                {% if pagination.has_prev %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('project.index', page=pagination.prev_num, keyword=keyword) }}">上一页</a></li>
+                {% endif %}
+                {% for p in pagination.iter_pages() %}
+                    {% if p %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('project.index', page=p, keyword=keyword) }}">{{ p }}</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+                {% if pagination.has_next %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('project.index', page=pagination.next_num, keyword=keyword) }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

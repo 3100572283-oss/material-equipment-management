@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if formula else '新增' }}价格方案 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-tag me-2"></i>{{ '编辑' if formula else '新增' }}价格方案</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">方案名称 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="formula_name" required value="{{ formula.formula_name if formula else '' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">适用供应商</label>
+                    <select class="form-select" name="supplier_id">
+                        <option value="">通用（所有供应商）</option>
+                        {% for s in suppliers %}
+                        <option value="{{ s.id }}" {% if formula and formula.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">适用物资分类</label>
+                    <select class="form-select" name="material_category_id">
+                        <option value="">不限</option>
+                        {% for c in categories %}
+                        <option value="{{ c.id }}" {% if formula and formula.material_category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-12"><hr class="my-2"><h6 class="text-muted">基准价与下浮</h6></div>
+                <div class="col-md-4">
+                    <label class="form-label">基准价类型</label>
+                    <select class="form-select" name="base_price_type" id="base_price_type">
+                        <option value="手动输入" {% if formula and formula.base_price_type == '手动输入' %}selected{% endif %}>手动输入</option>
+                        <option value="合同价" {% if formula and formula.base_price_type == '合同价' %}selected{% endif %}>合同价</option>
+                        <option value="信息价" {% if formula and formula.base_price_type == '信息价' %}selected{% endif %}>信息价</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">下浮方式</label>
+                    <select class="form-select" name="discount_type" id="discount_type">
+                        <option value="不下浮" {% if formula and formula.discount_type == '不下浮' %}selected{% endif %}>不下浮</option>
+                        <option value="比例" {% if formula and formula.discount_type == '比例' %}selected{% endif %}>比例下浮(%)</option>
+                        <option value="金额" {% if formula and formula.discount_type == '金额' %}selected{% endif %}>金额下浮(元)</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">下浮值</label>
+                    <input type="number" step="0.0001" min="0" class="form-control" name="discount_value" value="{{ '%.4f'|format(formula.discount_value or 0) if formula else '0' }}">
+                </div>
+
+                <div class="col-12"><hr class="my-2"><h6 class="text-muted">服务费</h6></div>
+                <div class="col-md-4">
+                    <label class="form-label">服务费率(%)</label>
+                    <input type="number" step="0.0001" min="0" class="form-control" name="service_fee_rate" value="{{ '%.4f'|format(formula.service_fee_rate or 0) if formula else '0' }}">
+                    <small class="text-muted">大于0时按费率计算</small>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">服务费固定金额</label>
+                    <input type="number" step="0.0001" min="0" class="form-control" name="service_fee_fixed" value="{{ '%.4f'|format(formula.service_fee_fixed or 0) if formula else '0' }}">
+                    <small class="text-muted">费率为0时使用固定金额</small>
+                </div>
+                <div class="col-md-4"></div>
+
+                <div class="col-12"><hr class="my-2"><h6 class="text-muted">资金使用费</h6></div>
+                <div class="col-md-4">
+                    <label class="form-label">资金费率(月息%)</label>
+                    <input type="number" step="0.0001" min="0" class="form-control" name="capital_fee_rate" value="{{ '%.4f'|format(formula.capital_fee_rate or 0) if formula else '0' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">资金占用天数</label>
+                    <input type="number" step="1" min="0" class="form-control" name="capital_fee_days" value="{{ formula.capital_fee_days if formula and formula.capital_fee_days else '' }}">
+                </div>
+                <div class="col-md-4"></div>
+
+                <div class="col-12"><hr class="my-2"><h6 class="text-muted">税率与状态</h6></div>
+                <div class="col-md-3">
+                    <label class="form-label">税率(%)</label>
+                    <input type="number" step="0.01" min="0" class="form-control" name="tax_rate" value="{{ '%.2f'|format(formula.tax_rate or 13) if formula else '13' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">计算结果</label>
+                    <select class="form-select" name="tax_included">
+                        <option value="1" {% if not formula or formula.tax_included %}selected{% endif %}>含税</option>
+                        <option value="0" {% if formula and not formula.tax_included %}selected{% endif %}>不含税</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">状态</label>
+                    <select class="form-select" name="status">
+                        <option value="启用" {% if not formula or formula.status == '启用' %}selected{% endif %}>启用</option>
+                        <option value="禁用" {% if formula and formula.status == '禁用' %}selected{% endif %}>禁用</option>
+                    </select>
+                </div>
+                <div class="col-md-3"></div>
+
+                <div class="col-12">
+                    <label class="form-label">备注</label>
+                    <textarea class="form-control" name="remark" rows="2">{{ formula.remark if formula and formula.remark else '' }}</textarea>
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>保存</button>
+                <a href="{{ url_for('price_formula.index') }}" class="btn btn-outline-secondary">返回</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

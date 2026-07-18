@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}租赁费汇总 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>租赁费汇总</h5>
+        <span class="text-muted">{{ start_date or '' }} 至 {{ end_date or '' }}</span>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET">
+            <div class="col-md-3">
+                <input type="date" class="form-control form-control-sm" name="start_date" value="{{ start_date or '' }}">
+            </div>
+            <div class="col-md-3">
+                <input type="date" class="form-control form-control-sm" name="end_date" value="{{ end_date or '' }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('turnover_material.rental_bill') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>周转材</th>
+                        <th>班组</th>
+                        <th>领用日期</th>
+                        <th>归还日期</th>
+                        <th class="text-end">使用天数</th>
+                        <th class="text-end">数量</th>
+                        <th class="text-end">租赁费</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set total_fee = namespace(val=0) %}
+                    {% for b in bills %}
+                    {% set fee = b.rental_fee or 0 %}
+                    {% set total_fee.val = total_fee.val + fee %}
+                    <tr>
+                        <td class="fw-bold">{{ b.material_name }}</td>
+                        <td>{{ b.team }}</td>
+                        <td>{{ b.rent_date }}</td>
+                        <td>{{ b.return_date or '-' }}</td>
+                        <td class="text-end">{{ b.use_days or 0 }}</td>
+                        <td class="text-end">{{ b.qty }}</td>
+                        <td class="text-end">{{ "%.2f"|format(fee) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if bills %}
+                <tfoot class="table-group-divider">
+                    <tr class="fw-bold">
+                        <td colspan="6" class="text-end">合计</td>
+                        <td class="text-end">{{ "%.2f"|format(total_fee.val) }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

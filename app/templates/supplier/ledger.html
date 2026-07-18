@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}供应商往来台账 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>供应商往来台账</h5>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('supplier.ledger') }}">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索供应商名称/编码" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-2">
+                <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from or '' }}" title="开始日期">
+            </div>
+            <div class="col-md-2">
+                <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to or '' }}" title="结束日期">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 查询</button>
+                <a href="{{ url_for('supplier.ledger') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>供应商编码</th>
+                        <th>供应商名称</th>
+                        <th class="text-end">合同总额</th>
+                        <th class="text-end">入库金额</th>
+                        <th class="text-end">对账金额</th>
+                        <th class="text-end">开票金额</th>
+                        <th class="text-end">付款金额</th>
+                        <th class="text-end">欠款金额</th>
+                        <th class="text-center">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in ledger_data %}
+                    <tr>
+                        <td>{{ item.code or '-' }}</td>
+                        <td class="fw-bold">{{ item.name }}</td>
+                        <td class="text-end">{{ '%.2f'|format(item.contract_amount) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(item.stock_in_amount) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(item.recon_amount) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(item.invoice_amount) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(item.payment_amount) }}</td>
+                        <td class="text-end {% if item.owed_amount > 0 %}text-danger fw-bold{% endif %}">{{ '%.2f'|format(item.owed_amount) }}</td>
+                        <td class="text-center">
+                            <a href="{{ url_for('supplier.supplier_ledger_detail', id=item.id) }}?date_from={{ date_from }}&date_to={{ date_to }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye me-1"></i>明细
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9" class="text-center text-muted py-4">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if ledger_data %}
+                <tfoot>
+                    <tr class="table-light fw-bold">
+                        <td colspan="2" class="text-end">合计</td>
+                        <td class="text-end">{{ '%.2f'|format(ledger_data|sum(attribute='contract_amount')) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(ledger_data|sum(attribute='stock_in_amount')) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(ledger_data|sum(attribute='recon_amount')) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(ledger_data|sum(attribute='invoice_amount')) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(ledger_data|sum(attribute='payment_amount')) }}</td>
+                        <td class="text-end text-danger">{{ '%.2f'|format(ledger_data|sum(attribute='owed_amount')) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

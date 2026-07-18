@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}{% if pr %}编辑采购申请{% else %}新增采购申请{% endif %} - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-file-earmark-plus me-2"></i>{% if pr %}编辑采购申请{% else %}新增采购申请{% endif %}</h5>
+        {% if pr %}<span class="text-muted small">单号：{{ pr.pr_no }}</span>{% else %}<span class="text-muted small">单号：{{ default_pr_no }}（保存后生效）</span>{% endif %}
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('purchase_requisition.edit', id=pr.id) if pr else url_for('purchase_requisition.create') }}">
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">申请日期 <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" name="apply_date" value="{{ today_str }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">需求到货日期</label>
+                    <input type="date" class="form-control" name="demand_date" value="{{ pr.demand_date.strftime('%Y-%m-%d') if pr and pr.demand_date else '' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">申请部门</label>
+                    <input type="text" class="form-control" name="apply_dept" value="{{ pr.apply_dept if pr else '' }}" placeholder="如：工程部">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">申请人</label>
+                    <input type="text" class="form-control" name="apply_user" value="{{ pr.apply_user if pr else current_user.name or current_user.username }}">
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">备注</label>
+                    <textarea class="form-control" name="remark" rows="2" placeholder="选填">{{ pr.remark if pr else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0"><i class="bi bi-list-check me-1"></i>申请明细</h6>
+                    {% if current_user.can_edit() %}
+                    <button type="button" class="btn btn-sm btn-primary" onclick="addItemRow()"><i class="bi bi-plus-lg me-1"></i>添加物资</button>
+                    {% endif %}
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle" id="itemsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:5%">序号</th>
+                                <th style="width:25%">物资名称</th>
+                                <th style="width:15%">规格型号</th>
+                                <th style="width:8%">单位</th>
+                                <th style="width:12%">申请数量</th>
+                                <th style="width:25%">用途说明</th>
+                                <th style="width:10%">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if pr %}
+                            {% for item in pr.items %}
+                            <tr data-row-index="{{ loop.index }}">
+                                <td class="text-center">{{ loop.index }}</td>
+                                <td>
+                                    <select class="form-select form-select-sm" name="material_id[]" required onchange="updateMaterialInfo(this)">
+                                        <option value="">-- 选择物资 --</option>
+                                        {% for m in materials %}
+                                        <option value="{{ m.id }}" {% if m.id == item.material_id %}selected{% endif %}>{{ m.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td><input type="text" class="form-control form-control-sm spec-input" readonly value="{{ item.specification or '' }}"></td>
+                                <td><input type="text" class="form-control form-control-sm unit-input" readonly value="{{ item.unit or '' }}"></td>
+                                <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end" name="quantity[]" value="{{ item.apply_qty }}" required></td>
+                                <td><input type="text" class="form-control form-control-sm" name="purpose[]" value="{{ item.purpose or '' }}" placeholder="用途说明"></td>
+                                <td class="text-center">
+                                    {% if current_user.can_edit() %}
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItemRow(this)"><i class="bi bi-trash"></i></button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr data-row-index="1">
+                                <td class="text-center">1</td>
+                                <td>
+                                    <select class="form-select form-select-sm" name="material_id[]" required onchange="updateMaterialInfo(this)">
+                                        <option value="">-- 选择物资 --</option>
+                                        {% for m in materials %}
+                                        <option value="{{ m.id }}">{{ m.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td><input type="text" class="form-control form-control-sm spec-input" readonly></td>
+                                <td><input type="text" class="form-control form-control-sm unit-input" readonly></td>
+                                <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end" name="quantity[]" required></td>
+                                <td><input type="text" class="form-control form-control-sm" name="purpose[]" placeholder="用途说明"></td>
+                                <td class="text-center">
+                                    {% if current_user.can_edit() %}
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItemRow(this)"><i class="bi bi-trash"></i></button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <hr class="my-4">
+
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i>{% if pr %}保存修改{% else %}创建申请{% endif %}</button>
+                <a href="{{ url_for('purchase_requisition.index') }}" class="btn btn-secondary">返回</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const materialsData = {{ materials|tojson }};
+
+function updateMaterialInfo(selectEl) {
+    const tr = selectEl.closest('tr');
+    const materialId = selectEl.value;
+    if (!materialId) {
+        tr.querySelector('.spec-input').value = '';
+        tr.querySelector('.unit-input').value = '';
+        return;
+    }
+
+    const mat = materialsData.find(m => m.id == materialId);
+    if (mat) {
+        tr.querySelector('.spec-input').value = mat.specification || '';
+        tr.querySelector('.unit-input').value = mat.unit || '';
+    }
+}
+
+function addItemRow() {
+    const tbody = document.getElementById('itemsTable').querySelector('tbody');
+    const rows = tbody.querySelectorAll('tr');
+    const newIndex = rows.length + 1;
+
+    let html = `<tr data-row-index="${newIndex}">`;
+    html += `<td class="text-center">${newIndex}</td>`;
+    html += `<td><select class="form-select form-select-sm" name="material_id[]" required onchange="updateMaterialInfo(this)">`;
+    html += `<option value="">-- 选择物资 --</option>`;
+    materialsData.forEach(m => {
+        html += `<option value="${m.id}">${m.name}</option>`;
+    });
+    html += `</select></td>`;
+    html += `<td><input type="text" class="form-control form-control-sm spec-input" readonly></td>`;
+    html += `<td><input type="text" class="form-control form-control-sm unit-input" readonly></td>`;
+    html += `<td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end" name="quantity[]" required></td>`;
+    html += `<td><input type="text" class="form-control form-control-sm" name="purpose[]" placeholder="用途说明"></td>`;
+    html += `<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItemRow(this)"><i class="bi bi-trash"></i></button></td>`;
+    html += `</tr>`;
+
+    tbody.insertAdjacentHTML('beforeend', html);
+}
+
+function removeItemRow(btn) {
+    const tbody = document.getElementById('itemsTable').querySelector('tbody');
+    const rows = tbody.querySelectorAll('tr');
+    if (rows.length <= 1) {
+        alert('至少保留一条明细');
+        return;
+    }
+    btn.closest('tr').remove();
+    rows.forEach((row, idx) => {
+        row.querySelector('td:first-child').textContent = idx + 1;
+        row.dataset.rowIndex = idx + 1;
+    });
+}
+</script>
+{% endblock %}

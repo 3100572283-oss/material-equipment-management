@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}采购申请 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>采购申请</h5>
+        <div>
+            <div class="btn-group" role="group">
+                <a href="{{ url_for('purchase_requisition.index', view_mode='my') }}" class="btn btn-sm {% if view_mode == 'my' %}btn-primary{% else %}btn-outline-secondary{% endif %}">我的申请</a>
+                {% if current_user.is_admin() %}
+                <a href="{{ url_for('purchase_requisition.index', view_mode='all') }}" class="btn btn-sm {% if view_mode == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">全部申请</a>
+                {% endif %}
+            </div>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('purchase_requisition.create') }}" class="btn btn-primary btn-sm ms-2"><i class="bi bi-plus-lg me-1"></i>新增申请</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('purchase_requisition.index') }}">
+            <input type="hidden" name="view_mode" value="{{ view_mode }}">
+            <div class="col-md-2">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索单号/部门/申请人" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    {% for label, value in get_dict_items('pr_status') %}
+                    <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="apply_dept">
+                    <option value="">全部部门</option>
+                    {% for dept in dept_list %}
+                    <option value="{{ dept }}" {% if apply_dept == dept %}selected{% endif %}>{{ dept }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-1">
+                <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from or '' }}">
+            </div>
+            <div class="col-md-1">
+                <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to or '' }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('purchase_requisition.index', view_mode=view_mode) }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <!-- 批量操作栏 -->
+        <div class="batch-toolbar mb-2 py-2 px-3 bg-light rounded d-none" id="batchToolbar">
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-muted small"><i class="bi bi-check2-square me-1"></i>已选择 <strong id="selectedCount">0</strong> 项</span>
+                <div class="ms-auto d-flex gap-2">
+                    {% if current_user.can_edit() %}
+                    <form method="POST" action="{{ url_for('purchase_requisition.batch_delete') }}" class="d-inline" id="batchDeleteForm">
+                        <input type="hidden" name="ids" id="batchDeleteIds">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmBatchDelete()">
+                            <i class="bi bi-trash me-1"></i>批量删除
+                        </button>
+                    </form>
+                    {% endif %}
+                    <a href="#" class="btn btn-sm btn-outline-success" id="batchExportBtn">
+                        <i class="bi bi-download me-1"></i>批量导出
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">
+                        <i class="bi bi-x-lg me-1"></i>取消
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:40px;">
+                            <input type="checkbox" class="form-check-input" id="selectAll" onchange="toggleSelectAll(this)">
+                        </th>
+                        <th>申请单号</th>
+                        <th>申请部门</th>
+                        <th>申请人</th>
+                        <th>申请日期</th>
+                        <th>需求日期</th>
+                        <th>物资种类</th>
+                        <th>状态</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pr in pagination.items %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="form-check-input row-checkbox" data-id="{{ pr.id }}" onchange="updateSelection()">
+                        </td>
+                        <td><a href="{{ url_for('purchase_requisition.detail', id=pr.id) }}" class="text-decoration-none fw-bold">{{ pr.pr_no }}</a></td>
+                        <td>{{ pr.apply_dept or '-' }}</td>
+                        <td>{{ pr.apply_user or '-' }}</td>
+                        <td>{{ pr.apply_date or '-' }}</td>
+                        <td>{{ pr.demand_date or '-' }}</td>
+                        <td class="text-center">{{ pr.item_count }}</td>
+                        <td>
+                            {% if pr.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif pr.status == 'pending' %}<span class="badge bg-warning text-dark">待审批</span>
+                            {% elif pr.status == 'processing' %}<span class="badge bg-info">审批中</span>
+                            {% elif pr.status == 'passed' %}<span class="badge bg-success">已通过</span>
+                            {% elif pr.status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
+                            {% elif pr.status == 'completed' %}<span class="badge bg-primary">已完成</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('purchase_requisition.detail', id=pr.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('purchase_requisition.create', copy_from=pr.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
+                            {% if pr.status in ('draft', 'rejected') %}
+                            <a href="{{ url_for('purchase_requisition.edit', id=pr.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('purchase_requisition.delete', id=pr.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_pagination.html' %}
+    </div>
+</div>
+
+<script>
+function toggleSelectAll(el) {
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) {
+        cb.checked = el.checked;
+    });
+    updateSelection();
+}
+
+function updateSelection() {
+    var checkboxes = document.querySelectorAll('.row-checkbox');
+    var checked = document.querySelectorAll('.row-checkbox:checked');
+    var selectAll = document.getElementById('selectAll');
+    var toolbar = document.getElementById('batchToolbar');
+    var countEl = document.getElementById('selectedCount');
+    var exportBtn = document.getElementById('batchExportBtn');
+
+    var count = checked.length;
+    countEl.textContent = count;
+
+    if (count > 0) {
+        toolbar.classList.remove('d-none');
+    } else {
+        toolbar.classList.add('d-none');
+    }
+
+    if (checkboxes.length > 0 && count === checkboxes.length) {
+        selectAll.checked = true;
+        selectAll.indeterminate = false;
+    } else if (count > 0) {
+        selectAll.checked = false;
+        selectAll.indeterminate = true;
+    } else {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+    }
+
+    var ids = Array.from(checked).map(function(cb) { return cb.dataset.id; }).join(',');
+    document.getElementById('batchDeleteIds').value = ids;
+    exportBtn.href = '{{ url_for("purchase_requisition.batch_export") }}?ids=' + encodeURIComponent(ids);
+}
+
+function clearSelection() {
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = false; });
+    document.getElementById('selectAll').checked = false;
+    updateSelection();
+}
+
+function confirmBatchDelete() {
+    var count = document.querySelectorAll('.row-checkbox:checked').length;
+    if (count === 0) {
+        alert('请先选择要删除的记录');
+        return;
+    }
+    if (confirm('确定批量删除选中的 ' + count + ' 条记录？仅草稿或已驳回状态的申请可删除。')) {
+        document.getElementById('batchDeleteForm').submit();
+    }
+}
+</script>
+{% endblock %}

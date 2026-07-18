@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}部门管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.dashboard') }}">系统管理</a></li>
+            <li class="breadcrumb-item active">部门管理</li>
+        </ol>
+    </nav>
+    <a href="{{ url_for('system.create_dept') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i>新增部门
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-building me-2"></i>部门列表</h6>
+    </div>
+    <div class="card-body">
+        {% if depts %}
+        <div class="tree-view">
+            {% for dept in depts if dept.parent_id == 0 %}
+            <div class="tree-item">
+                <div class="d-flex align-items-center justify-content-between py-2 border-bottom">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-folder-fill text-primary me-2"></i>
+                        <span class="font-medium">{{ dept.dept_name }}</span>
+                        <span class="text-muted small ms-2">（{{ dept.dept_code }}）</span>
+                        {% if not dept.status %}
+                        <span class="badge bg-secondary ms-2">已禁用</span>
+                        {% endif %}
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{{ url_for('system.edit_dept', id=dept.id) }}" class="btn btn-outline-primary">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <form method="POST" action="{{ url_for('system.toggle_dept', id=dept.id) }}" class="d-inline">
+                            <button type="submit" class="btn btn-outline-secondary">
+                                <i class="bi {% if dept.status %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('system.delete_dept', id=dept.id) }}" 
+                              class="d-inline" onsubmit="return confirm('确定删除部门「{{ dept.dept_name }}」？');">
+                            <button type="submit" class="btn btn-outline-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% set children_list = dept.children.order_by(dept.__class__.sort).all() %}
+                {% if children_list %}
+                <div class="ml-4">
+                    {% for child in children_list %}
+                    <div class="tree-item">
+                        <div class="d-flex align-items-center justify-content-between py-2 border-bottom">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-folder text-primary me-2"></i>
+                                <span>{{ child.dept_name }}</span>
+                                <span class="text-muted small ms-2">（{{ child.dept_code }}）</span>
+                                {% if not child.status %}
+                                <span class="badge bg-secondary ms-2">已禁用</span>
+                                {% endif %}
+                            </div>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('system.edit_dept', id=child.id) }}" class="btn btn-outline-primary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('system.toggle_dept', id=child.id) }}" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-secondary">
+                                        <i class="bi {% if child.status %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('system.delete_dept', id=child.id) }}" 
+                                      class="d-inline" onsubmit="return confirm('确定删除部门「{{ child.dept_name }}」？');">
+                                    <button type="submit" class="btn btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        {% set sub_list = child.children.order_by(child.__class__.sort).all() %}
+                        {% if sub_list %}
+                        <div class="ml-4">
+                            {% for sub in sub_list %}
+                            <div class="tree-item">
+                                <div class="d-flex align-items-center justify-content-between py-2 border-bottom">
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-folder-open text-primary me-2"></i>
+                                        <span>{{ sub.dept_name }}</span>
+                                        <span class="text-muted small ms-2">（{{ sub.dept_code }}）</span>
+                                        {% if not sub.status %}
+                                        <span class="badge bg-secondary ms-2">已禁用</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ url_for('system.edit_dept', id=sub.id) }}" class="btn btn-outline-primary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <form method="POST" action="{{ url_for('system.toggle_dept', id=sub.id) }}" class="d-inline">
+                                            <button type="submit" class="btn btn-outline-secondary">
+                                                <i class="bi {% if sub.status %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="{{ url_for('system.delete_dept', id=sub.id) }}" 
+                                              class="d-inline" onsubmit="return confirm('确定删除部门「{{ sub.dept_name }}」？');">
+                                            <button type="submit" class="btn btn-outline-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox d-block mb-2" style="font-size:2.5rem;"></i>
+            <p>暂无部门数据</p>
+            <a href="{{ url_for('system.create_dept') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i>添加第一个部门
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

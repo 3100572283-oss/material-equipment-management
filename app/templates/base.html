@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="format-detection" content="telephone=no">
+    <title>{% block title %}物资设备管理系统{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    <script>
+        // 提前加载主题，防止页面闪烁
+        (function() {
+            var theme = localStorage.getItem('theme');
+            if (!theme) {
+                theme = 'light';
+            }
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="d-flex" id="wrapper">
+        <!-- 遮罩层 -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <!-- Sidebar -->
+        <div class="bg-light border-end" id="sidebar-wrapper">
+            <div class="sidebar-heading text-dark py-3 px-3 d-flex align-items-center">
+                <i class="bi bi-box-seam-fill me-2"></i>
+                <span class="fw-bold desktop-logo">物资设备管理</span>
+                <span class="fw-bold mobile-logo">物资管理</span>
+            </div>
+            <!-- 常用功能 -->
+            <div class="sidebar-favorites" id="sidebarFavorites">
+                <div class="sidebar-group-title favorites-title" style="cursor:default;">
+                    <span class="sidebar-group-icon"><i class="bi bi-star-fill"></i></span>
+                    <span class="sidebar-group-text">常用功能</span>
+                </div>
+                <div class="sidebar-group-items" style="display:block;" id="favoritesList">
+                    <!-- JS 动态渲染 -->
+                </div>
+            </div>
+
+            <div class="sidebar-menu" id="sidebarMenu">
+                {% set menu_groups = get_menu_groups() %}
+                {% set current_ep = request.endpoint or '' %}
+                {% for group in menu_groups %}
+                    {% set group_state = namespace(active=false) %}
+                    {% for item in group['items'] %}
+                        {% if item.active.endswith('.') %}
+                            {% if current_ep.startswith(item.active) %}{% set group_state.active = true %}{% endif %}
+                        {% else %}
+                            {% if current_ep == item.active %}{% set group_state.active = true %}{% endif %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if group.divider_before %}
+                        <div class="sidebar-group-divider"></div>
+                    {% endif %}
+                    <div class="sidebar-group {% if group_state.active %}active{% endif %}" data-group-id="{{ group.id }}">
+                        <div class="sidebar-group-title" role="button" aria-expanded="{% if group_state.active %}true{% else %}false{% endif %}">
+                            <span class="sidebar-group-icon"><i class="bi {{ group.icon }}"></i></span>
+                            <span class="sidebar-group-text">{{ group.title }}</span>
+                            <span class="sidebar-group-arrow ms-auto"><i class="bi bi-chevron-down"></i></span>
+                        </div>
+                        <div class="sidebar-group-items" {% if group_state.active %}style="display:block;"{% endif %}>
+                            {% set ns = namespace(first_section=true) %}
+                            {% for item in group['items'] %}
+                                {% if item.section %}
+                                    {% if not ns.first_section %}
+                                        <div class="sidebar-section-divider"></div>
+                                    {% endif %}
+                                    <div class="sidebar-section-title">{{ item.section }}</div>
+                                    {% set ns.first_section = false %}
+                                {% endif %}
+                                {% set item_state = namespace(active=false) %}
+                                {% if item.active.endswith('.') %}
+                                    {% if current_ep.startswith(item.active) %}{% set item_state.active = true %}{% endif %}
+                                {% else %}
+                                    {% if current_ep == item.active %}{% set item_state.active = true %}{% endif %}
+                                {% endif %}
+                                <a href="{{ url_for(item.endpoint) }}"
+                                   class="sidebar-item {% if item_state.active %}active{% endif %}"
+                                   data-endpoint="{{ item.endpoint }}"
+                                   data-title="{{ item.title }}"
+                                   data-icon="{{ group.icon }}">
+                                    {{ item.title }}
+                                    {% if item.badge and approval_pending_count is defined and approval_pending_count > 0 %}
+                                        <span class="badge bg-danger ms-auto">{{ approval_pending_count }}</span>
+                                    {% endif %}
+                                    <span class="fav-star" title="加入常用"><i class="bi bi-star"></i></span>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Page Content -->
+        <div id="page-content-wrapper" class="w-100">
+            <!-- Top Navbar -->
+            <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom sticky-top">
+                <div class="container-fluid">
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-sm btn-outline-secondary me-2" id="sidebarToggle" aria-label="菜单">
+                            <i class="bi bi-list"></i>
+                        </button>
+                        <span class="navbar-brand mb-0 h1 d-lg-none mobile-logo">
+                            <i class="bi bi-box-seam-fill me-1"></i>物资管理
+                        </span>
+                        <span class="navbar-brand mb-0 h1 d-none d-lg-inline desktop-logo">
+                            物资设备管理系统
+                        </span>
+                    </div>
+
+                    <div class="d-flex align-items-center ms-auto">
+                        <!-- Global Search -->
+                        <div class="dropdown me-2 d-none d-lg-block" style="width:300px;">
+                            <div class="position-relative">
+                                <input type="text" class="form-control form-control-sm" id="globalSearchInput"
+                                       placeholder="搜索物资、供应商、单据..." autocomplete="off">
+                                <i class="bi bi-search position-absolute end-0 top-50 translate-middle-y me-2 text-muted"></i>
+                            </div>
+                            <div class="dropdown-menu dropdown-menu-end w-100 p-0 shadow-lg" id="globalSearchResults"
+                                 style="display:none; max-height:400px; overflow-y:auto; min-width:400px;">
+                                <div class="text-center text-muted py-3">
+                                    <small>输入关键词搜索...</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Project Switcher -->
+                        <div class="dropdown me-2">
+                            <button class="btn btn-outline-primary btn-sm dropdown-toggle project-name-mobile" type="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-building me-1"></i>
+                                <span class="d-none d-md-inline">{{ session.get('current_project_name', '请选择项目') }}</span>
+                                <span class="d-md-none">{{ session.get('current_project_name', '选择项目') }}</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><h6 class="dropdown-header">切换项目</h6></li>
+                                {% for p in all_projects %}
+                                <li><a class="dropdown-item {% if p.id == current_project_id %}active{% endif %}" href="{{ url_for('main.set_project', project_id=p.id) }}">{{ p.name }}</a></li>
+                                {% endfor %}
+                                {% if not all_projects %}
+                                <li><span class="dropdown-item-text text-muted">暂无项目</span></li>
+                                {% endif %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ url_for('project.index') }}"><i class="bi bi-gear me-1"></i>管理项目</a></li>
+                            </ul>
+                        </div>
+
+                        <!-- Date Display - 桌面端显示 -->
+                        <span class="navbar-text me-3 d-none d-md-block" id="currentDate"></span>
+
+                        <!-- Density Toggle -->
+                        <div class="dropdown me-2">
+                            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" id="densityToggle">
+                                <i class="bi bi-grid-3x3-gap me-1"></i><span class="d-none d-md-inline">显示密度</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" id="densityMenu">
+                                <li><h6 class="dropdown-header">显示密度</h6></li>
+                                <li><a class="dropdown-item" href="#" data-density="compact"><i class="bi bi-grid-3x3-gap-fill me-1"></i>紧凑模式</a></li>
+                                <li><a class="dropdown-item" href="#" data-density="standard"><i class="bi bi-grid me-1"></i>标准模式</a></li>
+                            </ul>
+                        </div>
+
+                        <!-- Announcement Bell -->
+                        {% if current_user.is_authenticated %}
+                        {% set total_alerts = (unread_popup_announcements|length) + (expiry_alert_count or 0) %}
+                        <div class="dropdown me-2">
+                            <button class="btn btn-outline-secondary btn-sm position-relative" type="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-bell"></i>
+                                {% if total_alerts > 0 %}
+                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:.6rem;">
+                                    {{ total_alerts }}
+                                </span>
+                                {% endif %}
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" style="min-width:320px;">
+                                <li><h6 class="dropdown-header"><i class="bi bi-bell me-1"></i>消息提醒</h6></li>
+                                {% if expiry_alert_count and expiry_alert_count > 0 %}
+                                <li>
+                                    <a class="dropdown-item" href="#expiry-alerts">
+                                        <div class="d-flex align-items-center">
+                                            <div class="bg-warning text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width:36px;height:36px;">
+                                                <i class="bi bi-exclamation-triangle"></i>
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold">到期提醒</div>
+                                                <small class="text-muted">{{ expiry_alert_count }} 项即将到期</small>
+                                            </div>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                {% endif %}
+                                {% if active_announcements %}
+                                <li><h6 class="dropdown-header">系统公告</h6></li>
+                                {% for ann in active_announcements[:3] %}
+                                <li>
+                                    <a class="dropdown-item" href="#" onclick="showAnnouncementDetail({{ ann.id }}); return false;">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <span class="{% if ann.is_popup and ann.id in unread_popup_announcements|map(attribute='id') %}fw-bold{% endif %}">
+                                                {% if ann.type == 'important' %}<span class="badge bg-danger me-1">重要</span>
+                                                {% elif ann.type == 'maintenance' %}<span class="badge bg-warning me-1">维护</span>
+                                                {% endif %}
+                                                {{ ann.title }}
+                                            </span>
+                                        </div>
+                                        <small class="text-muted d-block mt-1">{{ ann.publish_time.strftime('%m-%d %H:%M') }}</small>
+                                    </a>
+                                </li>
+                                {% endfor %}
+                                {% endif %}
+                                {% if not active_announcements and expiry_alert_count == 0 %}
+                                <li><span class="dropdown-item-text text-muted text-center"><small>暂无新消息</small></span></li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                        {% endif %}
+
+                        <!-- Theme Toggle -->
+                        <button class="btn btn-icon btn-outline-secondary me-2" id="themeToggle" title="切换主题">
+                            <i class="bi bi-moon-stars" id="themeIcon"></i>
+                        </button>
+
+                        <!-- User Dropdown -->
+                        <div class="dropdown">
+                            <button class="btn btn-light dropdown-toggle d-flex align-items-center" type="button" data-bs-toggle="dropdown">
+                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width:32px;height:32px;font-size:14px;">
+                                    {{ current_user.name[0] if current_user.name else current_user.username[0] }}
+                                </div>
+                                <span class="d-none d-md-inline">{{ current_user.name or current_user.username }}</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><span class="dropdown-item-text text-muted">角色：{{ current_user.get_role_name() }}</span></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ url_for('profile.settings') }}"><i class="bi bi-person-gear me-1"></i>个人设置</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('auth.change_password') }}"><i class="bi bi-key me-1"></i>修改密码</a></li>
+                                <li><a class="dropdown-item text-danger" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right me-1"></i>退出登录</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Flash Messages -->
+            <div class="container-fluid py-3">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <!-- 公告横幅 -->
+                {% if current_user.is_authenticated and active_announcements %}
+                {% set latest_ann = active_announcements[0] %}
+                {% if latest_ann.type == 'important' %}
+                <div class="alert alert-danger mb-3 py-2 d-flex align-items-center" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <div class="flex-grow-1">
+                        <strong>【重要公告】{{ latest_ann.title }}</strong>
+                        <a href="#" onclick="showAnnouncementDetail({{ latest_ann.id }}); return false;" class="alert-link ms-2">查看详情</a>
+                    </div>
+                    <button type="button" class="btn-close btn-close-sm ms-2" onclick="this.parentElement.style.display='none'"></button>
+                </div>
+                {% elif latest_ann.type == 'maintenance' %}
+                <div class="alert alert-warning mb-3 py-2 d-flex align-items-center" role="alert">
+                    <i class="bi bi-tools me-2"></i>
+                    <div class="flex-grow-1">
+                        <strong>【维护通知】{{ latest_ann.title }}</strong>
+                        <a href="#" onclick="showAnnouncementDetail({{ latest_ann.id }}); return false;" class="alert-link ms-2">查看详情</a>
+                    </div>
+                    <button type="button" class="btn-close btn-close-sm ms-2" onclick="this.parentElement.style.display='none'"></button>
+                </div>
+                {% elif latest_ann.type == 'notice' %}
+                <div class="alert alert-info mb-3 py-2 d-flex align-items-center" role="alert">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <div class="flex-grow-1">
+                        <strong>【系统通知】{{ latest_ann.title }}</strong>
+                        <a href="#" onclick="showAnnouncementDetail({{ latest_ann.id }}); return false;" class="alert-link ms-2">查看详情</a>
+                    </div>
+                    <button type="button" class="btn-close btn-close-sm ms-2" onclick="this.parentElement.style.display='none'"></button>
+                </div>
+                {% endif %}
+                {% endif %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <!-- AI助手悬浮球 -->
+    <button id="aiFloatButton" class="ai-float-btn" style="display:none;" aria-label="AI助手">
+        <i class="bi bi-robot"></i>
+    </button>
+
+    <!-- AI助手聊天窗口 -->
+    <div id="aiChatPanel" class="ai-chat-panel">
+        <div class="ai-chat-header">
+            <div class="d-flex align-items-center">
+                <div class="ai-avatar me-2"><i class="bi bi-robot"></i></div>
+                <span class="ai-title">AI助手</span>
+            </div>
+            <button id="aiCloseBtn" class="btn btn-sm btn-close" aria-label="关闭"></button>
+        </div>
+        <div id="aiChatMessages" class="ai-chat-messages"></div>
+        <div class="ai-quick-buttons" id="aiQuickButtons">
+            <button class="ai-quick-btn" data-msg="查库存">查库存</button>
+            <button class="ai-quick-btn" data-msg="待我审批">待我审批</button>
+            <button class="ai-quick-btn" data-msg="本月入库">本月入库</button>
+            <button class="ai-quick-btn" data-msg="合同预警">合同预警</button>
+        </div>
+        <div class="ai-chat-input-area">
+            <input type="text" id="aiInput" class="ai-input" placeholder="输入您的问题..." autocomplete="off">
+            <button id="aiSendBtn" class="ai-send-btn">
+                <i class="bi bi-send"></i>
+            </button>
+        </div>
+    </div>
+    <!-- AI聊天窗口遮罩 -->
+    <div id="aiChatOverlay" class="ai-chat-overlay" style="display:none;"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    // ========== 主题切换 ==========
+    (function() {
+        function getTheme() {
+            return localStorage.getItem('theme') || 'light';
+        }
+        function setTheme(theme) {
+            localStorage.setItem('theme', theme);
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+            }
+            updateIcon(theme);
+        }
+        function updateIcon(theme) {
+            var icon = document.getElementById('themeIcon');
+            if (icon) {
+                icon.className = theme === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+            }
+        }
+        // 页面加载时更新图标
+        document.addEventListener('DOMContentLoaded', function() {
+            updateIcon(getTheme());
+            var btn = document.getElementById('themeToggle');
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    var next = getTheme() === 'dark' ? 'light' : 'dark';
+                    setTheme(next);
+                });
+            }
+        });
+    })();
+    </script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    // ========== 数字千分位格式化工具 ==========
+    window.fmtNumber = function(value, decimals) {
+        decimals = (decimals === undefined || decimals === null) ? 2 : decimals;
+        if (value === null || value === undefined || value === '') return '';
+        var num = parseFloat(value);
+        if (isNaN(num)) return String(value);
+        return num.toLocaleString('zh-CN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    };
+    window.fmtAmount = function(value) {
+        return window.fmtNumber(value, 2);
+    };
+    // 页面加载后自动格式化带 class 的数字
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.fmt-number').forEach(function(el) {
+            var dec = parseInt(el.getAttribute('data-decimals')) || 2;
+            var raw = el.getAttribute('data-raw');
+            var val = raw !== null ? raw : el.textContent;
+            if (val && val.trim() !== '') {
+                el.textContent = window.fmtNumber(val, dec);
+            }
+        });
+        document.querySelectorAll('.fmt-amount').forEach(function(el) {
+            var raw = el.getAttribute('data-raw');
+            var val = raw !== null ? raw : el.textContent;
+            if (val && val.trim() !== '') {
+                el.textContent = window.fmtAmount(val);
+            }
+        });
+    });
+
+    // ========== 全局搜索 ==========
+    (function() {
+        var searchInput = document.getElementById('globalSearchInput');
+        var searchResults = document.getElementById('globalSearchResults');
+        if (!searchInput || !searchResults) return;
+
+        var debounceTimer = null;
+
+        searchInput.addEventListener('focus', function() {
+            searchResults.style.display = 'block';
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                searchResults.style.display = 'none';
+            }
+        });
+
+        searchInput.addEventListener('input', function() {
+            var keyword = this.value.trim();
+            clearTimeout(debounceTimer);
+            if (keyword.length < 1) {
+                searchResults.innerHTML = '<div class="text-center text-muted py-3"><small>输入关键词搜索...</small></div>';
+                return;
+            }
+            debounceTimer = setTimeout(function() {
+                fetch('/api/global_search?q=' + encodeURIComponent(keyword))
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var html = '';
+                        var hasResult = false;
+                        var categories = [
+                            { key: 'materials', label: '物资', icon: 'box' },
+                            { key: 'suppliers', label: '供应商', icon: 'building' },
+                            { key: 'projects', label: '项目', icon: 'folder' },
+                            { key: 'stock_ins', label: '入库单', icon: 'arrow-down-circle' },
+                            { key: 'stock_outs', label: '出库单', icon: 'arrow-up-circle' },
+                            { key: 'contracts', label: '合同', icon: 'file-text' },
+                            { key: 'reconciliations', label: '对账单', icon: 'check2-square' },
+                            { key: 'payments', label: '付款单', icon: 'credit-card' }
+                        ];
+                        categories.forEach(function(cat) {
+                            var items = data[cat.key] || [];
+                            if (items.length > 0) {
+                                hasResult = true;
+                                html += '<div class="dropdown-header small text-bg-light py-2 px-3"><i class="bi bi-' + cat.icon + ' me-1"></i>' + cat.label + '</div>';
+                                items.slice(0, 5).forEach(function(item) {
+                                    html += '<a class="dropdown-item py-2" href="' + item.url + '">' +
+                                        '<div class="d-flex justify-content-between align-items-center">' +
+                                        '<span>' + item.name + '</span>' +
+                                        (item.code ? '<small class="text-muted ms-2">' + item.code + '</small>' : '') +
+                                        '</div>' +
+                                        '</a>';
+                                });
+                            }
+                        });
+                        if (!hasResult) {
+                            html = '<div class="text-center text-muted py-3"><small>未找到匹配结果</small></div>';
+                        }
+                        searchResults.innerHTML = html;
+                    })
+                    .catch(function() {
+                        searchResults.innerHTML = '<div class="text-center text-muted py-3"><small>搜索失败，请重试</small></div>';
+                    });
+            }, 300);
+        });
+
+        // Ctrl+K 快捷键聚焦搜索框
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                searchInput.focus();
+                searchInput.select();
+            }
+        });
+    })();
+    </script>
+
+    <!-- 公告详情弹窗 -->
+    <div class="modal fade" id="announcementModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" id="annModalHeader">
+                    <h5 class="modal-title" id="annModalTitle">公告</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="annModalBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">我知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ========== 系统公告 ==========
+    var _announcements = {{ active_announcements|tojson if active_announcements else '[]'|safe }};
+    var _unreadPopupIds = {{ (unread_popup_announcements|map(attribute='id')|list) if unread_popup_announcements else '[]'|safe }};
+
+    window.showAnnouncementDetail = function(id) {
+        var ann = _announcements.find(function(a) { return a.id === id; });
+        if (!ann) return;
+        var modal = new bootstrap.Modal(document.getElementById('announcementModal'));
+        var header = document.getElementById('annModalHeader');
+        var title = document.getElementById('annModalTitle');
+        var body = document.getElementById('annModalBody');
+
+        // 设置样式
+        header.className = 'modal-header';
+        if (ann.type === 'important') {
+            header.classList.add('bg-danger', 'text-white');
+            title.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-2"></i>' + ann.title;
+        } else if (ann.type === 'maintenance') {
+            header.classList.add('bg-warning');
+            title.innerHTML = '<i class="bi bi-tools me-2"></i>' + ann.title;
+        } else {
+            header.classList.add('bg-info', 'text-white');
+            title.innerHTML = '<i class="bi bi-info-circle me-2"></i>' + ann.title;
+        }
+
+        var publishTime = ann.publish_time ? ann.publish_time.replace('T', ' ').substring(0, 16) : '';
+        body.innerHTML = '<div class="mb-2"><small class="text-muted">发布时间：' + publishTime + '</small></div>' +
+                         '<div style="white-space:pre-wrap;line-height:1.8;">' + (ann.content || '') + '</div>';
+
+        modal.show();
+
+        // 标记为已读
+        if (_unreadPopupIds.indexOf(ann.id) >= 0) {
+            fetch('/api/announcement/' + ann.id + '/read', { method: 'POST' });
+            _unreadPopupIds = _unreadPopupIds.filter(function(x) { return x !== ann.id; });
+            // 更新小红点
+            var badge = document.querySelector('.navbar .badge.bg-danger');
+            if (badge) {
+                if (_unreadPopupIds.length === 0) {
+                    badge.style.display = 'none';
+                } else {
+                    badge.textContent = _unreadPopupIds.length;
+                }
+            }
+        }
+    };
+
+    // 页面加载后自动弹出未读的重要公告
+    document.addEventListener('DOMContentLoaded', function() {
+        if (_unreadPopupIds && _unreadPopupIds.length > 0) {
+            setTimeout(function() {
+                window.showAnnouncementDetail(_unreadPopupIds[0]);
+            }, 500);
+        }
+    });
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

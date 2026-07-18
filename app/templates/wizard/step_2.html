@@ -1,0 +1,40 @@
+{% extends "wizard/base_wizard.html" %}
+{% block title %}创建管理员账号{% endblock %}
+{% block content %}
+{% if errors %}
+<div class="alert alert-danger">
+    {% for err in errors %}
+    <div>{{ err }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+<div class="mb-4">
+    <h5 class="mb-3"><i class="bi bi-person-badge me-2 text-primary"></i>创建超级管理员账号</h5>
+    <p class="text-muted small">超级管理员拥有系统全部权限，请妥善保管账号信息。</p>
+</div>
+<form method="POST" action="{{ url_for('main.wizard_submit') }}" id="adminForm">
+    <input type="hidden" name="action" value="admin">
+    <div class="mb-3">
+        <label class="form-label">用户名 <span class="text-danger">*</span></label>
+        <input type="text" class="form-control" name="username" value="{{ username or '' }}" placeholder="请输入用户名" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">姓名 <span class="text-danger">*</span></label>
+        <input type="text" class="form-control" name="name" value="{{ name or '' }}" placeholder="请输入姓名" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">密码 <span class="text-danger">*</span></label>
+        <input type="password" class="form-control" name="password" placeholder="至少6位字符" required minlength="6">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">确认密码 <span class="text-danger">*</span></label>
+        <input type="password" class="form-control" name="confirm" placeholder="再次输入密码" required minlength="6">
+    </div>
+</form>
+{% endblock %}
+{% block footer %}
+<div class="wizard-footer">
+    <a href="{{ url_for('main.wizard', step='1') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>上一步</a>
+    <button type="submit" form="adminForm" class="btn btn-primary">下一步 <i class="bi bi-arrow-right ms-1"></i></button>
+</div>
+{% endblock %}

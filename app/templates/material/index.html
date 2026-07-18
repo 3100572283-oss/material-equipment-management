@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}常用材料表 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-boxes me-2"></i>常用材料表</h5>
+        <div>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('material.download_template') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>模板下载</a>
+            <button class="btn btn-outline-info btn-sm ms-2" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-1"></i>批量导入</button>
+            <a href="{{ url_for('material.create') }}" class="btn btn-primary btn-sm ms-2"><i class="bi bi-plus-lg me-1"></i>新增材料</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('material.index') }}" id="searchForm">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索物资名称/编码" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" id="filterCatL1">
+                    <option value="">一级分类</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" id="filterCatL2" disabled>
+                    <option value="">二级分类</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" id="filterCatL3" disabled name="category_id">
+                    <option value="">三级分类</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('material.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>物资编码</th>
+                        <th>物资名称</th>
+                        <th>规格型号</th>
+                        <th>物资分类</th>
+                        <th>单位</th>
+                        <th>备注</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in pagination.items %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ m.code or '-' }}</span></td>
+                        <td>{{ m.name }}</td>
+                        <td>{{ m.specification or '-' }}</td>
+                        <td>
+                            {% if m.category %}
+                                <span class="badge bg-light text-dark">{{ m.category.category_code or '-' }}</span>
+                                {{ m.category.name }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ m.unit }}</td>
+                        <td>{{ m.remark or '-' }}</td>
+                        <td class="text-end">
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('material.qr_generate', material_id=m.id) }}" target="_blank" class="btn btn-sm btn-outline-info" title="生成二维码"><i class="bi bi-qr-code"></i></a>
+                            <a href="{{ url_for('material.edit', id=m.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('material.delete', id=m.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <nav>
+            <ul class="pagination pagination-sm justify-content-center">
+                {% if pagination.has_prev %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('material.index', page=pagination.prev_num, keyword=keyword, category_id=category_id) }}">上一页</a></li>
+                {% endif %}
+                {% for p in pagination.iter_pages() %}
+                    {% if p %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('material.index', page=p, keyword=keyword, category_id=category_id) }}">{{ p }}</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+                {% if pagination.has_next %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('material.index', page=pagination.next_num, keyword=keyword, category_id=category_id) }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+{% if current_user.can_edit() %}
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('material.import_excel') }}" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title">Excel批量导入</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        导入要求：表头为「物资名称、规格型号、物资分类、单位、备注」，
+                        <strong>物资分类列必须填写三级分类编码</strong>（如 MC010601），
+                        物资编码将由系统自动生成。
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">选择Excel文件</label>
+                        <input type="file" class="form-control" name="file" accept=".xlsx,.xls" required>
+                        <div class="form-text">请先下载标准模板，按模板格式填写后上传。</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">导入</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var API_BASE = '{{ url_for("category.index") }}'.replace(/\/$/, '');
+    var filterL1 = document.getElementById('filterCatL1');
+    var filterL2 = document.getElementById('filterCatL2');
+    var filterL3 = document.getElementById('filterCatL3');
+    var initialCategoryId = {{ category_id or 'null' }};
+
+    function fillSelect(selectEl, items, placeholder) {
+        selectEl.innerHTML = '';
+        var opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = placeholder || '-- 请选择 --';
+        selectEl.appendChild(opt);
+        items.forEach(function (item) {
+            var o = document.createElement('option');
+            o.value = item.id;
+            o.textContent = item.category_code + ' / ' + item.name;
+            selectEl.appendChild(o);
+        });
+    }
+
+    function loadChildren(parentId, selectEl, placeholder) {
+        return fetch(API_BASE + '/api/children/' + parentId)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                fillSelect(selectEl, data, placeholder);
+                return data;
+            });
+    }
+
+    filterL1.addEventListener('change', function () {
+        var pid = this.value;
+        filterL3.innerHTML = '<option value="">三级分类</option>';
+        filterL3.disabled = true;
+        if (!pid) {
+            filterL2.innerHTML = '<option value="">二级分类</option>';
+            filterL2.disabled = true;
+            return;
+        }
+        filterL2.disabled = false;
+        loadChildren(pid, filterL2, '二级分类');
+    });
+
+    filterL2.addEventListener('change', function () {
+        var pid = this.value;
+        if (!pid) {
+            filterL3.innerHTML = '<option value="">三级分类</option>';
+            filterL3.disabled = true;
+            return;
+        }
+        filterL3.disabled = false;
+        loadChildren(pid, filterL3, '三级分类');
+    });
+
+    // 初始化：加载一级分类
+    loadChildren(0, filterL1, '一级分类').then(function () {
+        if (!initialCategoryId) return;
+        // 编辑模式：根据 category_id 反查父级链并回显
+        fetch(API_BASE + '/api/tree')
+            .then(function (res) { return res.json(); })
+            .then(function (tree) {
+                var chain = findChain(tree, initialCategoryId);
+                if (!chain) return;
+                filterL1.value = chain.l1;
+                filterL1.dispatchEvent(new Event('change'));
+                loadChildren(chain.l1, filterL2, '二级分类').then(function () {
+                    filterL2.value = chain.l2;
+                    filterL2.dispatchEvent(new Event('change'));
+                    loadChildren(chain.l2, filterL3, '三级分类').then(function () {
+                        filterL3.value = chain.l3;
+                    });
+                });
+            });
+    });
+
+    function findChain(tree, targetId) {
+        for (var i = 0; i < tree.length; i++) {
+            var l1 = tree[i];
+            for (var j = 0; j < (l1.children || []).length; j++) {
+                var l2 = l1.children[j];
+                for (var k = 0; k < (l2.children || []).length; k++) {
+                    var l3 = l2.children[k];
+                    if (l3.id == targetId) {
+                        return { l1: l1.id, l2: l2.id, l3: l3.id };
+                    }
+                }
+            }
+        }
+        return null;
+    }
+})();
+</script>
+{% endblock %}

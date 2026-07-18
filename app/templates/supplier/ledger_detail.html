@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}{{ supplier.name }} - 往来台账明细{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>{{ supplier.name }} - 往来台账明细</h5>
+        <div>
+            <a href="{{ url_for('supplier.supplier_ledger_export', id=supplier.id) }}?date_from={{ date_from }}&date_to={{ date_to }}" class="btn btn-sm btn-outline-success">
+                <i class="bi bi-download me-1"></i>导出Excel
+            </a>
+            <a href="{{ url_for('supplier.ledger') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>返回
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('supplier.supplier_ledger_detail', id=supplier.id) }}">
+            <div class="col-md-2">
+                <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from or '' }}" title="开始日期">
+            </div>
+            <div class="col-md-2">
+                <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to or '' }}" title="结束日期">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 查询</button>
+                <a href="{{ url_for('supplier.supplier_ledger_detail', id=supplier.id) }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="row g-2 mb-3">
+            <div class="col-md-2">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">合同总额</div>
+                    <div class="fw-bold text-primary">{{ '%.2f'|format(summary.contract_amount) }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">入库金额</div>
+                    <div class="fw-bold text-info">{{ '%.2f'|format(summary.stock_in_amount) }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">对账金额</div>
+                    <div class="fw-bold text-success">{{ '%.2f'|format(summary.recon_amount) }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">开票金额</div>
+                    <div class="fw-bold text-warning">{{ '%.2f'|format(summary.invoice_amount) }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">付款金额</div>
+                    <div class="fw-bold text-secondary">{{ '%.2f'|format(summary.payment_amount) }}</div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="border rounded p-2 text-center bg-light">
+                    <div class="text-muted small">欠款金额</div>
+                    <div class="fw-bold text-danger">{{ '%.2f'|format(summary.owed_amount) }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>日期</th>
+                        <th>类型</th>
+                        <th>单据号</th>
+                        <th>摘要</th>
+                        <th class="text-end">借方金额</th>
+                        <th class="text-end">贷方金额</th>
+                        <th class="text-end">余额</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in records %}
+                    <tr>
+                        <td>{{ r.date or '-' }}</td>
+                        <td>
+                            {% if r.type_code == 'stock_in' %}<span class="badge bg-primary">{{ r.type }}</span>
+                            {% elif r.type_code == 'reconciliation' %}<span class="badge bg-success">{{ r.type }}</span>
+                            {% elif r.type_code == 'invoice' %}<span class="badge bg-warning text-dark">{{ r.type }}</span>
+                            {% elif r.type_code == 'payment' %}<span class="badge bg-secondary">{{ r.type }}</span>
+                            {% else %}<span class="badge bg-info">{{ r.type }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-bold">{{ r.doc_no or '-' }}</td>
+                        <td>{{ r.description or '-' }}</td>
+                        <td class="text-end {% if r.debit > 0 %}text-primary{% endif %}">{% if r.debit > 0 %}{{ '%.2f'|format(r.debit) }}{% else %}-{% endif %}</td>
+                        <td class="text-end {% if r.credit > 0 %}text-danger{% endif %}">{% if r.credit > 0 %}{{ '%.2f'|format(r.credit) }}{% else %}-{% endif %}</td>
+                        <td class="text-end fw-bold {% if r.balance > 0 %}text-danger{% elif r.balance < 0 %}text-success{% endif %}">{{ '%.2f'|format(r.balance) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted py-4">暂无往来记录</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if records %}
+                <tfoot>
+                    <tr class="table-light fw-bold">
+                        <td colspan="4" class="text-end">合计</td>
+                        <td class="text-end text-primary">{{ '%.2f'|format(total_debit) }}</td>
+                        <td class="text-end text-danger">{{ '%.2f'|format(total_credit) }}</td>
+                        <td class="text-end {% if records[-1].balance > 0 %}text-danger{% elif records[-1].balance < 0 %}text-success{% endif %}">{{ '%.2f'|format(records[-1].balance) }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,161 @@
+/* ==========================================================================
+   公共打印样式表 - print.css
+   用途: 所有业务单据打印模板统一引用,确保布局、字体、表格、签字区一致
+   引用方式: <link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}" media="print,screen">
+   覆盖方式: 单据模板可在引用后追加 <style> 进行个性化微调
+   ========================================================================== */
+
+/* 打印页面设置(默认横向,纵向模板可在引用后覆盖) */
+@page {
+    size: A4 landscape;
+    margin: 15mm;
+    @bottom-center {
+        content: "第 " counter(page) " 页 共 " counter(pages) " 页";
+        font-size: 10pt;
+    }
+}
+
+/* 打印纸张容器 */
+.print-sheet {
+    background: #fff;
+    margin: 0 auto;
+    padding: 15mm;
+    max-width: 297mm;
+    min-height: 210mm;
+    font-family: '宋体', SimSun, serif;
+}
+
+/* 屏幕预览时的额外样式,打印时自动隐藏 */
+@media screen {
+    .no-print {
+        display: block;
+    }
+    .print-sheet {
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        margin: 20px auto;
+    }
+}
+
+/* 打印时隐藏非打印元素 */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    /* 隐藏侧边栏、顶栏等框架元素,确保纯净打印 */
+    #sidebar-wrapper,
+    #sidebarOverlay,
+    .navbar,
+    .app-footer {
+        display: none !important;
+    }
+    body {
+        background: #fff !important;
+    }
+}
+
+/* 通用控制按钮区 */
+.no-print {
+    display: none;
+}
+
+/* 单据标题 */
+.print-title {
+    font-family: '黑体', SimHei, sans-serif;
+    font-size: 22pt;
+    font-weight: bold;
+    text-align: center;
+    letter-spacing: 8px;
+    margin-bottom: 20px;
+}
+
+/* 单据头(单号、打印日期) */
+.print-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    font-size: 12pt;
+}
+.print-header .left { text-align: left; }
+.print-header .right { text-align: right; }
+
+/* 单据信息表(供应商、日期等) */
+.print-info {
+    margin-bottom: 15px;
+}
+.print-info table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.print-info td {
+    padding: 6px 8px;
+    font-size: 12pt;
+    border: 1px solid #ccc;
+    vertical-align: top;
+}
+
+/* 明细主表 */
+table.print-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+}
+table.print-table th,
+table.print-table td {
+    border: 1px solid #000;
+    padding: 6px 8px;
+    font-size: 11pt;
+    text-align: center;
+}
+table.print-table th {
+    background: #f0f0f0;
+    font-weight: bold;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+table.print-table thead {
+    display: table-header-group;
+}
+table.print-table tfoot {
+    display: table-footer-group;
+}
+
+/* 金额合计区 */
+.amount-summary {
+    margin-top: 15px;
+    padding: 10px;
+    border-top: 1px solid #000;
+    font-size: 12pt;
+}
+.amount-summary .chinese {
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+/* 签字区 */
+.sign-area {
+    margin-top: 30px;
+}
+.sign-area table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.sign-area td {
+    padding: 10px 5px;
+    text-align: center;
+    font-size: 12pt;
+    vertical-align: top;
+}
+/* 默认 4 列签字区, 5 列场景可在模板内覆盖 */
+.sign-area td {
+    width: 25%;
+}
+.sign-line {
+    border-bottom: 1px solid #000;
+    min-height: 30px;
+    margin-top: 5px;
+}
+
+/* 打印按钮统一样式 */
+.no-print .btn {
+    min-width: 80px;
+}

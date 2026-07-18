@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}项目调拨 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-arrow-left-right me-2"></i>项目调拨</h5>
+        {% if current_user.can_edit() %}
+        <a href="{{ url_for('material_transfer.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新建调拨单</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('material_transfer.index') }}">
+            <div class="col-md-2">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索单号" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    <option value="draft" {% if status == 'draft' %}selected{% endif %}>草稿</option>
+                    <option value="pending" {% if status == 'pending' %}selected{% endif %}>待出库</option>
+                    <option value="out_done" {% if status == 'out_done' %}selected{% endif %}>已出库</option>
+                    <option value="completed" {% if status == 'completed' %}selected{% endif %}>已完成</option>
+                    <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>已取消</option>
+                </select>
+            </div>
+            <div class="col-md-1">
+                <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from or '' }}">
+            </div>
+            <div class="col-md-1">
+                <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to or '' }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('material_transfer.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>调拨单号</th>
+                        <th>调出项目</th>
+                        <th>调入项目</th>
+                        <th>调拨日期</th>
+                        <th>状态</th>
+                        <th>申请人</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in pagination.items %}
+                    <tr>
+                        <td><a href="{{ url_for('material_transfer.detail', id=t.id) }}" class="text-decoration-none fw-bold">{{ t.transfer_no }}</a></td>
+                        <td>{{ t.from_project.name if t.from_project else '-' }}</td>
+                        <td>{{ t.to_project.name if t.to_project else '-' }}</td>
+                        <td>{{ t.transfer_date or '-' }}</td>
+                        <td>
+                            {% if t.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif t.status == 'pending' %}<span class="badge bg-warning text-dark">待出库</span>
+                            {% elif t.status == 'out_done' %}<span class="badge bg-info">已出库</span>
+                            {% elif t.status == 'completed' %}<span class="badge bg-success">已完成</span>
+                            {% elif t.status == 'cancelled' %}<span class="badge bg-danger">已取消</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ t.applicant or '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('material_transfer.detail', id=t.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            {% if current_user.can_edit() %}
+                            {% if t.status in ('draft', 'cancelled') %}
+                            <form method="POST" action="{{ url_for('material_transfer.delete', id=t.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_pagination.html' %}
+    </div>
+</div>
+{% endblock %}

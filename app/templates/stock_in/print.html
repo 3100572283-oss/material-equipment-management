@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}物资入库单 - {{ stock_in.code }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/print.css') }}" media="print,screen">
+<style>
+    /* 入库单为横向打印,已在 print.css 中默认设置,此处可追加个性化样式 */
+</style>
+{% endblock %}
+{% block content %}
+<div class="print-sheet">
+    <div class="no-print mb-3 text-end">
+        <button class="btn btn-primary" onclick="window.print();"><i class="bi bi-printer me-1"></i>打印</button>
+        <button class="btn btn-secondary" onclick="window.close();">关闭</button>
+    </div>
+
+    <div class="print-title">物资入库单</div>
+
+    <div class="print-header">
+        <div class="left">入库单号：<strong>{{ stock_in.code }}</strong></div>
+        <div class="right">打印日期：{{ now_date or '' }}</div>
+    </div>
+
+    <div class="print-info">
+        <table>
+            <tr>
+                <td style="width:15%">供应商</td>
+                <td style="width:35%">{{ stock_in.supplier.name if stock_in.supplier else '-' }}</td>
+                <td style="width:15%">入库日期</td>
+                <td style="width:35%">{{ stock_in.stock_in_date or '-' }}</td>
+            </tr>
+            <tr>
+                <td>入库类型</td>
+                <td>{{ stock_in.stock_in_type or '-' }}</td>
+                <td>经办人</td>
+                <td>{{ stock_in.operator or '-' }}</td>
+            </tr>
+            <tr>
+                <td>合同号</td>
+                <td>{{ stock_in.contract.code if stock_in.contract else '-' }}</td>
+                <td>仓库</td>
+                <td>{{ stock_in.warehouse.name if stock_in.warehouse else '-' }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="print-table">
+        <thead>
+            <tr>
+                <th style="width:5%">序号</th>
+                <th style="width:10%">物资编码</th>
+                <th style="width:15%">物资名称</th>
+                <th style="width:14%">规格型号</th>
+                <th style="width:6%">单位</th>
+                <th style="width:8%">数量</th>
+                <th style="width:10%">单价</th>
+                <th style="width:12%">金额</th>
+                <th style="width:10%">备注</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for it in stock_in.items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ it.material.code if it.material and it.material.code else '-' }}</td>
+                <td>{{ it.material.name if it.material else '-' }}</td>
+                <td>{{ it.material.specification if it.material and it.material.specification else '-' }}</td>
+                <td>{{ it.material.unit if it.material else '-' }}</td>
+                <td>{{ it.quantity }}</td>
+                <td>{{ '%.4f'|format(it.unit_price or 0) }}</td>
+                <td>{{ '%.2f'|format(it.amount or 0) }}</td>
+                <td>{{ it.remark or '' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" style="text-align:center;">暂无明细</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="5" style="text-align:right;"><strong>合计</strong></td>
+                <td><strong>{{ stock_in.total_quantity or 0 }}</strong></td>
+                <td></td>
+                <td><strong>{{ '%.2f'|format(stock_in.total_amount or 0) }}</strong></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="amount-summary">
+        <div class="chinese">金额合计（大写）：{{ num_to_chinese(stock_in.total_amount or 0) }}</div>
+        <div>金额合计（小写）：¥{{ '%.2f'|format(stock_in.total_amount or 0) }}</div>
+    </div>
+
+    {% if stock_in.remark %}
+    <div style="margin-top:10px; font-size:12pt;">备注：{{ stock_in.remark }}</div>
+    {% endif %}
+
+    <div class="sign-area">
+        <table>
+            <tr>
+                <td>收料人：<div class="sign-line"></div></td>
+                <td>质量验收：<div class="sign-line"></div></td>
+                <td>送料人：<div class="sign-line"></div></td>
+                <td>日期：<div class="sign-line"></div></td>
+            </tr>
+        </table>
+    </div>
+</div>
+{% endblock %}

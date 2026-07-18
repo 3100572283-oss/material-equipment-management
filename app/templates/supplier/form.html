@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if supplier else '新增' }}供应商 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-md-between align-items-start align-items-md-center gap-2">
+                <h5 class="mb-0">{{ '编辑' if supplier else '新增' }}供应商</h5>
+                <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#ocrModal">
+                    <i class="bi bi-camera me-1"></i>AI识别营业执照
+                </button>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data" id="supplierForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">供应商名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name" id="name" value="{{ supplier.name if supplier else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">编码</label>
+                            <input type="text" class="form-control" name="code" id="code" value="{{ supplier.code if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">社会信用代码</label>
+                            <input type="text" class="form-control" name="credit_code" id="credit_code" value="{{ supplier.credit_code if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">法人</label>
+                            <input type="text" class="form-control" name="legal_person" id="legal_person" value="{{ supplier.legal_person if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">联系人</label>
+                            <input type="text" class="form-control" name="contact_person" value="{{ supplier.contact_person if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">电话</label>
+                            <input type="text" class="form-control" name="phone" value="{{ supplier.phone if supplier else '' }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">地址</label>
+                            <input type="text" class="form-control" name="address" id="address" value="{{ supplier.address if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">开户行</label>
+                            <input type="text" class="form-control" name="bank_name" value="{{ supplier.bank_name if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">银行账号</label>
+                            <input type="text" class="form-control" name="bank_account" value="{{ supplier.bank_account if supplier else '' }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">营业执照图片</label>
+                            <input type="file" class="form-control" name="license_image" id="license_image" accept="image/*">
+                            {% if supplier and supplier.license_image %}
+                            <div class="mt-2">
+                                <img src="{{ url_for('static', filename=supplier.license_image) }}" class="img-thumbnail" style="max-height:120px;">
+                            </div>
+                            {% endif %}
+                            <input type="hidden" name="ocr_image_path" id="ocr_image_path" value="">
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <button type="submit" class="btn btn-primary" id="submitBtn">保存</button>
+                        <a href="{{ url_for('supplier.index') }}" class="btn btn-secondary">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI识别模态框 -->
+<div class="modal fade" id="ocrModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-camera me-2"></i>AI识别营业执照</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">上传营业执照图片</label>
+                    <input type="file" class="form-control" id="ocrImage" accept="image/*">
+                </div>
+                <div id="ocrResult" style="display:none;">
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle me-1"></i>识别结果仅供参考，请核对后确认
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">企业名称</label>
+                            <input type="text" class="form-control form-control-sm" id="ocr_name" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">统一社会信用代码</label>
+                            <input type="text" class="form-control form-control-sm" id="ocr_credit_code" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">法定代表人</label>
+                            <input type="text" class="form-control form-control-sm" id="ocr_legal_person" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">地址</label>
+                            <input type="text" class="form-control form-control-sm" id="ocr_address" readonly>
+                        </div>
+                    </div>
+                </div>
+                <div id="ocrLoading" style="display:none;" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div class="mt-2">正在识别中...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-info" id="btnOcr" disabled><i class="bi bi-cpu me-1"></i>开始识别</button>
+                <button type="button" class="btn btn-primary" id="btnApply" style="display:none;"><i class="bi bi-check-lg me-1"></i>应用到表单</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.getElementById('ocrImage').addEventListener('change', function() {
+    document.getElementById('btnOcr').disabled = !this.files.length;
+});
+
+document.getElementById('btnOcr').addEventListener('click', async function() {
+    const file = document.getElementById('ocrImage').files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    document.getElementById('ocrLoading').style.display = 'block';
+    document.getElementById('ocrResult').style.display = 'none';
+    this.disabled = true;
+
+    try {
+        const resp = await fetch('/supplier/api/ocr_license', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+
+        document.getElementById('ocrLoading').style.display = 'none';
+
+        if (data.success) {
+            document.getElementById('ocrResult').style.display = 'block';
+            document.getElementById('ocr_name').value = data.data.name || '';
+            document.getElementById('ocr_credit_code').value = data.data.credit_code || '';
+            document.getElementById('ocr_legal_person').value = data.data.legal_person || '';
+            document.getElementById('ocr_address').value = data.data.address || '';
+            document.getElementById('ocr_image_path').value = data.image_path || '';
+            document.getElementById('btnApply').style.display = 'inline-block';
+        } else {
+            alert('识别失败：' + data.message);
+            if (data.image_path) {
+                document.getElementById('ocr_image_path').value = data.image_path;
+            }
+        }
+    } catch (e) {
+        document.getElementById('ocrLoading').style.display = 'none';
+        alert('识别请求失败，请稍后重试');
+    }
+
+    this.disabled = false;
+});
+
+document.getElementById('btnApply').addEventListener('click', function() {
+    document.getElementById('name').value = document.getElementById('ocr_name').value;
+    document.getElementById('credit_code').value = document.getElementById('ocr_credit_code').value;
+    document.getElementById('legal_person').value = document.getElementById('ocr_legal_person').value;
+    document.getElementById('address').value = document.getElementById('ocr_address').value;
+    bootstrap.Modal.getInstance(document.getElementById('ocrModal')).hide();
+});
+
+// 防止重复提交
+document.getElementById('supplierForm').addEventListener('submit', function() {
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中...';
+});
+</script>
+{% endblock %}

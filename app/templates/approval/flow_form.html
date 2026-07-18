@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑流程' if flow else '新增流程' }} - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-diagram-2 me-2"></i>{{ '编辑流程' if flow else '新增审批流程' }}</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">流程名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="flow_name" required
+                               value="{{ flow.flow_name if flow else '' }}"
+                               placeholder="例如：合同审批流程">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">流程编码</label>
+                        <input type="text" class="form-control" name="flow_code"
+                               value="{{ flow.flow_code if flow else '' }}"
+                               placeholder="留空将根据业务类型自动生成，如 contract_approval">
+                        <div class="form-text">唯一标识，创建后不建议修改</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">业务类型 <span class="text-danger">*</span></label>
+                        <select class="form-select" name="biz_type" id="bizType" required>
+                            <option value="">请选择业务类型</option>
+                            <option value="contract" {% if flow and flow.biz_type == 'contract' %}selected{% endif %}>合同</option>
+                            <option value="stockin" {% if flow and flow.biz_type == 'stockin' %}selected{% endif %}>入库单</option>
+                            <option value="stockout" {% if flow and flow.biz_type == 'stockout' %}selected{% endif %}>出库单</option>
+                            <option value="reconcile" {% if flow and flow.biz_type == 'reconcile' %}selected{% endif %}>对账单</option>
+                            <option value="payment" {% if flow and flow.biz_type == 'payment' %}selected{% endif %}>付款单</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">说明</label>
+                        <textarea class="form-control" name="description" rows="3"
+                                  placeholder="流程用途说明（选填）">{{ flow.description if flow else '' }}</textarea>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>保存
+                        </button>
+                        <a href="{{ url_for('approval.flows') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left me-1"></i>返回
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+// 根据业务类型自动建议流程编码
+document.getElementById('bizType').addEventListener('change', function() {
+    var codeInput = document.querySelector('input[name="flow_code"]');
+    if (!codeInput.value && this.value) {
+        codeInput.value = this.value + '_approval';
+    }
+});
+</script>
+{% endblock %}

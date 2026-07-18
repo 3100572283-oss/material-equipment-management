@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}结账校验 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-check2-circle me-2"></i>{{ period }} 结账前校验</h5>
+        <a href="{{ url_for('period_close.index') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>返回
+        </a>
+    </div>
+    <div class="card-body">
+        {% if can_close %}
+        <div class="alert alert-success">
+            <i class="bi bi-check-circle me-1"></i>
+            校验通过，所有检查项均符合结账要求。
+        </div>
+        <form method="POST" action="{{ url_for('period_close.do_close') }}">
+            <input type="hidden" name="period" value="{{ period }}">
+            <button type="submit" class="btn btn-primary" onclick="return confirm('确认对 {{ period }} 期间进行结账？结账后该期间数据将不可修改。');">
+                <i class="bi bi-check-lg me-1"></i>确认结账
+            </button>
+        </form>
+        {% else %}
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            存在以下问题，请处理后再进行结账：
+        </div>
+        <ul class="list-group mb-3">
+            {% for issue in issues %}
+            <li class="list-group-item list-group-item-danger">
+                <i class="bi bi-x-circle me-2"></i>{{ issue }}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

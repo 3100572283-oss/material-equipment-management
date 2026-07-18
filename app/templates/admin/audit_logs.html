@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}审计日志 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-shield-check me-2"></i>审计日志</h5>
+        <a href="{{ url_for('admin.export_audit_logs') }}" class="btn btn-sm btn-success"><i class="bi bi-download me-1"></i>导出Excel</a>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.audit_logs') }}" class="row g-2 align-items-end mb-3">
+            <div class="col-md-2">
+                <label class="form-label small text-muted">操作人</label>
+                <input type="text" class="form-control form-control-sm" name="username" value="{{ request.args.get('username', '') }}" placeholder="用户名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">模块</label>
+                <select class="form-select form-select-sm" name="module">
+                    <option value="">全部</option>
+                    {% set _cur_module = request.args.get('module', '') %}
+                    {% for m in ['用户管理', '系统配置', '数据备份', '登录认证', '项目管理', '供应商管理', '物资分类', '材料管理', '用料单位', '工号管理', '合同管理', '采购申请', '入库管理', '出库管理', '库存查询', '项目调拨', '周转材管理', '设备管理', '盘点管理', '对账管理', '统计报表', '审批管理', '基础信息', '帮助中心'] %}
+                    <option value="{{ m }}" {% if _cur_module == m %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">操作</label>
+                <select class="form-select form-select-sm" name="operation">
+                    <option value="">全部</option>
+                    {% set _cur_op = request.args.get('operation', '') %}
+                    {% for op in ['登录', '新增', '修改', '删除', '查询', '导出', '导入', '审批', '备份', '恢复', '配置'] %}
+                    <option value="{{ op }}" {% if _cur_op == op %}selected{% endif %}>{{ op }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">状态</label>
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部</option>
+                    {% set _cur_status = request.args.get('status', '') %}
+                    <option value="success" {% if _cur_status == 'success' %}selected{% endif %}>成功</option>
+                    <option value="failed" {% if _cur_status == 'failed' %}selected{% endif %}>失败</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">开始日期</label>
+                <input type="date" class="form-control form-control-sm" name="start_date" value="{{ request.args.get('start_date', '') }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">结束日期</label>
+                <input type="date" class="form-control form-control-sm" name="end_date" value="{{ request.args.get('end_date', '') }}">
+            </div>
+            <div class="col-12 mt-2">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search me-1"></i>查询</button>
+                <a href="{{ url_for('admin.audit_logs') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-1"></i>重置</a>
+                <span class="text-muted small ms-2">共 {{ pagination.total }} 条记录</span>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>操作时间</th>
+                        <th>操作人</th>
+                        <th>模块</th>
+                        <th>操作</th>
+                        <th>IP</th>
+                        <th>状态</th>
+                        <th>耗时</th>
+                        <th class="text-end">详情</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in pagination.items %}
+                    <tr>
+                        <td><small>{{ log.operation_time.strftime('%Y-%m-%d %H:%M:%S') if log.operation_time else '-' }}</small></td>
+                        <td>{{ log.username or '-' }}</td>
+                        <td>{{ log.module or '-' }}</td>
+                        <td>{{ log.operation or '-' }}</td>
+                        <td><small class="text-muted">{{ log.ip_address or '-' }}</small></td>
+                        <td>
+                            {% if log.status == 'success' %}<span class="badge bg-success">成功</span>
+                            {% elif log.status == 'failed' %}<span class="badge bg-danger">失败</span>
+                            {% else %}<span class="badge bg-secondary">{{ log.status or '-' }}</span>{% endif %}
+                        </td>
+                        <td>{{ log.cost_time or 0 }} ms</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.audit_log_detail', id=log.id) }}" class="btn btn-sm btn-outline-primary" title="查看详情"><i class="bi bi-eye"></i></a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-3">暂无审计日志记录</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include '_pagination.html' %}
+    </div>
+</div>
+{% endblock %}

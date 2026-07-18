@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}价格方案管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-tag me-2"></i>价格方案管理</h5>
+        <a href="{{ url_for('price_formula.create') }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>新增方案</a>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>方案名称</th>
+                        <th>适用供应商</th>
+                        <th>适用分类</th>
+                        <th>基准价类型</th>
+                        <th>下浮方式</th>
+                        <th>下浮值</th>
+                        <th>服务费率</th>
+                        <th>资金费率</th>
+                        <th>税率</th>
+                        <th>状态</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in formulas %}
+                    <tr>
+                        <td class="fw-bold">{{ f.formula_name }}</td>
+                        <td>{{ f.supplier.name if f.supplier else '<span class="text-muted">通用</span>'|safe }}</td>
+                        <td>{{ f.material_category.name if f.material_category else '-' }}</td>
+                        <td><span class="badge bg-secondary">{{ f.base_price_type }}</span></td>
+                        <td>
+                            {% if f.discount_type == '比例' %}<span class="badge bg-info">比例</span>
+                            {% elif f.discount_type == '金额' %}<span class="badge bg-warning text-dark">金额</span>
+                            {% else %}<span class="badge bg-light text-dark">不下浮</span>{% endif %}
+                        </td>
+                        <td>{{ '%.2f'|format(f.discount_value or 0) }}{% if f.discount_type == '比例' %}%{% endif %}</td>
+                        <td>{{ '%.2f'|format(f.service_fee_rate or 0) }}%</td>
+                        <td>{{ '%.2f'|format(f.capital_fee_rate or 0) }}%</td>
+                        <td>{{ '%.0f'|format(f.tax_rate or 0) }}%</td>
+                        <td>
+                            {% if f.status == '启用' %}<span class="badge bg-success">启用</span>
+                            {% else %}<span class="badge bg-secondary">禁用</span>{% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('price_formula.edit', id=f.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('price_formula.delete', id=f.id) }}" class="d-inline" onsubmit="return confirm('确定删除此价格方案？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="11" class="text-center text-muted">暂无价格方案，点击"新增方案"创建</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

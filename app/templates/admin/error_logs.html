@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}错误日志 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-bug me-2"></i>错误日志</h5>
+        <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#cleanupModal">
+            <i class="bi bi-trash me-1"></i>清理日志
+        </button>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.error_logs') }}" class="row g-2 align-items-end mb-3">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">错误类型</label>
+                <input type="text" class="form-control form-control-sm" name="error_type" value="{{ error_type or '' }}" placeholder="错误类型">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">处理状态</label>
+                <select class="form-select form-select-sm" name="is_handled">
+                    <option value="">全部</option>
+                    <option value="0" {% if is_handled == '0' %}selected{% endif %}>未处理</option>
+                    <option value="1" {% if is_handled == '1' %}selected{% endif %}>已处理</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search me-1"></i>搜索</button>
+                <a href="{{ url_for('admin.error_logs') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-1"></i>重置</a>
+                <span class="text-muted small ms-2">共 {{ pagination.total }} 条记录</span>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>错误时间</th>
+                        <th>错误类型</th>
+                        <th>错误信息</th>
+                        <th>请求URL</th>
+                        <th>操作用户</th>
+                        <th>IP地址</th>
+                        <th>状态</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in pagination.items %}
+                    <tr>
+                        <td><small>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '-' }}</small></td>
+                        <td>{{ log.error_type or '-' }}</td>
+                        <td>
+                            <span data-bs-toggle="tooltip" title="{{ log.error_message or '' }}">
+                                {{ (log.error_message or '')[:50] }}{% if log.error_message and log.error_message|length > 50 %}...{% endif %}
+                            </span>
+                        </td>
+                        <td><small class="text-muted">{{ log.request_url or '-' }}</small></td>
+                        <td>{{ log.username or '-' }}</td>
+                        <td><small class="text-muted">{{ log.ip_address or '-' }}</small></td>
+                        <td>
+                            {% if log.is_handled %}
+                            <span class="badge bg-success">已处理</span>
+                            {% else %}
+                            <span class="badge bg-danger">未处理</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.error_log_detail', id=log.id) }}" class="btn btn-sm btn-outline-primary" title="查看详情"><i class="bi bi-eye"></i></a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-3">暂无错误日志记录</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include '_pagination.html' %}
+    </div>
+</div>
+
+<div class="modal fade" id="cleanupModal" tabindex="-1" aria-labelledby="cleanupModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="cleanupModalLabel">清理错误日志</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin.cleanup_error_logs') }}">
+                <div class="modal-body">
+                    <p class="text-muted">确定要清理指定天数之前的错误日志吗？此操作不可恢复。</p>
+                    <div class="mb-3">
+                        <label for="days" class="form-label">保留天数</label>
+                        <input type="number" class="form-control" id="days" name="days" value="30" min="1" required>
+                        <div class="form-text">将删除超过此天数的错误日志</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-danger">确认清理</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

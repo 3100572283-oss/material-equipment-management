@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if contract else '新增' }}合同 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">{{ '编辑' if contract else '新增' }}合同</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">合同编号 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="code" value="{{ contract.code if contract else default_code }}" required>
+                            <div class="form-text">系统自动生成，可手动修改</div>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label">合同名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name" value="{{ contract.name if contract else '' }}" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">供应商 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="supplier_id" required>
+                                <option value="">-- 请选择 --</option>
+                                {% for s in suppliers %}
+                                <option value="{{ s.id }}" {% if contract and contract.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">合同类型</label>
+                            <select class="form-select" name="contract_type">
+                                <option value="">-- 请选择 --</option>
+                                {% for label, value in get_dict_items('contract_type') %}
+                                <option value="{{ value }}" {% if contract and contract.contract_type == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">经济业务类型</label>
+                            <input type="text" class="form-control" name="business_type" value="{{ contract.business_type if contract else '' }}" placeholder="请输入经济业务类型">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">选用程序</label>
+                            <select class="form-select" name="procurement_method">
+                                <option value="">-- 请选择 --</option>
+                                {% for label, value in get_dict_items('selection_proc') %}
+                                <option value="{{ value }}" {% if contract and contract.procurement_method == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">签订日期</label>
+                            <input type="date" class="form-control" name="sign_date" value="{{ contract.sign_date if contract else '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">履约状况</label>
+                            <select class="form-select" name="status">
+                                {% for label, value in get_dict_items('contract_status') %}
+                                <option value="{{ value }}" {% if (contract and contract.status == value) or (not contract and value == '正常履约') %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">含税金额 <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" min="0" class="form-control text-end" name="amount_with_tax" id="amount_with_tax" value="{{ contract.amount_with_tax if contract else '0' }}" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">税率(%)</label>
+                            <select class="form-select" name="tax_rate" id="tax_rate">
+                                {% for label, value in get_dict_items('tax_rate') %}
+                                <option value="{{ value }}" {% if (contract and contract.tax_rate|string == value|string) or (not contract and value == '13') %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">不含税金额（自动）</label>
+                            <input type="text" class="form-control text-end fw-bold" id="amount_without_tax" readonly value="{{ contract.amount_without_tax if contract else '0.00' }}">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="form-check me-3">
+                                <input class="form-check-input" type="checkbox" name="is_final_settled" id="ifs" {% if contract and contract.is_final_settled %}checked{% endif %}>
+                                <label class="form-check-label" for="ifs">最终结算</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="is_litigated" id="il" {% if contract and contract.is_litigated %}checked{% endif %}>
+                                <label class="form-check-label" for="il">诉讼标记</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">合同附件</label>
+                            <input type="file" class="form-control" name="attachment" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*">
+                            {% if contract and contract.attachment %}
+                            <div class="mt-2">
+                                <a href="{{ url_for('static', filename=contract.attachment) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-file-earmark"></i> 查看当前附件</a>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">备注</label>
+                            <textarea class="form-control" name="remark" rows="2">{{ contract.remark if contract else '' }}</textarea>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                        <button type="submit" class="btn btn-primary">保存</button>
+                        <a href="{{ url_for('contract.index') }}" class="btn btn-secondary">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function calcWithoutTax() {
+    const awt = parseFloat(document.getElementById('amount_with_tax').value) || 0;
+    const rate = parseFloat(document.getElementById('tax_rate').value) || 0;
+    const res = rate > 0 ? (awt / (1 + rate / 100)) : awt;
+    document.getElementById('amount_without_tax').value = res.toFixed(2);
+}
+document.getElementById('amount_with_tax').addEventListener('input', calcWithoutTax);
+document.getElementById('tax_rate').addEventListener('change', calcWithoutTax);
+</script>
+{% endblock %}

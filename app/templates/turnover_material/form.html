@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{% if material %}编辑{% else %}新增{% endif %}周转材{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white"><h5 class="mb-0"><i class="bi bi-arrow-repeat me-2"></i>{% if material %}编辑{% else %}新增{% endif %}周转材</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('turnover_material.edit', id=material.id) if material else url_for('turnover_material.create') }}">
+            <div class="row g-3">
+                <div class="col-md-3"><label class="form-label">编码</label><input type="text" class="form-control" name="code" value="{{ material.code if material else default_code }}" required></div>
+                <div class="col-md-3"><label class="form-label">名称 <span class="text-danger">*</span></label><input type="text" class="form-control" name="name" value="{{ material.name if material else '' }}" required></div>
+                <div class="col-md-3"><label class="form-label">分类</label><input type="text" class="form-control" name="category" value="{{ material.category if material else '' }}" placeholder="如：模板、脚手架"></div>
+                <div class="col-md-3"><label class="form-label">规格型号</label><input type="text" class="form-control" name="specification" value="{{ material.specification if material else '' }}"></div>
+                <div class="col-md-2"><label class="form-label">单位</label><input type="text" class="form-control" name="unit" value="{{ material.unit if material else '' }}"></div>
+                <div class="col-md-2"><label class="form-label">类型</label>
+                    <select class="form-select" name="material_type" id="typeSelect">
+                        {% for label, value in get_dict_items('turnover_type') %}
+                        <option value="{{ value }}" {% if material and material.material_type == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 rental-field"><label class="form-label">租赁单价</label><input type="number" step="0.0001" class="form-control" name="rental_price" value="{{ material.rental_price if material else '' }}"></div>
+                <div class="col-md-2 rental-field"><label class="form-label">计价单位</label>
+                    <select class="form-select" name="rental_unit">
+                        <option value="day" {% if material and material.rental_unit == 'day' %}selected{% endif %}>元/天</option>
+                        <option value="month" {% if material and material.rental_unit == 'month' %}selected{% endif %}>元/月</option>
+                    </select>
+                </div>
+                <div class="col-md-2 own-field"><label class="form-label">原值</label><input type="number" step="0.01" class="form-control" name="original_value" value="{{ material.original_value if material else '' }}"></div>
+                <div class="col-md="col-md-2 own-field"><label class="form-label">摊销月数</label><input type="number" class="form-control" name="amortize_months" value="{{ material.amortize_months if material else '' }}"></div>
+                <div class="col-md-12"><label class="form-label">备注</label><textarea class="form-control" name="remark" rows="2">{{ material.remark if material else '' }}</textarea></div>
+            </div>
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                <button type="submit" class="btn btn-primary">保存</button>
+                <a href="{{ url_for('turnover_material.index') }}" class="btn btn-secondary">返回</a>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+document.getElementById('typeSelect').addEventListener('change', function() {
+    const isRental = this.value === 'rental';
+    document.querySelectorAll('.rental-field').forEach(el => el.style.display = isRental ? 'block' : 'none');
+    document.querySelectorAll('.own-field').forEach(el => el.style.display = isRental ? 'none' : 'block');
+});
+document.getElementById('typeSelect').dispatchEvent(new Event('change'));
+</script>
+{% endblock %}

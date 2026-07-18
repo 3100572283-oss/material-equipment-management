@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}工号管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-hash me-2"></i>工号管理</h5>
+        {% if current_user.can_edit() %}
+        <a href="{{ url_for('work_number.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增工号</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('work_number.index') }}">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索工号编码/分部工程名称" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('work_number.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>工号编码</th>
+                        <th>分部工程名称</th>
+                        <th>分项工程名称</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in pagination.items %}
+                    <tr>
+                        <td><a href="{{ url_for('work_number.detail', id=w.id) }}">{{ w.code }}</a></td>
+                        <td>{{ w.division_name or '-' }}</td>
+                        <td>{{ w.item_name or '-' }}</td>
+                        <td class="text-end">
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('work_number.edit', id=w.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('work_number.delete', id=w.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <nav>
+            <ul class="pagination pagination-sm justify-content-center">
+                {% if pagination.has_prev %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('work_number.index', page=pagination.prev_num, keyword=keyword) }}">上一页</a></li>
+                {% endif %}
+                {% for p in pagination.iter_pages() %}
+                    {% if p %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('work_number.index', page=p, keyword=keyword) }}">{{ p }}</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+                {% if pagination.has_next %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('work_number.index', page=pagination.next_num, keyword=keyword) }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

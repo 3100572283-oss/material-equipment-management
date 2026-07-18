@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}AI配置 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-robot me-2"></i>AI助手配置</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('ai.config') }}" class="row g-4">
+            <div class="col-md-6">
+                <label class="form-label">是否启用AI助手</label>
+                <div class="d-flex gap-3">
+                    <div class="form-check">
+                        <input type="radio" class="form-check-input" name="ai_enabled" id="ai_enabled_yes" value="true" {% if config.enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="ai_enabled_yes">是</label>
+                    </div>
+                    <div class="form-check">
+                        <input type="radio" class="form-check-input" name="ai_enabled" id="ai_enabled_no" value="false" {% if not config.enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="ai_enabled_no">否</label>
+                    </div>
+                </div>
+                <div class="text-muted small mt-2">关闭后，页面AI助手入口将隐藏</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">API Key <span class="text-danger">*</span></label>
+                <input type="password" class="form-control" name="ai_api_key" value="{{ config.api_key }}" placeholder="请输入豆包API Key">
+                <div class="text-muted small mt-2">在火山引擎控制台获取API Key</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">模型名称</label>
+                <select class="form-select" name="ai_model">
+                    <option value="doubao-pro-32k" {% if config.model == 'doubao-pro-32k' %}selected{% endif %}>doubao-pro-32k（推荐）</option>
+                    <option value="doubao-pro-128k" {% if config.model == 'doubao-pro-128k' %}selected{% endif %}>doubao-pro-128k（长文本）</option>
+                    <option value="doubao-lite-4k" {% if config.model == 'doubao-lite-4k' %}selected{% endif %}>doubao-lite-4k（轻量）</option>
+                </select>
+                <div class="text-muted small mt-2">选择使用的豆包模型</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">API接口地址</label>
+                <input type="text" class="form-control" name="ai_base_url" value="{{ config.base_url }}" placeholder="https://ark.cn-beijing.volces.com/api/v3/chat/completions">
+                <div class="text-muted small mt-2">火山引擎豆包API官方地址，一般无需修改</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">单次最大Token数</label>
+                <input type="number" class="form-control" name="ai_max_tokens" value="{{ config.max_tokens }}" min="500" max="8192">
+                <div class="text-muted small mt-2">控制单次对话的响应长度，默认2000</div>
+            </div>
+
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>前置条件说明：</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>需要自行在火山引擎开通豆包大模型服务并获取API Key</li>
+                        <li>API调用费用由用户的火山引擎账号承担</li>
+                        <li>首次使用需填写API Key并启用</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="col-12 text-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save me-1"></i>保存配置
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

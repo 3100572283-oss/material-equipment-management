@@ -1,0 +1,149 @@
+<div class="modal fade" id="branchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="branchForm" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="branchModalTitle">新增分支</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="branchFlowId" name="flow_id" value="">
+                    <input type="hidden" id="branchId" name="branch_id" value="">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">分支名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="branch_name" required
+                               placeholder="例如：大额审批">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">条件列表</label>
+                        <div id="conditionsContainer">
+                            <div class="condition-row d-flex gap-2 mb-2">
+                                <select class="form-select flex-1" name="condition_fields[]">
+                                    <option value="">选择字段</option>
+                                    <option value="total_amount">总金额</option>
+                                    <option value="amount">金额</option>
+                                    <option value="contract_type">合同类型</option>
+                                    <option value="business_type">业务类型</option>
+                                    <option value="supplier">供应商</option>
+                                    <option value="supplier_category">供应商分类</option>
+                                    <option value="stock_in_type">入库类型</option>
+                                    <option value="stock_out_type">出库类型</option>
+                                    <option value="usage_unit_id">领料单位</option>
+                                    <option value="apply_dept">申请部门</option>
+                                    <option value="payment_method">付款方式</option>
+                                </select>
+                                <select class="form-select flex-1" name="condition_operators[]">
+                                    <option value="">运算符</option>
+                                    <option value=">">大于</option>
+                                    <option value="<">小于</option>
+                                    <option value=">=">大于等于</option>
+                                    <option value="<=">小于等于</option>
+                                    <option value="==">等于</option>
+                                    <option value="!=">不等于</option>
+                                    <option value="contains">包含</option>
+                                    <option value="not_contains">不包含</option>
+                                    <option value="between">在范围内</option>
+                                </select>
+                                <input type="text" class="form-control flex-1" name="condition_values[]"
+                                       placeholder="条件值">
+                                <button type="button" class="btn btn-danger btn-sm btn-remove-condition"
+                                        onclick="removeCondition(this)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm mt-2"
+                                onclick="addCondition()">
+                            <i class="bi bi-plus-lg me-1"></i>添加条件
+                        </button>
+                    </div>
+
+                    <div class="mb-3" id="logicSection" style="display: none;">
+                        <label class="form-label">条件关系</label>
+                        <select class="form-select" name="condition_logic">
+                            <option value="AND">全部满足（且）</option>
+                            <option value="OR">满足任一（或）</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">优先级</label>
+                        <input type="number" class="form-control" name="priority" min="1" value="1">
+                        <div class="form-text">数字越小优先级越高，系统按优先级顺序匹配分支</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_default" id="isDefault">
+                            <label class="form-check-label" for="isDefault">设为默认分支</label>
+                        </div>
+                        <div class="form-text">当不满足任何分支条件时，走默认分支</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>保存
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function addCondition() {
+    var container = document.getElementById('conditionsContainer');
+    var row = document.createElement('div');
+    row.className = 'condition-row d-flex gap-2 mb-2';
+    row.innerHTML = `
+        <select class="form-select flex-1" name="condition_fields[]">
+            <option value="">选择字段</option>
+            <option value="total_amount">总金额</option>
+            <option value="amount">金额</option>
+            <option value="contract_type">合同类型</option>
+            <option value="business_type">业务类型</option>
+            <option value="supplier">供应商</option>
+            <option value="supplier_category">供应商分类</option>
+            <option value="stock_in_type">入库类型</option>
+            <option value="stock_out_type">出库类型</option>
+            <option value="usage_unit_id">领料单位</option>
+            <option value="apply_dept">申请部门</option>
+            <option value="payment_method">付款方式</option>
+        </select>
+        <select class="form-select flex-1" name="condition_operators[]">
+            <option value="">运算符</option>
+            <option value=">">大于</option>
+            <option value="<">小于</option>
+            <option value=">=">大于等于</option>
+            <option value="<=">小于等于</option>
+            <option value="==">等于</option>
+            <option value="!=">不等于</option>
+            <option value="contains">包含</option>
+            <option value="not_contains">不包含</option>
+            <option value="between">在范围内</option>
+        </select>
+        <input type="text" class="form-control flex-1" name="condition_values[]"
+               placeholder="条件值">
+        <button type="button" class="btn btn-danger btn-sm btn-remove-condition"
+                onclick="removeCondition(this)">
+            <i class="bi bi-trash"></i>
+        </button>
+    `;
+    container.appendChild(row);
+    updateLogicSection();
+}
+
+function removeCondition(btn) {
+    btn.closest('.condition-row').remove();
+    updateLogicSection();
+}
+
+function updateLogicSection() {
+    var rows = document.querySelectorAll('.condition-row');
+    var logicSection = document.getElementById('logicSection');
+    logicSection.style.display = rows.length > 1 ? '' : 'none';
+}
+</script>

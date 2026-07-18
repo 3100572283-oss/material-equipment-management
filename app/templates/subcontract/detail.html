@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}扣款明细 - 分包扣款{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-md-between align-items-start align-items-md-center gap-2">
+        <div>
+            <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>扣款明细</h5>
+            <small class="text-muted">{{ deduction.period }} 月份 · {{ deduction.usage_unit.name if deduction.usage_unit else '-' }}</small>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('subcontract.export', id=deduction.id) }}" class="btn btn-sm btn-success">
+                <i class="bi bi-file-earmark-excel me-1"></i>导出扣款单
+            </a>
+            <a href="{{ url_for('subcontract.index') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>返回台账
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- 基本信息 -->
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <div class="border rounded p-2 h-100">
+                    <small class="text-muted d-block">月份</small>
+                    <span class="badge bg-secondary">{{ deduction.period }}</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-2 h-100">
+                    <small class="text-muted d-block">分包单位</small>
+                    <strong>{{ deduction.usage_unit.name if deduction.usage_unit else '-' }}</strong>
+                    <small class="text-muted ms-1">{{ deduction.usage_unit.code or '' if deduction.usage_unit }}</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-2 h-100">
+                    <small class="text-muted d-block">分包合同</small>
+                    <span class="badge bg-info text-dark">{{ (deduction.usage_unit.subcontract_contract if deduction.usage_unit else '') or '未设置' }}</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-2 h-100">
+                    <small class="text-muted d-block">状态</small>
+                    {% if deduction.status == 'draft' %}
+                        <span class="badge bg-warning text-dark">待确认</span>
+                    {% elif deduction.status == 'confirmed' %}
+                        <span class="badge bg-success text-white">已确认</span>
+                    {% elif deduction.status == 'paid' %}
+                        <span class="badge bg-primary text-white">已结算</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ deduction.status }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-2 h-100 bg-light">
+                    <small class="text-muted d-block">领料数量合计</small>
+                    <strong class="text-primary">{{ deduction.total_quantity|fmt_number(4) }}</strong>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-2 h-100 bg-light">
+                    <small class="text-muted d-block">扣款金额合计</small>
+                    <strong class="text-danger">¥ {{ deduction.total_amount|fmt_amount }}</strong>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-2 h-100">
+                    <small class="text-muted d-block">出库单数</small>
+                    <strong>{{ stock_outs|length }}</strong>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="border rounded p-2 h-100">
+                    <small class="text-muted d-block">创建时间</small>
+                    <small>{{ deduction.created_at.strftime('%Y-%m-%d %H:%M') if deduction.created_at else '-' }}</small>
+                </div>
+            </div>
+        </div>
+
+        {% if deduction.remark %}
+        <div class="alert alert-light border py-2">
+            <small><strong>备注：</strong>{{ deduction.remark }}</small>
+        </div>
+        {% endif %}
+
+        <!-- 按物资分类汇总 -->
+        <h6 class="mt-4 mb-2"><i class="bi bi-diagram-3 me-1"></i>按物资分类汇总</h6>
+        <div class="table-responsive mb-4">
+            <table class="table table-sm table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>物资分类</th>
+                        <th class="text-end">数量</th>
+                        <th class="text-end">金额(元)</th>
+                        <th class="text-end">占比</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in category_summary %}
+                    <tr>
+                        <td>{{ c.category_name }}</td>
+                        <td class="text-end">{{ c.qty|fmt_number(4) }}</td>
+                        <td class="text-end text-danger">{{ c.amt|fmt_amount }}</td>
+                        <td class="text-end text-muted">
+                            {% if deduction.total_amount %}
+                                {{ ((c.amt / (deduction.total_amount|float)) * 100)|fmt_number(1) }}%
+                            {% else %}0.0%{% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center text-muted py-3">暂无汇总数据</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if category_summary %}
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td>合计</td>
+                        <td class="text-end">{{ category_summary|sum(attribute='qty')|fmt_number(4) }}</td>
+                        <td class="text-end text-danger">{{ category_summary|sum(attribute='amt')|fmt_amount }}</td>
+                        <td class="text-end">100.0%</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+
+        <!-- 物资明细汇总 -->
+        <h6 class="mt-4 mb-2"><i class="bi bi-box-seam me-1"></i>物资领料汇总</h6>
+        <div class="table-responsive mb-4">
+            <table class="table table-sm table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>物资编码</th>
+                        <th>物资名称</th>
+                        <th>规格型号</th>
+                        <th>单位</th>
+                        <th class="text-end">数量</th>
+                        <th class="text-end">金额(元)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in material_details %}
+                    <tr>
+                        <td><code class="font-monospace">{{ m.code or '-' }}</code></td>
+                        <td>{{ m.name }}</td>
+                        <td>{{ m.spec or '-' }}</td>
+                        <td>{{ m.unit }}</td>
+                        <td class="text-end">{{ m.qty|fmt_number(4) }}</td>
+                        <td class="text-end text-danger">{{ m.amt|fmt_amount }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted py-3">暂无明细数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 出库单明细 -->
+        <h6 class="mt-4 mb-2"><i class="bi bi-list-ul me-1"></i>出库单明细 ({{ stock_outs|length }})</h6>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>出库单号</th>
+                        <th class="text-center">出库日期</th>
+                        <th>出库类型</th>
+                        <th>发料部位</th>
+                        <th>经办人</th>
+                        <th class="text-end">数量</th>
+                        <th class="text-end">金额</th>
+                        <th class="text-center">状态</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for so in stock_outs %}
+                    <tr>
+                        <td><code class="font-monospace">{{ so.code }}</code></td>
+                        <td class="text-center">{{ so.stock_out_date.strftime('%Y-%m-%d') if so.stock_out_date else '-' }}</td>
+                        <td>{{ so.stock_out_type or '-' }}</td>
+                        <td>{{ so.issue_location or '-' }}</td>
+                        <td>{{ so.operator or '-' }}</td>
+                        <td class="text-end">{{ so.total_quantity|fmt_number(4) }}</td>
+                        <td class="text-end">{{ so.total_amount|fmt_amount }}</td>
+                        <td class="text-center">
+                            {% if so.approval_status == 'passed' %}
+                                <span class="badge bg-success">已通过</span>
+                            {% elif so.approval_status == 'pending' %}
+                                <span class="badge bg-warning text-dark">待审</span>
+                            {% elif so.approval_status == 'rejected' %}
+                                <span class="badge bg-danger">已驳回</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ so.approval_status }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-3">暂无出库单</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

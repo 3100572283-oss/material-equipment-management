@@ -1,0 +1,104 @@
+{# 设备状态变更弹窗（被 index.html / detail.html include） #}
+{# 依赖模板上下文：status_items（设备状态字典 [(label,value)]） #}
+<div class="modal fade" id="statusChangeModal" tabindex="-1" aria-labelledby="statusChangeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="statusChangeForm" method="POST" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="statusChangeModalLabel"><i class="bi bi-arrow-repeat me-1"></i>设备状态变更</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">设备</label>
+                        <input type="text" class="form-control" id="scmEquipmentName" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">当前状态</label>
+                        <input type="text" class="form-control" id="scmCurrentStatus" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">新状态 <span class="text-danger">*</span></label>
+                        <select class="form-select" name="new_status" id="scmNewStatus" required>
+                            <option value="">-- 请选择 --</option>
+                            {% for label, value in status_items %}
+                            <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3" id="scmExitDateWrap" style="display:none;">
+                        <label class="form-label">退场日期 <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" name="exit_date" id="scmExitDate">
+                        <div class="form-text text-danger">设备退场时必须填写退场日期。</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <textarea class="form-control" name="remark" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>提交变更</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var modal = document.getElementById('statusChangeModal');
+    if (!modal) return;
+    var statusLabelMap = {
+        'in_use': '在用', 'idle': '闲置', 'repairing': '维修中',
+        'exited': '已退场', 'scrapped': '已报废'
+    };
+    // 从下拉选项构建 label 映射，保证与字典一致
+    var newStatusSel = document.getElementById('scmNewStatus');
+    if (newStatusSel) {
+        Array.prototype.forEach.call(newStatusSel.options, function (opt) {
+            if (opt.value) statusLabelMap[opt.value] = opt.textContent;
+        });
+    }
+
+    var equipmentNameInput = document.getElementById('scmEquipmentName');
+    var currentStatusInput = document.getElementById('scmCurrentStatus');
+    var exitDateWrap = document.getElementById('scmExitDateWrap');
+    var exitDateInput = document.getElementById('scmExitDate');
+    var form = document.getElementById('statusChangeForm');
+
+    modal.addEventListener('show.bs.modal', function (event) {
+        var trigger = event.relatedTarget;
+        var eqId = trigger ? trigger.getAttribute('data-equipment-id') : '';
+        var eqName = trigger ? trigger.getAttribute('data-equipment-name') : '';
+        var curStatus = trigger ? trigger.getAttribute('data-current-status') : '';
+
+        equipmentNameInput.value = eqName || '';
+        currentStatusInput.value = statusLabelMap[curStatus] || curStatus || '-';
+        form.action = eqId ? '/equipment/' + eqId + '/change_status' : '';
+        // 重置
+        newStatusSel.value = '';
+        exitDateInput.value = '';
+        exitDateWrap.style.display = 'none';
+        exitDateInput.required = false;
+    });
+
+    newStatusSel.addEventListener('change', function () {
+        var isExit = this.value === 'exited';
+        exitDateWrap.style.display = isExit ? '' : 'none';
+        exitDateInput.required = isExit;
+    });
+
+    form.addEventListener('submit', function (e) {
+        if (!newStatusSel.value) {
+            e.preventDefault();
+            alert('请选择新状态');
+            return;
+        }
+        if (newStatusSel.value === 'exited' && !exitDateInput.value) {
+            e.preventDefault();
+            alert('设备退场必须填写退场日期');
+        }
+    });
+})();
+</script>

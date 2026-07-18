@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}采购价格趋势{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>采购价格趋势（最近12个月）</h5>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3 mb-4">
+            <div class="col-auto">
+                <label class="form-label">选择物资</label>
+                <select name="material_id" class="form-select" onchange="this.form.submit()">
+                    <option value="0">请选择...</option>
+                    {% for m in materials %}
+                    <option value="{{ m.id }}" {% if m.id == material_id %}selected{% endif %}>
+                        {{ m.name }} {{ m.specification or '' }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+
+        {% if selected_material %}
+        <h6 class="mb-3">{{ selected_material.name }} {{ selected_material.specification or '' }}（{{ selected_material.unit }}）</h6>
+        {% endif %}
+        <div id="priceChart" style="height: 400px;"></div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script>
+    var chart = echarts.init(document.getElementById('priceChart'));
+    var data = {{ chart_data | tojson }};
+    var option = {
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: data.map(function(d) { return d.month; }) },
+        yAxis: { type: 'value', name: '单价(元)' },
+        series: [{
+            data: data.map(function(d) { return d.price; }),
+            type: 'line',
+            smooth: true,
+            areaStyle: { opacity: 0.2 },
+            itemStyle: { color: '#0dcaf0' }
+        }]
+    };
+    chart.setOption(option);
+    window.addEventListener('resize', function() { chart.resize(); });
+</script>
+{% endblock %}

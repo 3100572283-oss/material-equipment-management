@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}回收站 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-trash3 me-2"></i>回收站</h5>
+        <span class="text-muted small">仅显示保留期内的已删除数据，超期数据将自动清理</span>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>类型</th>
+                        <th>名称</th>
+                        <th>额外信息</th>
+                        <th>删除时间</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ item.label }}</span></td>
+                        <td>{{ item.name }}</td>
+                        <td><small class="text-muted">{{ item.extra }}</small></td>
+                        <td>{{ item.deleted_at.strftime('%Y-%m-%d %H:%M') if item.deleted_at else '-' }}</td>
+                        <td class="text-end">
+                            <form method="POST" action="{{ url_for('admin.restore_item', table=item.table, id=item.id) }}" class="d-inline" onsubmit="return confirm('确定恢复该条数据？');">
+                                <button type="submit" class="btn btn-sm btn-outline-success" title="恢复"><i class="bi bi-arrow-counterclockwise me-1"></i>恢复</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin.purge_item', table=item.table, id=item.id) }}" class="d-inline" onsubmit="return confirm('永久删除后无法恢复，确定继续？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="永久删除"><i class="bi bi-x-circle me-1"></i>永久删除</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted">回收站为空</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

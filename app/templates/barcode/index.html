@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}条码标签打印 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-upc-scan me-2"></i>条码标签打印</h5>
+        <a href="{{ url_for('barcode.history') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-clock-history me-1"></i>打印历史</a>
+    </div>
+    <div class="card-body">
+        {% if not libs_available %}
+        <div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-1"></i>请安装 qrcode python-barcode Pillow 库，否则二维码/条形码将无法生成图片。</div>
+        {% endif %}
+
+        <form id="labelForm" method="POST" action="{{ url_for('barcode.generate') }}">
+            <div class="row g-3">
+                <!-- 物资选择 -->
+                <div class="col-12">
+                    <label class="form-label fw-bold"><i class="bi bi-box me-1"></i>选择物资（可多选）</label>
+                    <div class="input-group mb-2">
+                        <input type="text" id="materialSearch" class="form-control form-control-sm" placeholder="搜索物资名称/编码...">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllBtn"><i class="bi bi-check2-all me-1"></i>全选</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="clearAllBtn"><i class="bi bi-eraser me-1"></i>清空</button>
+                    </div>
+                    <div class="border rounded p-2" style="max-height:260px; overflow-y:auto;">
+                        {% for m in materials %}
+                        <div class="form-check material-item" data-name="{{ (m.name + ' ' + (m.code or '') + ' ' + (m.specification or ''))|lower }}">
+                            <input class="form-check-input material-checkbox" type="checkbox" name="material_ids" value="{{ m.id }}" id="mat_{{ m.id }}">
+                            <label class="form-check-label" for="mat_{{ m.id }}">
+                                <span class="badge bg-secondary me-1">{{ m.code or '-' }}</span>
+                                {{ m.name }}
+                                <small class="text-muted">{{ m.specification or '' }}</small>
+                                <small class="text-muted">/ {{ m.unit }}</small>
+                            </label>
+                        </div>
+                        {% else %}
+                        <div class="text-center text-muted py-3">暂无物资数据</div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- 标签尺寸 -->
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">标签尺寸</label>
+                    <div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="label_size" id="size40x30" value="40x30" checked>
+                            <label class="form-check-label" for="size40x30">40×30mm</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="label_size" id="size60x40" value="60x40">
+                            <label class="form-check-label" for="size60x40">60×40mm</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 标签类型 -->
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">标签类型</label>
+                    <div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="label_type" id="typeQrcode" value="qrcode" checked>
+                            <label class="form-check-label" for="typeQrcode"><i class="bi bi-qr-code me-1"></i>二维码</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="label_type" id="typeBarcode" value="barcode" {% if not barcode_available %}disabled{% endif %}>
+                            <label class="form-check-label" for="typeBarcode"><i class="bi bi-upc me-1"></i>条形码</label>
+                        </div>
+                    </div>
+                    {% if not barcode_available %}
+                    <small class="text-muted">条形码库未安装，仅支持二维码</small>
+                    {% endif %}
+                </div>
+
+                <!-- 数量 -->
+                <div class="col-md-4">
+                    <label class="form-label fw-bold" for="quantity">每个物资打印数量</label>
+                    <input type="number" class="form-control form-control-sm" id="quantity" name="quantity" value="1" min="1" max="999">
+                </div>
+
+                <!-- 打印内容选项 -->
+                <div class="col-12">
+                    <label class="form-label fw-bold">打印内容</label>
+                    <div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="show_name" checked>
+                            <label class="form-check-label" for="show_name">物资名称</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="show_code" checked>
+                            <label class="form-check-label" for="show_code">物资编码</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="show_spec" checked>
+                            <label class="form-check-label" for="show_spec">规格</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="show_unit" checked>
+                            <label class="form-check-label" for="show_unit">单位</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 d-flex gap-2">
+                <button type="button" class="btn btn-outline-primary" id="previewBtn"><i class="bi bi-eye me-1"></i>预览</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i>生成标签</button>
+                <a href="{{ url_for('barcode.batch_print') }}" class="btn btn-outline-info"><i class="bi bi-printer me-1"></i>批量打印</a>
+            </div>
+        </form>
+
+        <!-- 生成结果 -->
+        <div id="resultArea" class="mt-4" style="display:none;">
+            <hr>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0"><i class="bi bi-collection me-1"></i>已生成标签</h6>
+                <button type="button" class="btn btn-success btn-sm" onclick="window.print();"><i class="bi bi-printer me-1"></i>打印</button>
+            </div>
+            <div id="resultMessage" class="alert alert-info py-2"></div>
+            <div id="labelGrid" class="label-grid"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var form = document.getElementById('labelForm');
+    var searchInput = document.getElementById('materialSearch');
+    var selectAllBtn = document.getElementById('selectAllBtn');
+    var clearAllBtn = document.getElementById('clearAllBtn');
+
+    // 物资搜索
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            var kw = this.value.trim().toLowerCase();
+            document.querySelectorAll('.material-item').forEach(function(el) {
+                var name = el.getAttribute('data-name') || '';
+                el.style.display = name.indexOf(kw) >= 0 ? '' : 'none';
+            });
+        });
+    }
+
+    // 全选/清空
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', function() {
+            document.querySelectorAll('.material-checkbox').forEach(function(cb) {
+                if (cb.closest('.material-item').style.display !== 'none') cb.checked = true;
+            });
+        });
+    }
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', function() {
+            document.querySelectorAll('.material-checkbox').forEach(function(cb) { cb.checked = false; });
+        });
+    }
+
+    // 预览按钮 - 跳转预览页
+    var previewBtn = document.getElementById('previewBtn');
+    if (previewBtn) {
+        previewBtn.addEventListener('click', function() {
+            var ids = Array.from(document.querySelectorAll('.material-checkbox:checked')).map(function(cb) { return cb.value; });
+            if (ids.length === 0) { alert('请至少选择一个物资'); return; }
+            var params = new URLSearchParams();
+            ids.forEach(function(id) { params.append('material_id', id); });
+            params.append('label_size', document.querySelector('input[name=label_size]:checked').value);
+            params.append('label_type', document.querySelector('input[name=label_type]:checked').value);
+            params.append('quantity', document.getElementById('quantity').value || 1);
+            window.open('{{ url_for("barcode.preview") }}?' + params.toString(), '_blank');
+        });
+    }
+
+    // 提交生成 - AJAX
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var formData = new FormData(form);
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                var resultArea = document.getElementById('resultArea');
+                var msg = document.getElementById('resultMessage');
+                var grid = document.getElementById('labelGrid');
+                if (data.success) {
+                    msg.className = 'alert alert-success py-2';
+                    msg.textContent = data.message || '生成成功';
+                    grid.innerHTML = '';
+                    (data.labels || []).forEach(function(label) {
+                        for (var i = 0; i < (label.quantity || 1); i++) {
+                            var item = document.createElement('div');
+                            item.className = 'label-item label-' + (label.label_size || '40x30');
+                            var html = '<img src="' + label.image_url + '" alt="标签" style="max-width:90%; max-height:60%;">';
+                            if (document.getElementById('show_name').checked) html += '<div class="small">' + (label.material_name || '') + '</div>';
+                            if (document.getElementById('show_code').checked) html += '<div class="small text-muted">' + (label.material_code || '') + '</div>';
+                            if (document.getElementById('show_spec').checked) html += '<div class="small text-muted">' + (label.spec || '') + '</div>';
+                            if (document.getElementById('show_unit').checked) html += '<div class="small text-muted">单位：' + (label.unit || '') + '</div>';
+                            item.innerHTML = html;
+                            grid.appendChild(item);
+                        }
+                    });
+                    resultArea.style.display = '';
+                } else {
+                    msg.className = 'alert alert-danger py-2';
+                    msg.textContent = data.message || '生成失败';
+                    resultArea.style.display = '';
+                }
+            }).catch(function(err) {
+                alert('请求失败：' + err);
+            });
+        });
+    }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}折旧明细 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h4 class="text-primary fw-bold">{{ total_original }}</h4>
+                <small class="text-muted">资产原值合计（元）</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h4 class="text-success fw-bold">{{ total_net }}</h4>
+                <small class="text-muted">资产净值合计（元）</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center">
+                <h4 class="text-info fw-bold">{{ total_depreciated }}</h4>
+                <small class="text-muted">累计折旧合计（元）</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>折旧明细表</h5>
+        <a href="{{ url_for('equipment.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>编码</th>
+                        <th>名称</th>
+                        <th>原值（元）</th>
+                        <th>月折旧额（元）</th>
+                        <th>已计提月份</th>
+                        <th>累计折旧（元）</th>
+                        <th>净值（元）</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in equipments %}
+                    {% set original = (e.original_value or 0)|float %}
+                    {% set monthly = e.monthly_depreciation %}
+                    {% set net = e.net_value %}
+                    {% set depreciated = original - net %}
+                    {% set months = (depreciated / monthly)|int if monthly > 0 else 0 %}
+                    <tr>
+                        <td>{{ e.code }}</td>
+                        <td class="fw-bold"><a href="{{ url_for('equipment.detail', id=e.id) }}" class="text-decoration-none">{{ e.name }}</a></td>
+                        <td>{{ original }}</td>
+                        <td>{{ monthly }}</td>
+                        <td>{{ months }}</td>
+                        <td>{{ '%.2f'|format(depreciated) }}</td>
+                        <td>{{ net }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

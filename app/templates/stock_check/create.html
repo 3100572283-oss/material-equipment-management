@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}新建盘点单 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-plus-lg me-2"></i>新建盘点单</h5>
+        <span class="text-muted small">单号：{{ default_check_no }}（保存后生效）</span>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('stock_check.create') }}">
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">盘点日期 <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" name="check_date" value="{{ today_str }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">盘点人</label>
+                    <input type="text" class="form-control" name="checker" value="{{ current_user.name or current_user.username }}">
+                </div>
+                <div class="col-md-6"></div>
+                <div class="col-md-12">
+                    <label class="form-label">盘点方式 <span class="text-danger">*</span></label>
+                    <div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="check_type" id="typeFull" value="full" checked>
+                            <label class="form-check-label" for="typeFull">全库盘点</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="check_type" id="typeCategory" value="category">
+                            <label class="form-check-label" for="typeCategory">按分类盘点</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-12" id="categorySelectGroup" style="display:none;">
+                    <label class="form-label">选择分类 <span class="text-danger">*</span></label>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <select class="form-select" id="categoryLevel1" name="category_level1">
+                                <option value="">-- 一级分类 --</option>
+                                {% for c in categories %}
+                                <option value="{{ c.id }}">{{ c.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select" id="categoryLevel2" name="category_level2" disabled>
+                                <option value="">-- 二级分类 --</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select" id="categoryLevel3" name="category_level3" disabled>
+                                <option value="">-- 三级分类 --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <input type="hidden" name="category_id" id="selectedCategoryId" value="">
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">备注</label>
+                    <textarea class="form-control" name="remark" rows="3" placeholder="选填"></textarea>
+                </div>
+            </div>
+
+            <div class="alert alert-info small">
+                <i class="bi bi-info-circle me-1"></i>
+                创建盘点单后，系统将自动加载当前库存数据作为账面数量，您可以在详情页录入实盘数量。
+            </div>
+
+            <hr class="my-4">
+
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i>创建盘点单</button>
+                <a href="{{ url_for('stock_check.index') }}" class="btn btn-secondary">返回</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.querySelectorAll('input[name="check_type"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const group = document.getElementById('categorySelectGroup');
+        if (this.value === 'category') {
+            group.style.display = 'block';
+        } else {
+            group.style.display = 'none';
+            document.getElementById('selectedCategoryId').value = '';
+        }
+    });
+});
+
+function updateSelectedCategory() {
+    const l3 = document.getElementById('categoryLevel3');
+    const l2 = document.getElementById('categoryLevel2');
+    const l1 = document.getElementById('categoryLevel1');
+    const hidden = document.getElementById('selectedCategoryId');
+    
+    if (l3.value) {
+        hidden.value = l3.value;
+    } else if (l2.value) {
+        hidden.value = l2.value;
+    } else if (l1.value) {
+        hidden.value = l1.value;
+    } else {
+        hidden.value = '';
+    }
+}
+
+async function loadChildren(parentId, targetSelectId, placeholder) {
+    const target = document.getElementById(targetSelectId);
+    target.innerHTML = `<option value="">-- ${placeholder} --</option>`;
+    target.disabled = true;
+    
+    if (!parentId) {
+        updateSelectedCategory();
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/stock_check/api/category_children/${parentId}`);
+        const data = await res.json();
+        if (data.length > 0) {
+            data.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                target.appendChild(opt);
+            });
+            target.disabled = false;
+        }
+    } catch (e) {
+        console.error(e);
+    }
+    updateSelectedCategory();
+}
+
+document.getElementById('categoryLevel1').addEventListener('change', function() {
+    document.getElementById('categoryLevel2').innerHTML = '<option value="">-- 二级分类 --</option>';
+    document.getElementById('categoryLevel2').disabled = true;
+    document.getElementById('categoryLevel3').innerHTML = '<option value="">-- 三级分类 --</option>';
+    document.getElementById('categoryLevel3').disabled = true;
+    loadChildren(this.value, 'categoryLevel2', '二级分类');
+});
+
+document.getElementById('categoryLevel2').addEventListener('change', function() {
+    document.getElementById('categoryLevel3').innerHTML = '<option value="">-- 三级分类 --</option>';
+    document.getElementById('categoryLevel3').disabled = true;
+    loadChildren(this.value, 'categoryLevel3', '三级分类');
+});
+
+document.getElementById('categoryLevel3').addEventListener('change', updateSelectedCategory);
+</script>
+{% endblock %}

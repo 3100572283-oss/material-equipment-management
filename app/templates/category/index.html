@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block title %}物资分类 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-md-between align-items-start align-items-md-center gap-2">
+        <div>
+            <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>物资分类管理</h5>
+            <small class="text-muted">共三级分类，仅末级分类可关联物资</small>
+        </div>
+        {% if current_user.can_edit() %}
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" id="btnBatchAdd" data-bs-toggle="modal" data-bs-target="#batchModal">
+                <i class="bi bi-list-plus me-1"></i>批量新增
+            </button>
+            <button class="btn btn-primary btn-sm" id="btnAddRoot" data-bs-toggle="modal" data-bs-target="#createModal" data-parent-id="0" data-parent-name="一级分类">
+                <i class="bi bi-plus-lg me-1"></i>新增一级分类
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if tree %}
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="w-20">分类编码</th>
+                        <th>分类名称</th>
+                        <th class="w-16 text-center">层级</th>
+                        <th class="w-12 text-center">排序号</th>
+                        <th class="w-16 text-center">关联数量</th>
+                        <th class="w-24 text-right">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% macro render_tree(nodes, level=1) %}
+                        {% for node in nodes %}
+                            {% set c = node.category %}
+                            {% set child_count = node.children|length %}
+                            {% set material_count = node.material_count %}
+                            {% set has_children = node.children %}
+                            {% set has_materials = c.level == 3 and material_count > 0 %}
+                            <tr class="category-row" data-id="{{ c.id }}" data-level="{{ c.level }}">
+                                <td>
+                                    <code class="font-monospace text-primary fw-bold">{{ c.category_code or '-' }}</code>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center" style="padding-left: {{ (level - 1) * 20 }}px;">
+                                        {% if has_children %}
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 me-1 toggle-node" data-id="{{ c.id }}">
+                                                <i class="bi bi-caret-down-fill"></i>
+                                            </button>
+                                        {% else %}
+                                            <span class="d-inline-block me-1" style="width: 18px;"></span>
+                                        {% endif %}
+                                        <span class="{% if level == 1 %}fw-bold{% elif level == 3 %}text-muted{% endif %}">{{ c.name }}</span>
+                                    </div>
+                                </td>
+                                <td class="text-center">
+                                    {% if level == 1 %}
+                                        <span class="badge bg-primary text-white">一级</span>
+                                    {% elif level == 2 %}
+                                        <span class="badge bg-success text-white">二级</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary text-white">三级</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">{{ c.sort_order }}</td>
+                                <td class="text-center">
+                                    <span class="badge {% if c.level == 3 %}bg-info{% else %}bg-light text-dark{% endif %}">
+                                        {% if c.level == 3 %}
+                                            {{ material_count }} 物资
+                                        {% else %}
+                                            {{ child_count }} 子分类
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td class="text-right">
+                                    {% if current_user.can_edit() %}
+                                        <div class="d-flex justify-content-end gap-1">
+                                            {% if c.level < 3 %}
+                                                <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#createModal"
+                                                        data-parent-id="{{ c.id }}" data-parent-name="{{ c.name }}（{{ c.category_code }}）">
+                                                    <i class="bi bi-plus-lg"></i> 子分类
+                                                </button>
+                                            {% endif %}
+                                            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal"
+                                                    data-id="{{ c.id }}" data-name="{{ c.name }}" data-sort="{{ c.sort_order }}"
+                                                    data-code="{{ c.category_code }}" data-negstock="{{ c.negative_stock_policy }}">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            {% if has_children %}
+                                                <button class="btn btn-sm btn-outline-danger disabled" title="该分类下有子分类，不可删除">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            {% elif has_materials %}
+                                                <button class="btn btn-sm btn-outline-danger disabled" title="该分类下存在物资，不可删除">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            {% else %}
+                                                <form method="POST" action="{{ url_for('category.delete', id=c.id) }}" class="d-inline">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('确定删除分类「{{ c.name }}」吗？');">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if has_children %}
+                                <tr class="category-children" id="children-{{ c.id }}">
+                                    <td colspan="6">
+                                        {{ render_tree(node.children, level + 1) }}
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
+                    {% endmacro %}
+                    {{ render_tree(tree) }}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="text-center text-muted py-8">
+                <i class="bi bi-folder-open fs-3 d-block mb-3"></i>
+                <p class="mb-2">暂无分类数据</p>
+                <p class="text-sm">请点击右上角"新增一级分类"开始创建</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if current_user.can_edit() %}
+<!-- Create Modal -->
+<div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('category.create') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createModalTitle">新增分类</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">上级分类</label>
+                        <input type="text" class="form-control" id="parentName" readonly>
+                        <input type="hidden" name="parent_id" id="parentId" value="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">分类名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="name" required>
+                        <div class="form-text">保存时系统将自动生成分类编码。</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">排序号</label>
+                        <input type="number" class="form-control" name="sort_order" value="99">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">负库存策略</label>
+                        <select class="form-select form-select-sm" name="negative_stock_policy">
+                            <option value="global">跟随全局</option>
+                            <option value="allow">允许负库存</option>
+                            <option value="forbid">不允许负库存</option>
+                        </select>
+                        <div class="form-text">三级分类未设置时会向上级查找。</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Modal -->
+<div class="modal fade" id="batchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('category.batch_create') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">批量新增分类</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info alert-sm mb-3">
+                        每行一个分类名称，可一次添加多个同级分类。
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">选择父级分类</label>
+                        <select class="form-select" name="parent_id" id="batchParentId">
+                            <option value="0">一级分类（无父级）</option>
+                            {% for c in categories %}
+                                {% if c.level == 1 %}
+                                    <option value="{{ c.id }}">├─ {{ c.name }}（{{ c.category_code }}）</option>
+                                    {% for child in c.children %}
+                                        {% if child.level == 2 %}
+                                            <option value="{{ child.id }}">│  ├─ {{ child.name }}（{{ child.category_code }}）</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">分类名称（每行一个）<span class="text-danger">*</span></label>
+                        <textarea class="form-control" name="names" rows="6" placeholder="钢材&#10;水泥&#10;砂石料&#10;防水材料"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">起始排序号</label>
+                        <input type="number" class="form-control" name="start_sort" value="1">
+                        <div class="form-text">每个分类的排序号将自动递增。</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">确认创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="editForm" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title">编辑分类</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">分类编码</label>
+                        <input type="text" class="form-control" id="editCode" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">分类名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="name" id="editName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">排序号</label>
+                        <input type="number" class="form-control" name="sort_order" id="editSort" value="99">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">负库存策略</label>
+                        <select class="form-select form-select-sm" name="negative_stock_policy" id="editNegStock">
+                            <option value="global">跟随全局</option>
+                            <option value="allow">允许负库存</option>
+                            <option value="forbid">不允许负库存</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var createModal = document.getElementById('createModal');
+    if (createModal) {
+        createModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var parentId = button.getAttribute('data-parent-id') || '0';
+            var parentName = button.getAttribute('data-parent-name') || '一级分类';
+            document.getElementById('parentId').value = parentId;
+            document.getElementById('parentName').value = parentName;
+            var title = document.getElementById('createModalTitle');
+            title.textContent = parentId === '0' ? '新增一级分类' : '新增子分类';
+            createModal.querySelector('input[name="name"]').value = '';
+            createModal.querySelector('input[name="sort_order"]').value = '99';
+        });
+    }
+
+    var editModal = document.getElementById('editModal');
+    if (editModal) {
+        editModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var id = button.getAttribute('data-id');
+            var name = button.getAttribute('data-name');
+            var sort = button.getAttribute('data-sort');
+            var code = button.getAttribute('data-code');
+            var negstock = button.getAttribute('data-negstock') || 'global';
+            document.getElementById('editForm').action = '{{ url_for("category.index") }}'.replace(/\/$/, '') + '/' + id + '/edit';
+            document.getElementById('editName').value = name || '';
+            document.getElementById('editSort').value = sort || 99;
+            document.getElementById('editCode').value = code || '';
+            document.getElementById('editNegStock').value = negstock;
+        });
+    }
+
+    document.querySelectorAll('.toggle-node').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id = this.getAttribute('data-id');
+            var children = document.getElementById('children-' + id);
+            if (!children) return;
+            var icon = this.querySelector('i');
+            if (children.style.display === 'none') {
+                children.style.display = '';
+                icon.classList.remove('bi-caret-right-fill');
+                icon.classList.add('bi-caret-down-fill');
+            } else {
+                children.style.display = 'none';
+                icon.classList.remove('bi-caret-down-fill');
+                icon.classList.add('bi-caret-right-fill');
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

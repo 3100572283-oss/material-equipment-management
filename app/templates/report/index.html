@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}统计报表{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-box-arrow-in-down text-primary" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">入库统计报表</h5>
+                <p class="card-text text-muted">按时间段统计入库情况，支持汇总/明细视图切换，可按供应商和物资分类筛选。</p>
+                <a href="{{ url_for('report.stock_in_report') }}" class="btn btn-primary mt-2"><i class="bi bi-arrow-right me-1"></i>进入报表</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-box-arrow-up text-success" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">出库统计报表</h5>
+                <p class="card-text text-muted">按时间段统计出库情况，支持汇总/明细视图切换，可按领料单位和物资分类筛选。</p>
+                <a href="{{ url_for('report.stock_out_report') }}" class="btn btn-success mt-2"><i class="bi bi-arrow-right me-1"></i>进入报表</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-graph-up-arrow text-info" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">物资动态表</h5>
+                <p class="card-text text-muted">展示物资的期初库存、本期入库、本期出库、期末库存的动态变化，支持按月查询。</p>
+                <a href="{{ url_for('report.material_movement') }}" class="btn btn-info mt-2"><i class="bi bi-arrow-right me-1"></i>进入报表</a>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row g-4 mt-2">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-pie-chart text-primary" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">ABC分类分析</h5>
+                <p class="card-text text-muted">按物资入库金额进行ABC分类，识别关键物资，辅助库存管控决策。</p>
+                <a href="{{ url_for('report.abc_analysis') }}" class="btn btn-primary mt-2"><i class="bi bi-arrow-right me-1"></i>进入报表</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-speedometer2 text-success" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">库存周转率</h5>
+                <p class="card-text text-muted">按月计算各物资的库存周转率与周转天数，标红提示低周转物资。</p>
+                <a href="{{ url_for('report.turnover_rate') }}" class="btn btn-success mt-2"><i class="bi bi-arrow-right me-1"></i>进入报表</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-graph-up text-info" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">采购价格趋势</h5>
+                <p class="card-text text-muted">查询单个物资最近12个月的平均采购单价变化趋势。</p>
+                <a href="{{ url_for('report.price_trend') }}" class="btn btn-info mt-2"><i class="bi bi-arrow-right me-1"></i>进入报表</a>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row g-4 mt-2">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-bar-chart-line text-warning" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">项目成本构成</h5>
+                <p class="card-text text-muted">按一级分类统计入库金额占比，并展示最近12个月的月度入库趋势。</p>
+                <a href="{{ url_for('report.cost_composition') }}" class="btn btn-warning mt-2"><i class="bi bi-arrow-right me-1"></i>进入报表</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-truck text-secondary" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">供应商占比</h5>
+                <p class="card-text text-muted">统计最近12个月各供应商的采购金额占比，展示Top 10供应商。</p>
+                <a href="{{ url_for('report.supplier_share') }}" class="btn btn-secondary mt-2"><i class="bi bi-arrow-right me-1"></i>进入报表</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-speedometer2 text-danger" style="font-size: 3rem;"></i>
+                <h5 class="card-title mt-3">限额执行情况</h5>
+                <p class="card-text text-muted">展示每个工号各物资的限额、已领、剩余、执行率，超领物资标红显示。</p>
+                <a href="{{ url_for('report.quota_execution') }}" class="btn btn-danger mt-2"><i class="bi bi-arrow-right me-1"></i>进入报表</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

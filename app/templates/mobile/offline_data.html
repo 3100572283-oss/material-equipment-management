@@ -1,0 +1,251 @@
+{% extends "mobile/base_mobile.html" %}
+{% block title %}待同步数据{% endblock %}
+{% block nav_title %}待同步数据{% endblock %}
+{% block back_url %}{{ url_for('mobile.index') }}{% endblock %}
+
+{% block content %}
+<!-- 概览 -->
+<div class="mobile-card">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <div class="text-muted small">本地待同步</div>
+            <div class="h4 mb-0" id="total-count">0 条</div>
+        </div>
+        <div class="text-end">
+            <div class="text-muted small">上次同步</div>
+            <div class="small" id="last-sync">从未</div>
+        </div>
+    </div>
+</div>
+
+<!-- 同步结果展示 -->
+<div id="sync-result-area" style="display:none;">
+    <div class="mobile-card" id="sync-result-card">
+        <div class="d-flex align-items-center mb-2">
+            <i class="bi bi-info-circle me-2" id="sync-result-icon"></i>
+            <span class="fw-bold" id="sync-result-title">同步结果</span>
+        </div>
+        <div id="sync-result-body" class="small"></div>
+    </div>
+</div>
+
+<!-- 操作按钮 -->
+<div class="d-grid gap-2 mb-3">
+    <button type="button" class="btn btn-success btn-lg-mobile" id="btn-sync"
+            onclick="syncAll()">
+        <i class="bi bi-cloud-arrow-up me-1"></i>同步全部到服务器
+    </button>
+    <button type="button" class="btn btn-outline-danger btn-lg-mobile" id="btn-clear"
+            onclick="clearAll()">
+        <i class="bi bi-trash me-1"></i>清空本地数据
+    </button>
+</div>
+
+<!-- 记录列表 -->
+<div id="records-list">
+    <!-- 由 JS 动态渲染 -->
+</div>
+
+<!-- 空状态 -->
+<div id="empty-state" class="empty-state" style="display:none;">
+    <i class="bi bi-inbox"></i>
+    <div>暂无待同步数据</div>
+    <div class="small mt-2">请先在录入页面保存数据</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 渲染记录列表
+function renderRecords() {
+    var records = MobileOffline.getRecords();
+    var list = document.getElementById('records-list');
+    var empty = document.getElementById('empty-state');
+    var total = document.getElementById('total-count');
+    var lastSync = document.getElementById('last-sync');
+
+    total.textContent = records.length + ' 条';
+
+    var last = MobileOffline.getLastSync();
+    if (last) {
+        lastSync.textContent = new Date(last).toLocaleString('zh-CN');
+    } else {
+        lastSync.textContent = '从未';
+    }
+
+    if (!records.length) {
+        list.innerHTML = '';
+        empty.style.display = 'block';
+        document.getElementById('btn-sync').disabled = true;
+        document.getElementById('btn-clear').disabled = true;
+        return;
+    }
+
+    empty.style.display = 'none';
+    document.getElementById('btn-sync').disabled = false;
+    document.getElementById('btn-clear').disabled = false;
+
+    var html = '';
+    records.forEach(function(rec, idx) {
+        var data = rec.data || {};
+        var isStockIn = rec.type === 'stock_in';
+        var typeLabel = isStockIn ? '入库' : '出库';
+        var savedTime = rec.saved_at ? new Date(rec.saved_at).toLocaleString('zh-CN') : '';
+        var amountInfo = '';
+        if (isStockIn && data.unit_price) {
+            amountInfo = '<span class="text-muted">单价：¥' + data.unit_price + '</span><br>';
+        }
+        var unitInfo = '';
+        if (!isStockIn && data.usage_unit_id) {
+            unitInfo = '<span class="text-muted">用料单位ID：' + data.usage_unit_id + '</span><br>';
+        }
+        var remark = data.remark ? '<span class="text-muted">备注：' +
+                     escapeHtml(data.remark) + '</span>' : '';
+
+        html += '<div class="record-item ' + (isStockIn ? '' : 'stock_out') + '">' +
+            '<div class="d-flex justify-content-between align-items-start mb-1">' +
+                '<span class="rec-type">' + typeLabel + '</span>' +
+                '<button type="button" class="btn btn-sm btn-link text-danger p-0" ' +
+                    'onclick="removeRecord(\'' + rec.id + '\')">' +
+                    '<i class="bi bi-x-lg"></i>' +
+                '</button>' +
+            '</div>' +
+            '<div class="fw-bold mb-1">' + escapeHtml(data.material_name || '物资#' + data.material_id) + '</div>' +
+            '<div class="small">' +
+                '<span class="text-muted">数量：</span><span class="fw-bold">' + data.quantity + '</span><br>' +
+                amountInfo +
+                unitInfo +
+                '<span class="text-muted">保存时间：' + savedTime + '</span><br>' +
+                remark +
+            '</div>' +
+        '</div>';
+    });
+    list.innerHTML = html;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+
+// 删除单条记录
+function removeRecord(id) {
+    if (!confirm('确定删除这条记录吗？')) return;
+    MobileOffline.removeRecord(id);
+    renderRecords();
+}
+
+// 同步全部
+function syncAll() {
+    var records = MobileOffline.getRecords();
+    if (!records.length) {
+        alert('没有需要同步的记录');
+        return;
+    }
+    if (!navigator.onLine) {
+        alert('当前处于离线状态，请联网后再同步');
+        return;
+    }
+
+    var btn = document.getElementById('btn-sync');
+    var originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>同步中...';
+
+    // 构造同步请求：每条记录包含 saved_at 供服务端解析日期
+    var payload = {
+        records: records.map(function(rec) {
+            var data = Object.assign({}, rec.data || {});
+            data.saved_at = rec.saved_at || '';
+            return { type: rec.type, data: data };
+        })
+    };
+
+    fetch('{{ url_for("mobile.api_sync") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(result) {
+        showSyncResult(result);
+        // 全部成功才清空本地数据；部分失败则保留失败的记录
+        if (result.success && result.failed === 0 && result.synced > 0) {
+            MobileOffline.clearAll();
+            MobileOffline.setLastSync();
+        } else if (result.success && result.synced > 0 && result.failed > 0) {
+            // 部分成功：记录同步时间，保留未同步的记录（简化处理：清空已成功的较复杂，
+            // 这里提示用户，保留全部记录便于重试）
+            MobileOffline.setLastSync();
+        }
+        renderRecords();
+    })
+    .catch(function(err) {
+        showSyncResult({
+            success: false,
+            message: '同步请求失败：' + err,
+            synced: 0,
+            failed: records.length,
+            errors: [String(err)]
+        });
+    })
+    .finally(function() {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
+
+// 显示同步结果
+function showSyncResult(result) {
+    var area = document.getElementById('sync-result-area');
+    var card = document.getElementById('sync-result-card');
+    var icon = document.getElementById('sync-result-icon');
+    var title = document.getElementById('sync-result-title');
+    var body = document.getElementById('sync-result-body');
+
+    area.style.display = 'block';
+
+    if (result.success && result.failed === 0) {
+        card.className = 'mobile-card border-success';
+        icon.className = 'bi bi-check-circle-fill text-success me-2';
+        title.textContent = '同步成功';
+        title.className = 'fw-bold text-success';
+    } else if (result.success && result.failed > 0) {
+        card.className = 'mobile-card border-warning';
+        icon.className = 'bi bi-exclamation-triangle-fill text-warning me-2';
+        title.textContent = '部分同步成功';
+        title.className = 'fw-bold text-warning';
+    } else {
+        card.className = 'mobile-card border-danger';
+        icon.className = 'bi bi-x-circle-fill text-danger me-2';
+        title.textContent = '同步失败';
+        title.className = 'fw-bold text-danger';
+    }
+
+    var html = '<div class="mb-2">' + escapeHtml(result.message || '') + '</div>';
+    html += '<div>成功：<span class="fw-bold text-success">' + (result.synced || 0) + '</span> 条，' +
+            '失败：<span class="fw-bold text-danger">' + (result.failed || 0) + '</span> 条</div>';
+    if (result.errors && result.errors.length) {
+        html += '<div class="mt-2"><strong>错误详情：</strong><ul class="mb-0 ps-3">';
+        result.errors.forEach(function(e) {
+            html += '<li>' + escapeHtml(e) + '</li>';
+        });
+        html += '</ul></div>';
+    }
+    body.innerHTML = html;
+}
+
+// 清空本地数据
+function clearAll() {
+    if (!confirm('确定清空所有本地待同步数据吗？此操作不可恢复！')) return;
+    MobileOffline.clearAll();
+    document.getElementById('sync-result-area').style.display = 'none';
+    renderRecords();
+}
+
+// 页面加载时渲染
+renderRecords();
+</script>
+{% endblock %}

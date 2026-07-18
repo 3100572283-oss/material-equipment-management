@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if announcement else '新增' }}公告 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm" style="max-width:800px;">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-megaphone me-2"></i>{{ '编辑' if announcement else '新增' }}公告</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{% if announcement %}{{ url_for('admin.edit_announcement', id=announcement.id) }}{% else %}{{ url_for('admin.create_announcement') }}{% endif %}">
+            <div class="mb-3">
+                <label class="form-label">标题 <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="title" required
+                       value="{{ announcement.title if announcement else '' }}" placeholder="请输入公告标题">
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">类型</label>
+                    <select class="form-select" name="type">
+                        <option value="notice" {% if announcement and announcement.type == 'notice' %}selected{% endif %}>通知</option>
+                        <option value="maintenance" {% if announcement and announcement.type == 'maintenance' %}selected{% endif %}>维护</option>
+                        <option value="important" {% if announcement and announcement.type == 'important' %}selected{% endif %}>重要</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">发布时间</label>
+                    <input type="datetime-local" class="form-control" name="publish_time"
+                           value="{{ announcement.publish_time.strftime('%Y-%m-%dT%H:%M') if announcement and announcement.publish_time else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">过期时间</label>
+                    <input type="datetime-local" class="form-control" name="expire_time"
+                           value="{{ announcement.expire_time.strftime('%Y-%m-%dT%H:%M') if announcement and announcement.expire_time else '' }}">
+                    <div class="form-text">留空表示永久有效</div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="is_popup" value="1" id="isPopup"
+                               {% if announcement and announcement.is_popup %}checked{% endif %}>
+                        <label class="form-check-label" for="isPopup">登录后弹窗提示</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="status" value="1" id="status" checked
+                               {% if announcement and announcement.status %}checked{% endif %}>
+                        <label class="form-check-label" for="status">启用</label>
+                    </div>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">内容</label>
+                <textarea class="form-control" name="content" rows="8"
+                          placeholder="请输入公告内容...">{{ announcement.content if announcement else '' }}</textarea>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>保存</button>
+                <a href="{{ url_for('admin.announcements') }}" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

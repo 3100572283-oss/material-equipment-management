@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}期末结账 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-calendar-check me-2"></i>期末结账</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-2 mb-3">
+            <div class="col-md-3">
+                <input type="month" class="form-control form-control-sm" id="periodInput"
+                       value="{{ request.args.get('period', '') }}">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-sm btn-outline-primary" onclick="doCheck()">
+                    <i class="bi bi-check2-circle me-1"></i>结账前校验
+                </button>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>期间</th>
+                        <th>状态</th>
+                        <th>结账时间</th>
+                        <th>结账人</th>
+                        <th>反结账时间</th>
+                        <th>反结账人</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in closes %}
+                    <tr>
+                        <td>{{ c.period }}</td>
+                        <td>
+                            {% if c.status == 'closed' %}
+                            <span class="badge bg-success">已结账</span>
+                            {% else %}
+                            <span class="badge bg-secondary">未结账</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ c.closed_at.strftime('%Y-%m-%d %H:%M') if c.closed_at else '-' }}</td>
+                        <td>{{ c.closed_by or '-' }}</td>
+                        <td>{{ c.reopen_at.strftime('%Y-%m-%d %H:%M') if c.reopen_at else '-' }}</td>
+                        <td>{{ c.reopen_by or '-' }}</td>
+                        <td class="text-end">
+                            {% if c.status == 'closed' %}
+                            <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal"
+                                    data-bs-target="#reopenModal" data-period="{{ c.period }}">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>反结账
+                            </button>
+                            {% else %}
+                            <button class="btn btn-sm btn-outline-primary" onclick="checkAndClose('{{ c.period }}')">
+                                <i class="bi bi-check-lg me-1"></i>结账
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无结账记录</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="reopenModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('period_close.reopen') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">反结账确认</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="period" id="reopenPeriod">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        反结账将恢复该期间数据的可编辑状态，月结快照数据将被清除。请谨慎操作！
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">反结账原因</label>
+                        <textarea class="form-control form-control-sm" name="reason" rows="3" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-sm btn-warning">确认反结账</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function doCheck() {
+    const period = document.getElementById('periodInput').value;
+    if (!period) {
+        alert('请选择期间');
+        return;
+    }
+    window.location.href = '{{ url_for("period_close.check") }}?period=' + period;
+}
+
+function checkAndClose(period) {
+    window.location.href = '{{ url_for("period_close.check") }}?period=' + period;
+}
+
+const reopenModal = document.getElementById('reopenModal');
+reopenModal.addEventListener('show.bs.modal', function (e) {
+    const btn = e.relatedTarget;
+    const period = btn.getAttribute('data-period');
+    document.getElementById('reopenPeriod').value = period;
+});
+</script>
+{% endblock %}

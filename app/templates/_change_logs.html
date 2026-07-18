@@ -1,0 +1,94 @@
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>变更记录</h6>
+    </div>
+    <div class="card-body">
+        {% if change_logs %}
+        <div class="timeline">
+            {% for group in change_logs %}
+            <div class="timeline-item">
+                <div class="timeline-marker"></div>
+                <div class="timeline-content">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="fw-bold">{{ group.changed_by or '系统' }}</span>
+                            <span class="text-muted ms-2">{{ group.operation or '编辑' }}</span>
+                            {% if group.reason %}
+                            <span class="badge bg-info ms-2">原因：{{ group.reason }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted">{{ group.changed_at.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                            {% if group.ip_address %}
+                            <br><small class="text-muted">IP: {{ group.ip_address }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 25%;">字段</th>
+                                    <th style="width: 37.5%;">变更前</th>
+                                    <th style="width: 37.5%;">变更后</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in group.changes %}
+                                <tr>
+                                    <td class="fw-medium">{{ log.field_label or log.field_name }}</td>
+                                    <td class="text-danger text-decoration-line-through">{{ log.old_value or '-' }}</td>
+                                    <td class="text-success">{{ log.new_value or '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-center text-muted mb-0">暂无变更记录</p>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.timeline {
+    position: relative;
+    padding-left: 24px;
+}
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 4px;
+    bottom: 4px;
+    width: 2px;
+    background-color: #e9ecef;
+}
+.timeline-item {
+    position: relative;
+    margin-bottom: 24px;
+}
+.timeline-item:last-child {
+    margin-bottom: 0;
+}
+.timeline-marker {
+    position: absolute;
+    left: -20px;
+    top: 6px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #0d6efd;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 2px #0d6efd;
+}
+.timeline-content {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+</style>

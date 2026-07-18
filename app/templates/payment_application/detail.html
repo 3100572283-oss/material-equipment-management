@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}付款申请详情 - {{ application.application_code }}{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>付款申请详情 - {{ application.application_code }}</h5>
+        <div>
+            {% set label, cls = STATUS_MAP.get(application.status, ('未知', 'secondary')) %}
+            <span class="badge bg-{{ cls }} fs-6">{{ label }}</span>
+            <a href="{{ url_for('payment_application.index') }}" class="btn btn-sm btn-outline-secondary ms-2">
+                <i class="bi bi-arrow-left me-1"></i>返回列表
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="text-muted small">申请单号</div>
+                <div class="fw-bold">{{ application.application_code }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">申请日期</div>
+                <div>{{ application.apply_date if application.apply_date else '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">申请人</div>
+                <div>{{ application.applicant_name or '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">预计付款日期</div>
+                <div>{{ application.expected_payment_date if application.expected_payment_date else '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">供应商</div>
+                <div>{{ application.supplier.name if application.supplier else '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">关联合同</div>
+                <div>{% if application.contract %}<a href="{{ url_for('contract.detail', id=application.contract.id) }}">{{ application.contract.code }}</a>{% else %}-{% endif %}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">付款方式</div>
+                <div>{{ application.payment_method or '-' }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">申请金额</div>
+                <div class="fs-5 fw-bold text-primary">{{ '%.2f'|format(application.apply_amount or 0) }}</div>
+            </div>
+            {% if application.payment_id %}
+            <div class="col-md-3">
+                <div class="text-muted small">生成付款记录</div>
+                <div><a href="{{ url_for('contract.payments') }}" class="text-success">已生成付款</a></div>
+            </div>
+            {% endif %}
+            <div class="col-12">
+                <div class="text-muted small">付款说明</div>
+                <div>{{ application.payment_description or '-' }}</div>
+            </div>
+            {% if application.remark %}
+            <div class="col-12">
+                <div class="text-muted small">备注</div>
+                <div>{{ application.remark }}</div>
+            </div>
+            {% endif %}
+            {% if application.attachment %}
+            <div class="col-12">
+                <div class="text-muted small">附件</div>
+                <div><a href="{{ url_for('main.uploaded_file', filename=application.attachment) }}" target="_blank"><i class="bi bi-paperclip me-1"></i>查看附件</a></div>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if recon_list %}
+        <div class="card mb-3">
+            <div class="card-header bg-light py-2">
+                <h6 class="mb-0"><i class="bi bi-list-check me-1"></i>关联对账单（共 {{ recon_list|length }} 张）</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>对账单号</th>
+                                <th>对账期间</th>
+                                <th>合同号</th>
+                                <th class="text-end">对账金额(含税)</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in recon_list %}
+                            <tr>
+                                <td>{{ r.code }}</td>
+                                <td>{{ r.start_date }} ~ {{ r.end_date }}</td>
+                                <td>{{ r.contract.code if r.contract else '-' }}</td>
+                                <td class="text-end">{{ '%.2f'|format(r.total_amount or 0) }}</td>
+                                <td><a href="{{ url_for('reconciliation.detail', id=r.id) }}" target="_blank">查看</a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2 flex-wrap">
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('payment_application.create', copy_from=application.id) }}" class="btn btn-outline-success">
+                <i class="bi bi-files me-1"></i>复制新增
+            </a>
+            {% endif %}
+            {% if can_submit %}
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#submitModal">
+                <i class="bi bi-send me-1"></i>提交审批
+            </button>
+            {% endif %}
+            {% if can_edit %}
+            <a href="{{ url_for('payment_application.edit', id=application.id) }}" class="btn btn-warning">
+                <i class="bi bi-pencil me-1"></i>编辑
+            </a>
+            {% endif %}
+            {% if can_withdraw %}
+            <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#withdrawModal">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>撤回
+            </button>
+            {% endif %}
+            {% if can_delete %}
+            <form method="POST" action="{{ url_for('payment_application.delete', id=application.id) }}" class="d-inline" onsubmit="return confirm('确定删除此付款申请？');">
+                <button type="submit" class="btn btn-danger"><i class="bi bi-trash me-1"></i>删除</button>
+            </form>
+            {% endif %}
+            {% if approval_instance %}
+            <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}" class="btn btn-outline-info ms-auto">
+                <i class="bi bi-diagram-3 me-1"></i>查看审批流程
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if approval_instance %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>审批进度</h6>
+    </div>
+    <div class="card-body">
+        {% set status_label, status_color = ('待审批', 'warning') if approval_instance.status == 'pending' else (
+            ('审批中', 'warning') if approval_instance.status == 'approving' else (
+            ('已通过', 'success') if approval_instance.status == 'passed' else (
+            ('已驳回', 'danger') if approval_instance.status == 'rejected' else (
+            ('已撤回', 'secondary') if approval_instance.status == 'withdrawn' else (approval_instance.status, 'secondary'))))) %}
+        <div class="mb-3">当前状态：<span class="badge bg-{{ status_color }}">{{ status_label }}</span></div>
+        <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}" class="btn btn-sm btn-outline-primary">查看完整审批记录 →</a>
+    </div>
+</div>
+{% endif %}
+
+{% if can_submit %}
+<div class="modal fade" id="submitModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('payment_application.submit_approval', id=application.id) }}">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">提交审批</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>确定提交此付款申请进入审批流程？</p>
+                    <div class="mb-3">
+                        <label class="form-label">提交说明（可选）</label>
+                        <textarea class="form-control" name="opinion" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">确认提交</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if can_withdraw %}
+<div class="modal fade" id="withdrawModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('payment_application.withdraw', id=application.id) }}">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">撤回申请</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>确定撤回此付款申请？</p>
+                    <div class="mb-3">
+                        <label class="form-label">撤回原因（可选）</label>
+                        <textarea class="form-control" name="reason" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-warning">确认撤回</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

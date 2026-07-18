@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{% if evaluation %}编辑评价{% else %}新增评价{% endif %} - {{ supplier.name }}{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-star me-2"></i>{% if evaluation %}编辑评价{% else %}新增评价{% endif %} - {{ supplier.name }}</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('supplier.edit_evaluation', eid=evaluation.id) if evaluation else url_for('supplier.add_evaluation', id=supplier.id) }}">
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">评价期间 <span class="text-danger">*</span></label>
+                    <select class="form-select" name="evaluate_period" required>
+                        <option value="">-- 选择评价期间 --</option>
+                        {% for p in periods %}
+                        <option value="{{ p }}" {% if evaluation and evaluation.evaluate_period == p %}selected{% endif %}>{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">评价日期 <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" name="evaluate_date" value="{{ evaluation.evaluate_date if evaluation else today_str }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">评价人</label>
+                    <input type="text" class="form-control" name="evaluator" value="{{ evaluation.evaluator if evaluation else current_user.name or current_user.username }}">
+                </div>
+            </div>
+
+            <div class="border rounded-lg p-4 mb-3">
+                <h6 class="mb-3"><i class="bi bi-list-check me-1"></i>评价维度</h6>
+                <div class="row g-4">
+                    <div class="col-md-3">
+                        <label class="form-label">质量评分 <span class="text-muted small">(权重{{ weights.quality }}%)</span></label>
+                        <input type="range" class="form-range" min="0" max="100" name="quality_score" value="{{ evaluation.quality_score if evaluation else 50 }}" oninput="this.nextElementSibling.textContent = this.value">
+                        <span class="text-center d-block fw-bold">{{ evaluation.quality_score if evaluation else 50 }}</span>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">价格评分 <span class="text-muted small">(权重{{ weights.price }}%)</span></label>
+                        <input type="range" class="form-range" min="0" max="100" name="price_score" value="{{ evaluation.price_score if evaluation else 50 }}" oninput="this.nextElementSibling.textContent = this.value">
+                        <span class="text-center d-block fw-bold">{{ evaluation.price_score if evaluation else 50 }}</span>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">交货期评分 <span class="text-muted small">(权重{{ weights.delivery }}%)</span></label>
+                        <input type="range" class="form-range" min="0" max="100" name="delivery_score" value="{{ evaluation.delivery_score if evaluation else 50 }}" oninput="this.nextElementSibling.textContent = this.value">
+                        <span class="text-center d-block fw-bold">{{ evaluation.delivery_score if evaluation else 50 }}</span>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">服务评分 <span class="text-muted small">(权重{{ weights.service }}%)</span></label>
+                        <input type="range" class="form-range" min="0" max="100" name="service_score" value="{{ evaluation.service_score if evaluation else 50 }}" oninput="this.nextElementSibling.textContent = this.value">
+                        <span class="text-center d-block fw-bold">{{ evaluation.service_score if evaluation else 50 }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">评价说明</label>
+                <textarea class="form-control" name="comment" rows="3" placeholder="选填">{{ evaluation.comment if evaluation else '' }}</textarea>
+            </div>
+
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i>{% if evaluation %}保存修改{% else %}提交评价{% endif %}</button>
+                <a href="{{ url_for('supplier.detail', id=supplier.id if supplier else evaluation.supplier_id) }}" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

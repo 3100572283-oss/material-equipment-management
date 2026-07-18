@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}采购申请详情 - {{ pr.pr_no }}{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-file-earmark-text me-2"></i>采购申请详情 - {{ pr.pr_no }}
+            {% if pr.status == 'draft' %}<span class="badge bg-secondary ms-2">草稿</span>
+            {% elif pr.status == 'pending' %}<span class="badge bg-warning text-dark ms-2">待审批</span>
+            {% elif pr.status == 'processing' %}<span class="badge bg-info ms-2">审批中</span>
+            {% elif pr.status == 'passed' %}<span class="badge bg-success ms-2">已通过</span>
+            {% elif pr.status == 'rejected' %}<span class="badge bg-danger ms-2">已驳回</span>
+            {% elif pr.status == 'completed' %}<span class="badge bg-primary ms-2">已完成</span>
+            {% endif %}
+        </h5>
+        <div>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('purchase_requisition.create', copy_from=pr.id) }}" class="btn btn-sm btn-outline-success"><i class="bi bi-files me-1"></i>复制新增</a>
+            {% if pr.status in ('draft', 'rejected') %}
+            <a href="{{ url_for('purchase_requisition.edit', id=pr.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
+            {% endif %}
+            {% if pr.status == 'draft' %}
+            <form method="POST" action="{{ url_for('purchase_requisition.submit', id=pr.id) }}" class="d-inline" onsubmit="return confirm('确定提交审批？');">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-send me-1"></i>提交审批</button>
+            </form>
+            {% endif %}
+            {% if pr.status == 'passed' %}
+            <form method="POST" action="{{ url_for('purchase_requisition.convert_contract', id=pr.id) }}" class="d-inline">
+                <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-arrow-right-circle me-1"></i>生成合同</button>
+            </form>
+            {% endif %}
+            {% if pr.status in ('draft', 'rejected') %}
+            <form method="POST" action="{{ url_for('purchase_requisition.delete', id=pr.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
+            </form>
+            {% endif %}
+            {% endif %}
+            <a href="{{ url_for('purchase_requisition.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-2"><div class="text-muted small">申请部门</div><div>{{ pr.apply_dept or '-' }}</div></div>
+            <div class="col-md-2"><div class="text-muted small">申请人</div><div>{{ pr.apply_user or '-' }}</div></div>
+            <div class="col-md-2"><div class="text-muted small">申请日期</div><div>{{ pr.apply_date or '-' }}</div></div>
+            <div class="col-md-2"><div class="text-muted small">需求日期</div><div>{{ pr.demand_date or '-' }}</div></div>
+            <div class="col-md-2"><div class="text-muted small">物资种类</div><div class="fw-bold">{{ pr.item_count }}</div></div>
+            <div class="col-md-2"><div class="text-muted small">创建时间</div><div>{{ pr.created_at.strftime('%Y-%m-%d %H:%M') if pr.created_at else '-' }}</div></div>
+            {% if pr.remark %}
+            <div class="col-12"><div class="text-muted small">备注</div><div>{{ pr.remark }}</div></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if approval_instance %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-clock-history me-2"></i>审批流程</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3"><span class="text-muted">审批状态：</span>
+                {% if approval_instance.status == 'pending' %}<span class="badge bg-warning">待审批</span>
+                {% elif approval_instance.status == 'approving' %}<span class="badge bg-info">审批中</span>
+                {% elif approval_instance.status == 'passed' %}<span class="badge bg-success">已通过</span>
+                {% elif approval_instance.status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
+                {% elif approval_instance.status == 'withdrawn' %}<span class="badge bg-secondary">已撤回</span>
+                {% endif %}
+            </div>
+            <div class="col-md-3"><span class="text-muted">提交时间：</span>{{ approval_instance.submit_time.strftime('%Y-%m-%d %H:%M') if approval_instance.submit_time else '-' }}</div>
+            <div class="col-md-3"><span class="text-muted">当前节点：</span>{{ approval_instance.current_node.node_name if approval_instance.current_node else '-' }}</div>
+            <div class="col-md-3"><span class="text-muted">审批流程：</span>{{ approval_instance.flow.flow_name if approval_instance.flow else '-' }}</div>
+        </div>
+        {% if approval_instance.reject_reason %}
+        <div class="alert alert-danger mt-2 mb-0">
+            <strong>驳回原因：</strong>{{ approval_instance.reject_reason }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-list-check me-2"></i>申请明细</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>序号</th>
+                        <th>物资名称</th>
+                        <th>规格型号</th>
+                        <th>单位</th>
+                        <th class="text-end">申请数量</th>
+                        <th class="text-end">审批数量</th>
+                        <th>用途</th>
+                        <th>状态</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in pr.items %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ item.material_name }}</td>
+                        <td>{{ item.specification or '-' }}</td>
+                        <td>{{ item.unit or '-' }}</td>
+                        <td class="text-end fw-bold">{{ item.apply_qty }}</td>
+                        <td class="text-end">{{ item.approve_qty or '-' }}</td>
+                        <td>{{ item.purpose or '-' }}</td>
+                        <td>
+                            {% if item.converted %}<span class="badge bg-success">已转合同</span>
+                            {% else %}<span class="badge bg-secondary">待处理</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">暂无明细</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

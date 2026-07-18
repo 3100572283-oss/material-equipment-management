@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}供应商管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-truck me-2"></i>供应商管理</h5>
+        <div>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('supplier.download_template') }}" class="btn btn-sm btn-outline-success"><i class="bi bi-download me-1"></i>模板</a>
+            <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-1"></i>导入</button>
+            <a href="{{ url_for('supplier.export') }}" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i>导出</a>
+            <a href="{{ url_for('supplier.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增供应商</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('supplier.index') }}">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索供应商名称/编码" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="level">
+                    <option value="">全部评级</option>
+                    <option value="A" {% if level == 'A' %}selected{% endif %}>A级 - 优秀</option>
+                    <option value="B" {% if level == 'B' %}selected{% endif %}>B级 - 良好</option>
+                    <option value="C" {% if level == 'C' %}selected{% endif %}>C级 - 合格</option>
+                    <option value="D" {% if level == 'D' %}selected{% endif %}>D级 - 不合格</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('supplier.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        {% if current_user.can_edit() %}
+        <form method="POST" action="{{ url_for('supplier.batch_delete') }}" id="batchForm">
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        {% if current_user.can_edit() %}
+                        <th style="width:30px;"><input type="checkbox" id="checkAll"></th>
+                        {% endif %}
+                        <th>供应商名称</th>
+                        <th>编码</th>
+                        <th>社会信用代码</th>
+                        <th>联系人</th>
+                        <th>电话</th>
+                        <th>最新评级</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in pagination.items %}
+                    <tr>
+                        {% if current_user.can_edit() %}
+                        <td><input type="checkbox" name="ids" value="{{ s.id }}"></td>
+                        {% endif %}
+                        <td><a href="{{ url_for('supplier.detail', id=s.id) }}" class="text-decoration-none fw-bold">{{ s.name }}</a></td>
+                        <td>{{ s.code or '-' }}</td>
+                        <td>{{ s.credit_code or '-' }}</td>
+                        <td>{{ s.contact_person or '-' }}</td>
+                        <td>{{ s.phone or '-' }}</td>
+                        <td>
+                            {% if s.latest_evaluation %}
+                            {% if s.latest_evaluation.level == 'A' %}<span class="badge bg-success">A - 优秀</span>
+                            {% elif s.latest_evaluation.level == 'B' %}<span class="badge bg-primary">B - 良好</span>
+                            {% elif s.latest_evaluation.level == 'C' %}<span class="badge bg-secondary">C - 合格</span>
+                            {% elif s.latest_evaluation.level == 'D' %}<span class="badge bg-danger">D - 不合格</span>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if current_user.can_edit() %}
+                            <a href="{{ url_for('supplier.edit', id=s.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('supplier.delete', id=s.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if current_user.can_edit() and pagination.items %}
+        <div class="mb-3">
+            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('确定批量删除选中的供应商？');"><i class="bi bi-trash me-1"></i>批量删除</button>
+        </div>
+        {% endif %}
+        {% if current_user.can_edit() %}
+        </form>
+        {% endif %}
+
+        {% if pagination.pages > 1 %}
+        <nav>
+            <ul class="pagination pagination-sm justify-content-center">
+                {% if pagination.has_prev %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('supplier.index', page=pagination.prev_num, keyword=keyword, level=level) }}">上一页</a></li>
+                {% endif %}
+                {% for p in pagination.iter_pages() %}
+                    {% if p %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('supplier.index', page=p, keyword=keyword, level=level) }}">{{ p }}</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                    {% endif %}
+                {% endfor %}
+                {% if pagination.has_next %}
+                <li class="page-item"><a class="page-link" href="{{ url_for('supplier.index', page=pagination.next_num, keyword=keyword, level=level) }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 导入模态框 -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('supplier.import_excel') }}" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-upload me-2"></i>批量导入供应商</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-1"></i>请先下载模板，按模板格式填写后上传
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">选择Excel文件</label>
+                        <input type="file" class="form-control" name="file" accept=".xlsx,.xls" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-1"></i>开始导入</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.getElementById('checkAll')?.addEventListener('change', function() {
+    document.querySelectorAll('input[name="ids"]').forEach(cb => cb.checked = this.checked);
+});
+</script>
+{% endblock %}
