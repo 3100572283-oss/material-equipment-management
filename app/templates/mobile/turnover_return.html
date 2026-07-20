@@ -1,0 +1,161 @@
+{% extends "mobile/base.html" %}
+{% block title %}周转材归还{% endblock %}
+{% block nav_title %}归还登记{% endblock %}
+
+{% block content %}
+<form method="POST" id="returnForm" enctype="multipart/form-data">
+    <!-- 领用信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-info-circle"></i>领用信息</div>
+        <div class="m-info-row"><span>周转材</span><span>{{ rec.material.name if rec.material else '-' }}</span></div>
+        <div class="m-info-row"><span>编号</span><span>{{ rec.material.code if rec.material else '-' }}</span></div>
+        <div class="m-info-row"><span>领用班组</span><span>{{ rec.team or '-' }}</span></div>
+        <div class="m-info-row"><span>领用日期</span><span>{{ rec.out_date.strftime('%Y-%m-%d') if rec.out_date else '-' }}</span></div>
+        <div class="m-info-row"><span>领用数量</span><span>{{ '%.2f'|format(rec.qty|float) }} {{ rec.material.unit if rec.material else '' }}</span></div>
+        <div class="m-info-row"><span>在用数量</span><span style="color:#dc3545; font-weight:600;">{{ '%.2f'|format(rec.using_qty) }} {{ rec.material.unit if rec.material else '' }}</span></div>
+        <div class="m-info-row"><span>已归还</span><span>{{ '%.2f'|format(rec.returned_qty|float) }} {{ rec.material.unit if rec.material else '' }}</span></div>
+        <div class="m-info-row"><span>已损耗</span><span>{{ '%.2f'|format(rec.lost_qty|float) }} {{ rec.material.unit if rec.material else '' }}</span></div>
+    </div>
+
+    <!-- 归还信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-arrow-return-left"></i>归还信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">归还数量<span class="req">*</span></label>
+            <input type="number" name="return_qty" class="m-form-control" step="0.0001" min="0"
+                   max="{{ rec.using_qty }}" value="{{ rec.using_qty }}" required>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">损耗数量</label>
+            <input type="number" name="lost_qty" class="m-form-control" step="0.0001" min="0" value="0">
+            <div style="font-size:12px; color:#6c757d; margin-top:4px;">损坏/丢失数量，将自动扣减</div>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">完好情况</label>
+            <select name="condition" class="m-form-select">
+                <option value="完好">完好</option>
+                <option value="损坏">损坏</option>
+                <option value="丢失">丢失</option>
+            </select>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">归还日期</label>
+            <input type="date" name="return_date" class="m-form-control" value="{{ today }}">
+        </div>
+    </div>
+
+    <!-- 损坏拍照 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-camera"></i>损坏拍照（如有损坏，最多4张）</div>
+        <div class="m-photo-grid" id="photoGrid">
+            <label class="m-photo-add" style="position:relative;">
+                <input type="file" accept="image/*" capture="environment" multiple
+                       style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;"
+                       onchange="handlePhotoSelect(this)">
+            </label>
+        </div>
+    </div>
+</form>
+
+<div class="m-submit-bar">
+    <button type="button" class="m-btn m-btn-primary" style="flex:1;" onclick="submitForm()">
+        <i class="bi bi-check-lg" style="margin-right:6px;"></i>确认归还
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var photos = [];
+
+function handlePhotoSelect(input){
+    var files = input.files;
+    if (!files || files.length === 0) return;
+    var remaining = 4 - photos.length;
+    if (files.length > remaining) M.toast('最多4张', 'warning');
+    for (var i = 0; i < Math.min(files.length, remaining); i++) compressImage(files[i]);
+    input.value = '';
+}
+
+function compressImage(file){
+    var reader = new FileReader();
+    reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+            var max = 1280, w = img.width, h = img.height;
+            if (w > max || h > max) {
+                if (w > h) { h = h * max / w; w = max; }
+                else { w = w * max / h; h = max; }
+            }
+            var canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            photos.push({ dataUrl: canvas.toDataURL('image/jpeg', 0.7), name: file.name });
+            renderPhotos();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function renderPhotos(){
+    var grid = document.getElementById('photoGrid');
+    while (grid.children.length > 1) grid.removeChild(grid.lastChild);
+    photos.forEach(function(p, i){
+        var div = document.createElement('div');
+        div.style.cssText = 'position:relative;width:72px;height:72px;border-radius:6px;overflow:hidden;';
+        div.innerHTML = '<img src="' + p.dataUrl + '" style="width:100%;height:100%;object-fit:cover;" onclick="previewPhoto(' + i + ')">' +
+            '<div style="position:absolute;top:2px;right:2px;width:18px;height:18px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;text-align:center;line-height:18px;font-size:12px;cursor:pointer;" onclick="event.stopPropagation();photos.splice(' + i + ',1);renderPhotos();">×</div>';
+        grid.appendChild(div);
+    });
+}
+
+function previewPhoto(i){
+    var urls = photos.map(function(p){ return p.dataUrl; });
+    if (window.MobilePreview) MobilePreview.open(urls, i);
+}
+
+function submitForm(){
+    var form = document.getElementById('returnForm');
+    var returnQty = parseFloat(form.return_qty.value) || 0;
+    var lostQty = parseFloat(form.lost_qty.value) || 0;
+    var maxQty = {{ rec.using_qty }};
+    if (returnQty + lostQty > maxQty) {
+        M.toast('归还+损耗不能超过在用数量 ' + maxQty, 'danger');
+        return;
+    }
+    if (returnQty === 0 && lostQty === 0) {
+        M.toast('请填写归还或损耗数量', 'danger');
+        return;
+    }
+    var fd = new FormData(form);
+    photos.forEach(function(p){
+        var arr = p.dataUrl.split(',');
+        var mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+        var byteStr = atob(arr[1]);
+        var ab = new ArrayBuffer(byteStr.length);
+        var u8 = new Uint8Array(ab);
+        for (var j = 0; j < byteStr.length; j++) u8[j] = byteStr.charCodeAt(j);
+        fd.append('photos[]', new Blob([ab], { type: mime }), p.name);
+    });
+    M.loading(true);
+    fetch(window.location.href, {
+        method: 'POST', body: fd, credentials: 'same-origin'
+    }).then(function(r){
+        M.loading(false);
+        if (r.redirected) window.location.href = r.url;
+        else window.location.reload();
+    }).catch(function(err){
+        M.loading(false);
+        M.toast('提交失败：' + err, 'danger');
+    });
+}
+</script>
+{% endblock %}
+
+<style>
+.m-info-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f1f3f5; font-size:14px; }
+.m-info-row:last-child { border-bottom:none; }
+.m-info-row span:first-child { color:#6c757d; }
+.m-info-row span:last-child { color:#212529; font-weight:500; text-align:right; max-width:60%; word-break:break-all; }
+</style>

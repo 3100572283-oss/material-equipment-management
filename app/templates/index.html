@@ -2,11 +2,119 @@
 {% block title %}首页 - 物资设备管理系统{% endblock %}
 {% block content %}
 <div class="container-fluid">
-    {% if not current_project_id %}
+    {% if is_all_projects_mode %}
+    <div class="alert alert-warning py-2 mb-3">
+        <i class="bi bi-grid me-2"></i><strong>汇总视图</strong>：当前显示所有可见项目的汇总数据。
+        <span class="ms-2 text-muted">共 {{ total_project_count }} 个项目（在建 {{ active_project_count }}）</span>
+    </div>
+    {% endif %}
+    {% if not current_project_id and not is_all_projects_mode %}
     <div class="alert alert-info">
         <i class="bi bi-info-circle me-2"></i>请先选择项目以查看仪表盘数据
     </div>
     {% else %}
+    {% if is_all_projects_mode %}
+    <!-- 公司级汇总卡片 -->
+    <div class="row g-3 mb-4">
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100 bg-primary bg-opacity-10">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-primary bg-opacity-25 p-3 me-3">
+                        <i class="bi bi-building text-primary fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ total_project_count }}</h3>
+                        <small class="text-muted">项目总数</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100 bg-success bg-opacity-10">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-success bg-opacity-25 p-3 me-3">
+                        <i class="bi bi-check-circle text-success fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ active_project_count }}</h3>
+                        <small class="text-muted">在建项目数</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-info bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-cash-stack text-info fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">¥{{ stats.stock_in_total }}</h3>
+                        <small class="text-muted">全公司入库总额（万元）</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-warning bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-file-earmark-text text-warning fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">¥{{ stats.contract_total }}</h3>
+                        <small class="text-muted">合同总金额（万元）</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 各项目库存金额排行 -->
+    {% if project_stats %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h6 class="mb-0"><i class="bi bi-bar-chart-line me-2"></i>各项目库存金额排行</h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:50px">排名</th>
+                            <th>项目名称</th>
+                            <th class="text-end">入库总额（万元）</th>
+                            <th class="text-end">物资种类</th>
+                            <th class="text-end">合同数量</th>
+                            <th style="width:30%">占比</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in project_stats[:10] %}
+                        <tr>
+                            <td><span class="badge {% if loop.index <= 3 %}bg-danger{% else %}bg-secondary{% endif %}">{{ loop.index }}</span></td>
+                            <td>
+                                <a href="{{ url_for('main.set_project', project_id=p.id) }}">{{ p.name }}</a>
+                            </td>
+                            <td class="text-end fw-bold">¥{{ p.stock_in_total }}</td>
+                            <td class="text-end">{{ p.material_count }}</td>
+                            <td class="text-end">{{ p.contract_count }}</td>
+                            <td>
+                                {% set pct = (p.stock_in_total / stats.stock_in_total * 100) if stats.stock_in_total > 0 else 0 %}
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar bg-primary" style="width: {{ pct }}%"></div>
+                                </div>
+                                <small class="text-muted">{{ pct|round(1) }}%</small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
     <!-- 关键指标卡片 -->
     <div class="row g-3 mb-4">
         <div class="col-xl-3 col-md-4 col-sm-6">

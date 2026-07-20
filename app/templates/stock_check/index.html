@@ -5,7 +5,7 @@
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-clipboard-check me-2"></i>盘点管理</h5>
         {% if current_user.can_edit() %}
-        <a href="{{ url_for('stock_check.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增盘点单</a>
+        <a href="{{ url_for('stock_check.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增盘点单</a>
         {% endif %}
     </div>
     <div class="card-body">
@@ -58,7 +58,7 @@
                 <tbody>
                     {% for s in pagination.items %}
                     <tr>
-                        <td><a href="{{ url_for('stock_check.detail', id=s.id) }}" class="text-decoration-none fw-bold">{{ s.check_no }}</a></td>
+                        <td><a href="{{ url_for('stock_check.detail', id=s.id) }}?from=list" class="text-decoration-none fw-bold">{{ s.check_no }}</a></td>
                         <td>{{ s.check_date or '-' }}</td>
                         <td>
                             {% if s.check_type == 'full' %}<span class="badge bg-primary">全库盘点</span>
@@ -79,7 +79,7 @@
                             {% endif %}
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('stock_check.detail', id=s.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('stock_check.detail', id=s.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                             <a href="{{ url_for('stock_check.print_stock_check', id=s.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="打印"><i class="bi bi-printer"></i></a>
                             {% if current_user.can_edit() %}
                             <a href="{{ url_for('stock_check.export', id=s.id) }}" class="btn btn-sm btn-outline-info"><i class="bi bi-file-earmark-excel"></i></a>

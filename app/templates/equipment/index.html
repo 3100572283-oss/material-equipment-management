@@ -17,7 +17,7 @@
             <a href="{{ url_for('equipment.rent_settle') }}" class="btn btn-outline-info btn-sm me-2"><i class="bi bi-receipt me-1"></i>租赁结算</a>
             <a href="{{ url_for('equipment.depreciation') }}" class="btn btn-outline-info btn-sm me-2"><i class="bi bi-calculator me-1"></i>折旧明细</a>
             {% if current_user.can_edit() %}
-            <a href="{{ url_for('equipment.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增设备</a>
+            <a href="{{ url_for('equipment.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增设备</a>
             {% endif %}
         </div>
     </div>
@@ -65,7 +65,7 @@
                     {% for e in pagination.items %}
                     <tr class="{% if e.status == 'exited' %}table-secondary text-muted{% endif %}">
                         <td>{{ e.code }}</td>
-                        <td class="fw-bold"><a href="{{ url_for('equipment.detail', id=e.id) }}" class="text-decoration-none">{{ e.name }}</a></td>
+                        <td class="fw-bold"><a href="{{ url_for('equipment.detail', id=e.id) }}?from=list" class="text-decoration-none">{{ e.name }}</a></td>
                         <td>
                             {% if e.source_type == 'self' %}<span class="badge bg-primary">自有设备</span>
                             {% elif e.source_type == 'rent' %}<span class="badge bg-warning text-dark">租赁设备</span>
@@ -84,7 +84,8 @@
                             {% elif e.status == 'scrapped' %}<span class="badge bg-danger">已报废</span>{% endif %}
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('equipment.detail', id=e.id) }}" class="btn btn-sm btn-outline-primary" title="查看"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('equipment.detail', id=e.id) }}?from=list" class="btn btn-sm btn-outline-primary" title="查看"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('mobile.equipment_qrcode', eid=e.id) }}" target="_blank" class="btn btn-sm btn-outline-info" title="二维码标签"><i class="bi bi-qr-code"></i></a>
                             {% if current_user.can_edit() %}
                             <a href="{{ url_for('equipment.edit', id=e.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
                             <button type="button" class="btn btn-sm btn-outline-warning" title="状态变更"

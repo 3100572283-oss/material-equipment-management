@@ -1,0 +1,63 @@
+{% extends "mobile/base.html" %}
+{% block title %}设备二维码{% endblock %}
+{% block nav_title %}设备二维码{% endblock %}
+
+{% block content %}
+<div class="m-card" style="text-align:center; padding:24px 16px;">
+    <div style="font-size:18px; font-weight:600;">{{ eq.name }}</div>
+    <div style="font-size:13px; color:#6c757d; margin-top:4px;">{{ eq.code }}</div>
+    {% if eq.specification %}<div style="font-size:12px; color:#adb5bd; margin-top:4px;">{{ eq.specification }}</div>{% endif %}
+
+    <div id="qrcodeBox" style="margin:24px auto; padding:16px; background:#fff; border-radius:8px; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <!-- 二维码由 JS 生成 -->
+    </div>
+
+    <div style="font-size:12px; color:#6c757d; margin-top:8px;">
+        扫描上方二维码可快速查看设备详情
+    </div>
+
+    <div style="margin-top:20px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+        <a href="{{ url_for('mobile.equipment_detail', eid=eq.id) }}" class="m-btn m-btn-outline-primary">
+            <i class="bi bi-arrow-left"></i> 返回详情
+        </a>
+        <button type="button" class="m-btn m-btn-primary" onclick="window.print()">
+            <i class="bi bi-printer"></i> 打印
+        </button>
+    </div>
+</div>
+
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-info-circle"></i>设备信息</div>
+    <div class="m-info-row"><span>设备编号</span><span>{{ eq.code }}</span></div>
+    <div class="m-info-row"><span>设备名称</span><span>{{ eq.name }}</span></div>
+    <div class="m-info-row"><span>设备来源</span><span>{{ eq.source_label }}</span></div>
+    <div class="m-info-row"><span>使用部门</span><span>{{ eq.department or '-' }}</span></div>
+    <div class="m-info-row"><span>负责人</span><span>{{ eq.responsible or '-' }}</span></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+// 二维码内容：移动端扫描后跳转到设备详情
+var qrUrl = window.location.origin + "{{ url_for('mobile.scan_redirect') }}?code={{ eq.code }}";
+new QRCode(document.getElementById('qrcodeBox'), {
+    text: qrUrl,
+    width: 200,
+    height: 200,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+});
+</script>
+{% endblock %}
+
+<style>
+.m-info-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f1f3f5; font-size:14px; }
+.m-info-row:last-child { border-bottom:none; }
+.m-info-row span:first-child { color:#6c757d; }
+.m-info-row span:last-child { color:#212529; font-weight:500; text-align:right; max-width:60%; word-break:break-all; }
+@media print {
+    .m-navbar, .m-tabbar, .m-submit-bar, .m-card:last-child { display:none !important; }
+}
+</style>

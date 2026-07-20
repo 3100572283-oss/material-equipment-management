@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}功能配置 - {{ project.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('project.index') }}">项目管理</a></li>
+            <li class="breadcrumb-item">{{ project.name }}</li>
+            <li class="breadcrumb-item active">功能配置</li>
+        </ol>
+    </nav>
+    <a href="{{ url_for('project.index') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>返回
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-gear me-2"></i>功能模块配置 - {{ project.name }}</h6>
+        <span class="badge bg-light text-dark">
+            <i class="bi bi-info-circle me-1"></i>关闭模块后相关菜单和功能将隐藏，数据保留
+        </span>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="">
+            <div class="row g-3">
+                {% set groups = {
+                    '库存与设备': ['module_equipment', 'module_turnover'],
+                    '采购与库存': ['module_scrap', 'module_period_close'],
+                    '审批与质检': ['module_approval', 'module_quality_check'],
+                    '批次管理': ['module_batch'],
+                    '行业工具': ['module_industry_tools', 'module_subcontract'],
+                    '智能功能': ['module_ai']
+                } %}
+                {% for group_name, modules in groups.items() %}
+                <div class="col-md-6">
+                    <div class="card border-light mb-3">
+                        <div class="card-header bg-light py-2">
+                            <strong>{{ group_name }}</strong>
+                        </div>
+                        <div class="card-body">
+                            {% for key in modules %}
+                            {% set label, desc = module_labels.get(key, (key, '')) %}
+                            <div class="d-flex justify-content-between align-items-center py-2 border-bottom {% if loop.last %}border-bottom-0{% endif %}">
+                                <div>
+                                    <div class="fw-medium">{{ label }}</div>
+                                    <small class="text-muted">{{ desc }}</small>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch"
+                                           id="switch_{{ key }}" name="{{ key }}"
+                                           {% if module_config.get(key) %}checked{% endif %}>
+                                    <label class="form-check-label" for="switch_{{ key }}">
+                                        {% if module_config.get(key) %}<span class="text-success">已启用</span>{% else %}<span class="text-muted">已关闭</span>{% endif %}
+                                    </label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="mt-4 d-flex justify-content-end">
+                <a href="{{ url_for('project.index') }}" class="btn btn-secondary me-2">
+                    <i class="bi bi-x-lg me-1"></i>取消
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i>保存配置
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// 实时更新开关状态文字
+document.querySelectorAll('.form-switch input[type="checkbox"]').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+        var label = this.closest('.form-switch').querySelector('.form-check-label span');
+        if (this.checked) {
+            label.textContent = '已启用';
+            label.className = 'text-success';
+        } else {
+            label.textContent = '已关闭';
+            label.className = 'text-muted';
+        }
+    });
+});
+
+// 关闭模块确认提示
+document.querySelector('form').addEventListener('submit', function(e) {
+    var disabledCount = 0;
+    document.querySelectorAll('.form-switch input[type="checkbox"]').forEach(function(cb) {
+        if (!cb.checked) { disabledCount++; }
+    });
+    if (disabledCount > 0) {
+        if (!confirm('您有 ' + disabledCount + ' 个模块处于关闭状态。\n关闭后相关菜单和功能将隐藏，但数据会保留。\n确认保存吗？')) {
+            e.preventDefault();
+        }
+    }
+});
+</script>
+{% endblock %}

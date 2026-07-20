@@ -1,0 +1,479 @@
+{% extends "mobile/base.html" %}
+{% block title %}新建报废申请{% endblock %}
+{% block nav_title %}新建报废申请{% endblock %}
+
+{% block content %}
+<form method="POST" id="scrapForm" enctype="multipart/form-data">
+    <input type="hidden" name="applicant_name" value="{{ current_user.name or current_user.username }}">
+    <input type="hidden" name="location_lat" id="locLat">
+    <input type="hidden" name="location_lng" id="locLng">
+    <input type="hidden" name="location_accuracy" id="locAcc">
+    <input type="hidden" name="location_time" id="locTime">
+
+    <!-- 基本信息 -->
+    <div class="m-card">
+        <div class="m-form-group">
+            <label class="m-form-label">报废单号</label>
+            <input type="text" class="m-form-control" value="{{ default_code }}" readonly>
+            <div style="font-size:12px;color:#adb5bd;margin-top:4px;">保存后自动生成</div>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">报废日期<span class="req">*</span></label>
+            <input type="date" name="scrap_date" class="m-form-control" value="{{ today }}" required>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">报废原因<span class="req">*</span></label>
+            <select name="reason" class="m-form-select" required>
+                {% for value, label in reason_labels.items() %}
+                <option value="{{ value }}" {% if value == 'other' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">用料单位（可选）</label>
+            <select name="usage_unit_id" class="m-form-select">
+                <option value="">-- 不指定 --</option>
+                {% for u in usage_units %}
+                <option value="{{ u.id }}">{{ u.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">备注</label>
+            <textarea name="remark" class="m-form-control" rows="2" placeholder="报废备注说明"></textarea>
+        </div>
+    </div>
+
+    <!-- 物资明细 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-list-ul"></i>报废明细</div>
+        <div id="itemsContainer"></div>
+        <button type="button" class="m-add-row-btn" onclick="addItemRow()">
+            <i class="bi bi-plus-lg"></i> 添加物资
+        </button>
+    </div>
+
+    <!-- 现场照片 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-camera"></i>现场照片（1-6张，必填）</div>
+        <div class="m-photo-grid" id="photoGrid">
+            <label class="m-photo-add" style="position:relative;">
+                <input type="file" accept="image/*" capture="environment" multiple
+                       style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;"
+                       onchange="handlePhotoSelect(this)">
+            </label>
+        </div>
+        <div style="font-size:12px;color:#adb5bd;margin-top:8px;">
+            点击"+"拍照或从相册选择，至少1张，最多6张
+        </div>
+    </div>
+
+    <!-- 定位 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-geo-alt"></i>现场定位</div>
+        <div id="locStatus" style="font-size:13px;color:#6c757d;">未获取定位</div>
+        <button type="button" class="m-btn m-btn-outline-primary" style="margin-top:8px;" onclick="captureLocation()">
+            <i class="bi bi-geo"></i> 获取定位
+        </button>
+    </div>
+</form>
+
+<!-- 底部提交栏 -->
+<div class="m-submit-bar">
+    <button type="button" class="m-btn m-btn-outline-primary" style="flex:1;" onclick="submitForm('save')">
+        <i class="bi bi-check-lg" style="margin-right:4px;"></i>仅保存
+    </button>
+    <button type="button" class="m-btn m-btn-primary" style="flex:1.4;" onclick="submitForm('submit')">
+        <i class="bi bi-send" style="margin-right:6px;"></i>保存并提交审批
+    </button>
+</div>
+
+<!-- 物资搜索弹层 -->
+<div class="m-search-modal" id="materialModal">
+    <div class="panel">
+        <div class="panel-header">
+            <input type="text" id="materialSearchInput" placeholder="搜索物资名称/编码" oninput="searchMaterials()">
+            <button type="button" class="close" onclick="closeMaterialModal()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="panel-body" id="materialOptions">
+            <div class="empty">输入关键字搜索物资</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var currentEditingRow = null;
+var photoList = [];
+const MAX_PHOTOS = 6;
+const MIN_PHOTOS = 1;
+
+// ========== 物资明细行 ==========
+function addItemRow() {
+    var container = document.getElementById('itemsContainer');
+    var idx = container.children.length;
+    var row = document.createElement('div');
+    row.className = 'm-item-row';
+    row.innerHTML = `
+        <div class="m-item-header">
+            <span>第 ${idx + 1} 行</span>
+            <button type="button" class="m-item-del" onclick="removeItemRow(this)"><i class="bi bi-trash"></i></button>
+        </div>
+        <input type="hidden" name="material_id[]" value="">
+        <div class="m-item-grid" style="grid-template-columns: 1fr 70px;">
+            <input type="text" class="m-form-control material-name"
+                   placeholder="点击选择物资" readonly onclick="openMaterialModal(this)">
+            <button type="button" class="m-btn m-btn-outline" style="height:44px;padding:0;font-size:18px;"
+                    onclick="scanMaterial(this)" title="扫码">
+                <i class="bi bi-qr-code-scan"></i>
+            </button>
+        </div>
+        <div style="margin-top:8px;">
+            <input type="text" class="m-form-control material-qty"
+                   name="quantity[]" type="number" step="0.0001" min="0"
+                   placeholder="数量" inputmode="decimal"
+                   oninput="onQtyInput(this)">
+        </div>
+        <div style="margin-top:8px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+            <input type="text" class="m-form-control material-spec"
+                   placeholder="规格" disabled style="font-size:13px;">
+            <input type="text" class="m-form-control material-unit"
+                   placeholder="单位" disabled style="font-size:13px;">
+        </div>
+        <div style="margin-top:8px;">
+            <input type="text" class="m-form-control material-stock"
+                   placeholder="当前库存" disabled style="font-size:13px;color:#165DFF;">
+        </div>
+        <div style="margin-top:8px;">
+            <input type="text" class="m-form-control" name="reason_detail[]"
+                   placeholder="明细原因（可选）" style="font-size:13px;">
+        </div>
+        <div class="m-stock-tip" style="margin-top:6px;font-size:12px;display:none;"></div>
+    `;
+    container.appendChild(row);
+}
+
+function removeItemRow(btn) {
+    var row = btn.closest('.m-item-row');
+    row.remove();
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    rows.forEach(function(r, i) {
+        r.querySelector('.m-item-header span').textContent = '第 ' + (i + 1) + ' 行';
+    });
+}
+
+// ========== 库存校验提示 ==========
+function onQtyInput(qtyInput) {
+    var row = qtyInput.closest('.m-item-row');
+    var stockInput = row.querySelector('.material-stock');
+    var tipDiv = row.querySelector('.m-stock-tip');
+    var qty = parseFloat(qtyInput.value) || 0;
+    var stockAttr = parseFloat(row.getAttribute('data-stock') || 0);
+    if (!qty) {
+        tipDiv.style.display = 'none';
+        return;
+    }
+    if (qty > stockAttr) {
+        tipDiv.style.display = 'block';
+        tipDiv.style.color = '#dc3545';
+        tipDiv.innerHTML = '<i class="bi bi-exclamation-triangle"></i> 数量超过当前库存 ' + stockAttr;
+    } else {
+        tipDiv.style.display = 'block';
+        tipDiv.style.color = '#198754';
+        tipDiv.innerHTML = '<i class="bi bi-check-circle"></i> 报废后剩余 ' + (stockAttr - qty).toFixed(2);
+    }
+}
+
+// ========== 物资搜索弹层 ==========
+function openMaterialModal(inputEl) {
+    currentEditingRow = inputEl.closest('.m-item-row');
+    document.getElementById('materialModal').classList.add('show');
+    var input = document.getElementById('materialSearchInput');
+    input.value = '';
+    input.focus();
+    searchMaterials();
+}
+
+function closeMaterialModal() {
+    document.getElementById('materialModal').classList.remove('show');
+    currentEditingRow = null;
+}
+
+function searchMaterials() {
+    var kw = document.getElementById('materialSearchInput').value.trim();
+    fetch("{{ url_for('mobile.api_materials_search') }}?q=" + encodeURIComponent(kw))
+        .then(function(r) { return r.json(); })
+        .then(function(list) {
+            var box = document.getElementById('materialOptions');
+            if (!list || list.length === 0) {
+                box.innerHTML = '<div class="empty">未找到匹配的物资</div>';
+                return;
+            }
+            box.innerHTML = list.map(function(m) {
+                return `<div class="opt" onclick='selectMaterial(${m.id}, ${JSON.stringify(m).replace(/'/g, "&#39;")})'>
+                    <div class="name">${escapeHtml(m.name)} <span class="stock-tag">库存 ${m.stock}</span></div>
+                    <div class="desc">${escapeHtml(m.code || '')} · ${escapeHtml(m.spec || '-')} · ${escapeHtml(m.unit || '-')}</div>
+                </div>`;
+            }).join('');
+        });
+}
+
+function selectMaterial(id, m) {
+    if (!currentEditingRow) return;
+    currentEditingRow.querySelector('input[name="material_id[]"]').value = id;
+    currentEditingRow.querySelector('.material-name').value = m.name;
+    currentEditingRow.querySelector('.material-spec').value = m.spec || '';
+    currentEditingRow.querySelector('.material-unit').value = m.unit || '';
+    currentEditingRow.querySelector('.material-stock').value = '当前库存 ' + m.stock;
+    currentEditingRow.setAttribute('data-stock', m.stock);
+    // 最近使用记录（用户需求3.1）
+    if (window.MobileRecentUse) MobileRecentUse.record('material', { id: id, name: m.name });
+    var qtyInput = currentEditingRow.querySelector('.material-qty');
+    if (qtyInput) {
+        qtyInput.focus();
+        onQtyInput(qtyInput);
+    }
+    closeMaterialModal();
+}
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/[&<>"']/g, function(s) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s];
+    });
+}
+
+// ========== 扫码选择物资 ==========
+function scanMaterial(btn) {
+    currentEditingRow = btn.closest('.m-item-row');
+    MobileScanner.open(function(code){
+        fetch("{{ url_for('mobile.api_materials_search') }}?q=" + encodeURIComponent(code))
+            .then(function(r){ return r.json(); })
+            .then(function(list){
+                var matched = null;
+                for (var i=0; i<list.length; i++){
+                    if (list[i].code === code || list[i].code === code.trim()) {
+                        matched = list[i]; break;
+                    }
+                }
+                if (!matched && list.length === 1) matched = list[0];
+                if (matched) {
+                    selectMaterial(matched.id, matched);
+                } else {
+                    M.toast('未找到编码为 ' + code + ' 的物资', 'warning');
+                }
+            });
+    });
+}
+
+// ========== 拍照上传 ==========
+function handlePhotoSelect(input) {
+    var files = input.files;
+    if (!files || files.length === 0) return;
+    var remain = MAX_PHOTOS - photoList.length;
+    if (files.length > remain) {
+        M.toast('最多只能上传' + MAX_PHOTOS + '张照片', 'warning');
+    }
+    for (var i = 0; i < Math.min(files.length, remain); i++) {
+        (function(file) {
+            compressImage(file, function(dataUrl, blob) {
+                photoList.push({file: file, dataUrl: dataUrl, blob: blob, name: file.name});
+                renderPhotos();
+            });
+        })(files[i]);
+    }
+    input.value = '';
+}
+
+function compressImage(file, callback) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var img = new Image();
+        img.onload = function() {
+            var maxLen = 1280;
+            var w = img.width, h = img.height;
+            if (w > h && w > maxLen) {
+                h = h * maxLen / w;
+                w = maxLen;
+            } else if (h > maxLen) {
+                w = w * maxLen / h;
+                h = maxLen;
+            }
+            var canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob(function(blob) {
+                var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                callback(dataUrl, blob);
+            }, 'image/jpeg', 0.7);
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function renderPhotos() {
+    var grid = document.getElementById('photoGrid');
+    var html = '';
+    photoList.forEach(function(p, idx) {
+        html += `<div class="m-photo-item">
+            <img src="${p.dataUrl}" onclick="previewPhoto(${idx})">
+            <button type="button" class="remove" onclick="removePhoto(${idx})"><i class="bi bi-x"></i></button>
+        </div>`;
+    });
+    if (photoList.length < MAX_PHOTOS) {
+        html += `<label class="m-photo-add">
+            <input type="file" accept="image/*" capture="environment" multiple
+                   style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;"
+                   onchange="handlePhotoSelect(this)">
+        </label>`;
+    }
+    grid.innerHTML = html;
+}
+
+function removePhoto(idx) {
+    photoList.splice(idx, 1);
+    renderPhotos();
+}
+
+function previewPhoto(idx) {
+    if (!window.MobilePreview) { window.open(photoList[idx].dataUrl, '_blank'); return; }
+    var urls = photoList.map(function(p){ return p.dataUrl; });
+    MobilePreview.open(urls, idx);
+}
+
+// ========== 定位 ==========
+function captureLocation() {
+    if (!navigator.geolocation) {
+        M.toast('当前设备不支持定位', 'danger');
+        return;
+    }
+    var statusEl = document.getElementById('locStatus');
+    statusEl.textContent = '正在获取定位...';
+    navigator.geolocation.getCurrentPosition(
+        function(pos) {
+            document.getElementById('locLat').value = pos.coords.latitude;
+            document.getElementById('locLng').value = pos.coords.longitude;
+            document.getElementById('locAcc').value = pos.coords.accuracy || '';
+            var now = new Date();
+            document.getElementById('locTime').value = now.toISOString();
+            statusEl.innerHTML = '<i class="bi bi-check-circle" style="color:#198754;"></i> 已定位：' +
+                pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6) +
+                '（精度±' + Math.round(pos.coords.accuracy || 0) + '米）';
+            M.toast('定位成功', 'success');
+        },
+        function(err) {
+            statusEl.innerHTML = '<i class="bi bi-exclamation-triangle" style="color:#dc3545;"></i> 定位失败：' + (err.message || '未知错误');
+            M.toast('定位失败：' + (err.message || ''), 'danger');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+}
+
+// 自动尝试获取定位
+setTimeout(captureLocation, 300);
+
+// ========== 提交表单 ==========
+function submitForm(submitType) {
+    if (!navigator.onLine) {
+        M.toast('当前处于离线状态，无法提交', 'warning');
+        return;
+    }
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    if (rows.length === 0) {
+        M.toast('请添加报废明细', 'warning');
+        return;
+    }
+    var validRows = 0;
+    var insufficient = [];
+    for (var i = 0; i < rows.length; i++) {
+        var mid = rows[i].querySelector('input[name="material_id[]"]').value;
+        var qty = rows[i].querySelector('input[name="quantity[]"]').value;
+        var name = rows[i].querySelector('.material-name').value;
+        var stockAttr = parseFloat(rows[i].getAttribute('data-stock') || 0);
+        if (mid && qty && parseFloat(qty) > 0) {
+            validRows++;
+            if (parseFloat(qty) > stockAttr) {
+                insufficient.push(name + ' 库存 ' + stockAttr + '，报废 ' + qty);
+            }
+        }
+    }
+    if (validRows === 0) {
+        M.toast('请添加至少1条有效的物资明细', 'warning');
+        return;
+    }
+    if (photoList.length < MIN_PHOTOS) {
+        M.toast('请至少上传' + MIN_PHOTOS + '张现场照片', 'warning');
+        return;
+    }
+    if (insufficient.length > 0) {
+        M.confirm('以下物资报废数量超过库存，是否仍要提交？\n\n' + insufficient.join('\n'),
+            function() { captureAndSubmit(submitType); });
+        return;
+    }
+    captureAndSubmit(submitType);
+}
+
+function captureAndSubmit(submitType) {
+    var form = document.getElementById('scrapForm');
+    // 获取定位后注入表单，再执行提交（loc 为 null 时不阻塞提交）
+    MobileLocation.capture().then(function(loc) {
+        if (loc) {
+            injectLocationToForm(form, loc);
+        }
+        doSubmit(submitType);
+    });
+}
+
+function doSubmit(submitType) {
+    var form = document.getElementById('scrapForm');
+    var formData = new FormData(form);
+    formData.append('submit_type', submitType);
+    for (var i = 0; i < photoList.length; i++) {
+        if (photoList[i].blob) {
+            formData.append('photos[]', photoList[i].blob, photoList[i].name || ('photo_' + i + '.jpg'));
+        } else if (photoList[i].file) {
+            formData.append('photos[]', photoList[i].file);
+        }
+    }
+
+    // 草稿暂存
+    try {
+        if (window.MobileDraft && window.MobileDraft.save) {
+            window.MobileDraft.save('scrap_create', {
+                scrap_date: formData.get('scrap_date'),
+                reason: formData.get('reason'),
+                usage_unit_id: formData.get('usage_unit_id'),
+                remark: formData.get('remark')
+            });
+        }
+    } catch (e) {}
+
+    M.loading(true);
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+    }).then(function(r) {
+        M.loading(false);
+        if (r.redirected) {
+            window.location.href = r.url;
+        } else {
+            window.location.href = "{{ url_for('mobile.scrap_list') }}";
+        }
+    }).catch(function(err) {
+        M.loading(false);
+        M.toast('提交失败（网络异常）：' + err, 'danger');
+    });
+}
+
+// 初始化添加一行
+addItemRow();
+</script>
+{% endblock %}

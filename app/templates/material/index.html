@@ -3,12 +3,18 @@
 {% block content %}
 <div class="card shadow-sm">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-boxes me-2"></i>常用材料表</h5>
+        <div>
+            <h5 class="mb-0"><i class="bi bi-boxes me-2"></i>常用材料表</h5>
+            <small class="text-muted">本项目常用物资（来自公司主库引用 + 项目级临时物资）</small>
+        </div>
         <div>
             {% if current_user.can_edit() %}
             <a href="{{ url_for('material.download_template') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>模板下载</a>
             <button class="btn btn-outline-info btn-sm ms-2" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-1"></i>批量导入</button>
-            <a href="{{ url_for('material.create') }}" class="btn btn-primary btn-sm ms-2"><i class="bi bi-plus-lg me-1"></i>新增材料</a>
+            <a href="{{ url_for('material.create') }}" class="btn btn-primary ms-2"><i class="bi bi-plus-lg me-1"></i>新增材料</a>
+            <button type="button" class="btn btn-success btn-sm ms-2" data-bs-toggle="modal" data-bs-target="#addFromMasterModal">
+                <i class="bi bi-cloud-arrow-down me-1"></i>从公司库添加
+            </button>
             {% endif %}
         </div>
     </div>
@@ -47,6 +53,7 @@
                         <th>规格型号</th>
                         <th>物资分类</th>
                         <th>单位</th>
+                        <th>来源</th>
                         <th>备注</th>
                         <th class="text-end">操作</th>
                     </tr>
@@ -66,19 +73,34 @@
                             {% endif %}
                         </td>
                         <td>{{ m.unit }}</td>
+                        <td>
+                            {% if m.source == 'company' %}
+                                <span class="badge bg-info" title="来自公司主库">公司库</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark" title="项目级临时物资">项目级</span>
+                            {% endif %}
+                        </td>
                         <td>{{ m.remark or '-' }}</td>
                         <td class="text-end">
                             {% if current_user.can_edit() %}
                             <a href="{{ url_for('material.qr_generate', material_id=m.id) }}" target="_blank" class="btn btn-sm btn-outline-info" title="生成二维码"><i class="bi bi-qr-code"></i></a>
-                            <a href="{{ url_for('material.edit', id=m.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            {% if m.source == 'project' %}
+                            {# 项目级物资：可编辑、可删除 #}
+                            <a href="{{ url_for('material.edit', id=m.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
                             <form method="POST" action="{{ url_for('material.delete', id=m.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
                             </form>
+                            {% else %}
+                            {# 公司库物资：不可编辑/删除，仅可移除常用 #}
+                            <form method="POST" action="{{ url_for('material.remove_from_project', material_id=m.id) }}" class="d-inline" onsubmit="return confirm('确定将该物资从本项目常用移除？主库数据不受影响。');">
+                                <button type="submit" class="btn btn-sm btn-outline-warning" title="移除常用"><i class="bi bi-dash-circle"></i></button>
+                            </form>
+                            {% endif %}
                             {% endif %}
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted">暂无数据，可点击右上角"从公司库添加"或"新增材料"。</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -137,11 +159,78 @@
         </div>
     </div>
 </div>
+
+<!-- 从公司库添加物资 模态框 -->
+<div class="modal fade" id="addFromMasterModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-cloud-arrow-down me-2"></i>从公司库添加物资</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-4">
+                        <input type="text" class="form-control form-control-sm" id="masterSearchKeyword" placeholder="搜索物资名称/编码">
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" id="masterFilterCatL1">
+                            <option value="">一级分类</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" id="masterFilterCatL2" disabled>
+                            <option value="">二级分类</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" id="masterFilterCatL3" disabled>
+                            <option value="">三级分类</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width:40px;"><input type="checkbox" id="masterCheckAll"></th>
+                                <th>物资编码</th>
+                                <th>物资名称</th>
+                                <th>规格型号</th>
+                                <th>单位</th>
+                                <th>分类</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="masterMaterialTbody">
+                            <tr><td colspan="7" class="text-center text-muted">请输入关键字或选择分类后搜索</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted" id="masterSearchInfo">共 0 条结果</small>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="masterPrevPage">上一页</button>
+                        <span class="mx-2 small" id="masterPageInfo">第 1 页</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="masterNextPage">下一页</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" id="batchAddToProjectBtn">
+                    <i class="bi bi-check2-circle me-1"></i>批量加入常用
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script>
+// ============== 列表页分类三级联动筛选 ==============
 (function () {
     var API_BASE = '{{ url_for("category.index") }}'.replace(/\/$/, '');
     var filterL1 = document.getElementById('filterCatL1');
@@ -196,10 +285,8 @@
         loadChildren(pid, filterL3, '三级分类');
     });
 
-    // 初始化：加载一级分类
     loadChildren(0, filterL1, '一级分类').then(function () {
         if (!initialCategoryId) return;
-        // 编辑模式：根据 category_id 反查父级链并回显
         fetch(API_BASE + '/api/tree')
             .then(function (res) { return res.json(); })
             .then(function (tree) {
@@ -232,6 +319,222 @@
         }
         return null;
     }
+})();
+
+// ============== 从公司库添加物资 模态框逻辑 ==============
+(function () {
+    var modalEl = document.getElementById('addFromMasterModal');
+    if (!modalEl) return;
+
+    var searchInput = document.getElementById('masterSearchKeyword');
+    var catL1 = document.getElementById('masterFilterCatL1');
+    var catL2 = document.getElementById('masterFilterCatL2');
+    var catL3 = document.getElementById('masterFilterCatL3');
+    var tbody = document.getElementById('masterMaterialTbody');
+    var infoEl = document.getElementById('masterSearchInfo');
+    var pageInfoEl = document.getElementById('masterPageInfo');
+    var prevBtn = document.getElementById('masterPrevPage');
+    var nextBtn = document.getElementById('masterNextPage');
+    var checkAll = document.getElementById('masterCheckAll');
+    var batchBtn = document.getElementById('batchAddToProjectBtn');
+
+    var MASTER_API_BASE = '{{ url_for("master.material_api_search") }}'.split('?')[0];
+    var CATEGORY_API_BASE = '{{ url_for("master.category_index") }}'.replace(/\/$/, '');
+    var ADD_API = '{{ url_for("material.api_add_to_project") }}';
+
+    var state = { page: 1, per_page: 10, total: 0, pages: 1, items: [], linkedIds: {} };
+
+    // 从模板注入本项目已添加的物资ID集合
+    var LINKED_IDS = {{ linked_material_ids | tojson | safe if linked_material_ids else '[]' }};
+    LINKED_IDS.forEach(function (id) { state.linkedIds[id] = true; });
+
+    function fillSelect(selectEl, items, placeholder) {
+        selectEl.innerHTML = '';
+        var opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = placeholder || '-- 请选择 --';
+        selectEl.appendChild(opt);
+        items.forEach(function (item) {
+            var o = document.createElement('option');
+            o.value = item.id;
+            o.textContent = (item.category_code || '') + ' / ' + item.name;
+            selectEl.appendChild(o);
+        });
+    }
+
+    function loadChildren(parentId, selectEl, placeholder) {
+        return fetch(CATEGORY_API_BASE + '/api/children/' + parentId)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                fillSelect(selectEl, data, placeholder);
+                return data;
+            });
+    }
+
+    catL1.addEventListener('change', function () {
+        var pid = this.value;
+        catL3.innerHTML = '<option value="">三级分类</option>';
+        catL3.disabled = true;
+        if (!pid) {
+            catL2.innerHTML = '<option value="">二级分类</option>';
+            catL2.disabled = true;
+            return;
+        }
+        catL2.disabled = false;
+        loadChildren(pid, catL2, '二级分类');
+    });
+
+    catL2.addEventListener('change', function () {
+        var pid = this.value;
+        if (!pid) {
+            catL3.innerHTML = '<option value="">三级分类</option>';
+            catL3.disabled = true;
+            return;
+        }
+        catL3.disabled = false;
+        loadChildren(pid, catL3, '三级分类');
+    });
+
+    // 初始化一级分类
+    loadChildren(0, catL1, '一级分类');
+
+    function renderRows() {
+        if (!state.items.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">未找到匹配的物资</td></tr>';
+            infoEl.textContent = '共 0 条结果';
+            return;
+        }
+        var html = '';
+        state.items.forEach(function (it) {
+            var isLinked = state.linkedIds[it.id] === true;
+            var checkedAttr = isLinked ? 'checked' : '';
+            var disabledAttr = isLinked ? 'disabled' : '';
+            var statusBadge = isLinked
+                ? '<span class="badge bg-success">已添加</span>'
+                : '<span class="badge bg-light text-dark">可添加</span>';
+            html += '<tr>'
+                + '<td><input type="checkbox" class="master-material-check" value="' + it.id + '" ' + checkedAttr + ' ' + disabledAttr + '></td>'
+                + '<td><span class="badge bg-secondary">' + (it.code || '-') + '</span></td>'
+                + '<td>' + escapeHtml(it.name) + '</td>'
+                + '<td>' + escapeHtml(it.specification || '-') + '</td>'
+                + '<td>' + escapeHtml(it.unit || '-') + '</td>'
+                + '<td>' + escapeHtml(it.category_name || '-') + '</td>'
+                + '<td>' + statusBadge + '</td>'
+                + '</tr>';
+        });
+        tbody.innerHTML = html;
+        infoEl.textContent = '共 ' + state.total + ' 条结果';
+        pageInfoEl.textContent = '第 ' + state.page + ' / ' + (state.pages || 1) + ' 页';
+        // 全选框状态：只勾选当前页未禁用的全部勾选时
+        var available = tbody.querySelectorAll('input.master-material-check:not(:disabled)');
+        var allChecked = available.length > 0 && Array.prototype.every.call(available, function (cb) { return cb.checked; });
+        checkAll.checked = allChecked;
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function fetchMaster() {
+        var params = new URLSearchParams();
+        params.set('page', state.page);
+        params.set('per_page', state.per_page);
+        var q = (searchInput.value || '').trim();
+        if (q) params.set('q', q);
+        var cid = catL3.value || catL2.value || catL1.value || '';
+        if (cid) params.set('category_id', cid);
+
+        fetch(MASTER_API_BASE + '?' + params.toString())
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                state.items = data.items || [];
+                state.total = data.total || 0;
+                state.pages = data.pages || 1;
+                renderRows();
+            })
+            .catch(function () {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">加载失败，请重试</td></tr>';
+            });
+    }
+
+    // 模态框打开时加载第一页
+    modalEl.addEventListener('shown.bs.modal', function () {
+        state.page = 1;
+        fetchMaster();
+    });
+
+    // 搜索防抖
+    var debounceTimer = null;
+    searchInput.addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function () {
+            state.page = 1;
+            fetchMaster();
+        }, 350);
+    });
+
+    [catL1, catL2, catL3].forEach(function (el) {
+        el.addEventListener('change', function () {
+            state.page = 1;
+            fetchMaster();
+        });
+    });
+
+    prevBtn.addEventListener('click', function () {
+        if (state.page > 1) {
+            state.page--;
+            fetchMaster();
+        }
+    });
+    nextBtn.addEventListener('click', function () {
+        if (state.page < state.pages) {
+            state.page++;
+            fetchMaster();
+        }
+    });
+
+    // 全选/取消全选（仅作用于未禁用的复选框）
+    checkAll.addEventListener('change', function () {
+        var boxes = tbody.querySelectorAll('input.master-material-check:not(:disabled)');
+        boxes.forEach(function (cb) { cb.checked = checkAll.checked; });
+    });
+
+    // 批量加入常用
+    batchBtn.addEventListener('click', function () {
+        var boxes = tbody.querySelectorAll('input.master-material-check:checked:not(:disabled)');
+        var ids = Array.prototype.map.call(boxes, function (cb) { return parseInt(cb.value, 10); });
+        if (!ids.length) {
+            alert('请勾选要加入常用的物资');
+            return;
+        }
+        batchBtn.disabled = true;
+        batchBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>提交中...';
+        fetch(ADD_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ material_ids: ids })
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    alert('成功加入 ' + (data.added_count || 0) + ' 条物资到常用');
+                    // 关闭模态框并刷新列表页
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                    window.location.reload();
+                } else {
+                    alert(data.message || '加入失败');
+                }
+            })
+            .catch(function () { alert('网络错误，请重试'); })
+            .finally(function () {
+                batchBtn.disabled = false;
+                batchBtn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>批量加入常用';
+            });
+    });
 })();
 </script>
 {% endblock %}

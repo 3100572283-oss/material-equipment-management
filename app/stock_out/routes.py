@@ -9,7 +9,7 @@ from app import db
 from app.models import (StockOut, StockOutItem, Inventory, Material, UsageUnit,
                        WorkNumber, Project, UnitTeam)
 from app.decorators import editor_required, log_audit
-from app.utils import to_decimal
+from app.utils import to_decimal, apply_data_scope, get_project_materials
 from app.services.inventory_cost import InventoryCostService
 from app.services.business_logger import BusinessLogger
 
@@ -133,9 +133,11 @@ def _apply_stock(project_id, material_id, quantity):
 def index():
     from flask import session
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
@@ -145,7 +147,10 @@ def index():
     date_to = request.args.get('date_to', '', type=str)
     approval_status = request.args.get('approval_status', '', type=str)
 
-    query = StockOut.query.filter_by(project_id=project_id)
+    query = StockOut.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, StockOut)
     if keyword:
         query = query.filter(or_(StockOut.code.contains(keyword), StockOut.remark.contains(keyword)))
     if usage_unit_id:
@@ -279,7 +284,7 @@ def create():
 
     usage_units = UsageUnit.query.filter_by(project_id=project_id).order_by(UsageUnit.name).all()
     work_numbers = WorkNumber.query.filter_by(project_id=project_id).order_by(WorkNumber.code).all()
-    materials = Material.query.filter_by(project_id=project_id).order_by(Material.name).all()
+    materials = get_project_materials(project_id, common_only=True).all()
 
     copy_from_id = request.args.get('copy_from', type=int)
     copy_stock_out = None
@@ -425,7 +430,7 @@ def edit(id):
 
     usage_units = UsageUnit.query.filter_by(project_id=stock_out.project_id).order_by(UsageUnit.name).all()
     work_numbers = WorkNumber.query.filter_by(project_id=stock_out.project_id).order_by(WorkNumber.code).all()
-    materials = Material.query.filter_by(project_id=stock_out.project_id).order_by(Material.name).all()
+    materials = get_project_materials(stock_out.project_id, common_only=True).all()
     return render_template('stock_out/form.html', stock_out=stock_out, usage_units=usage_units,
                            work_numbers=work_numbers, materials=materials)
 
@@ -514,7 +519,7 @@ def api_materials_with_stock():
     project_id = session.get('current_project_id')
     if not project_id:
         return jsonify([])
-    materials = Material.query.filter_by(project_id=project_id).order_by(Material.name).all()
+    materials = get_project_materials(project_id, common_only=True).all()
     result = []
     for m in materials:
         stock = _get_current_stock(project_id, m.id)

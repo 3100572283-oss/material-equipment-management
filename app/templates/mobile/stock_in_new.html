@@ -1,0 +1,641 @@
+{% extends "mobile/base.html" %}
+{% block title %}入库登记{% endblock %}
+{% block nav_title %}入库登记{% endblock %}
+
+{% block content %}
+<form method="POST" id="stockInForm" enctype="multipart/form-data">
+    <input type="hidden" name="operator" value="{{ current_user.name or current_user.username }}">
+
+    <!-- 基本信息 -->
+    <div class="m-card">
+        <div class="m-form-group">
+            <label class="m-form-label">入库类型<span class="req">*</span></label>
+            <select name="stock_in_type" class="m-form-select">
+                {% for label, value in stock_in_types %}
+                <option value="{{ value }}" {% if value == '采购入库' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">供应商<span class="req">*</span></label>
+            <div style="position:relative;">
+                <input type="hidden" name="supplier_id" id="supplierId" value="">
+                <input type="text" class="m-form-control" id="supplierInput"
+                       placeholder="点击选择供应商" readonly
+                       onclick="openSupplierModal()">
+            </div>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">关联合同（可选）</label>
+            <select name="contract_id" class="m-form-select" id="contractSelect">
+                <option value="">-- 不关联合同 --</option>
+                {% for c in contracts %}
+                <option value="{{ c.id }}" data-supplier="{{ c.supplier_id }}">{{ c.code }} - {{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">备注（可选）</label>
+            <textarea name="remark" class="m-form-control" rows="2" placeholder="可填写备注..."></textarea>
+        </div>
+    </div>
+
+    <!-- 物资明细 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-list-ul"></i>物资明细</div>
+        <div id="itemsContainer"></div>
+        <button type="button" class="m-add-row-btn" onclick="addItemRow()">
+            <i class="bi bi-plus-lg"></i> 添加物资
+        </button>
+    </div>
+
+    <!-- 现场照片 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-camera"></i>现场照片（最多9张）</div>
+        <div class="m-photo-grid" id="photoGrid">
+            <label class="m-photo-add" style="position:relative;">
+                <input type="file" accept="image/*" capture="environment" multiple
+                       style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;"
+                       onchange="handlePhotoSelect(this)">
+            </label>
+        </div>
+        <div style="font-size:12px;color:#adb5bd;margin-top:8px;">
+            点击"+"拍照或从相册选择，长边压缩至1280px
+        </div>
+    </div>
+
+    <!-- 收料人签字 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-pen"></i>收料人签字</div>
+        <div id="signatureBox" style="min-height:120px; display:flex; align-items:center; justify-content:center; border:1px dashed #ced4da; border-radius:8px; background:#f8f9fa;">
+            <button type="button" class="m-btn m-btn-outline-primary" style="height:40px; padding:0 24px;" onclick="openSignature()">
+                <i class="bi bi-pen" style="margin-right:6px;"></i>点击签字
+            </button>
+        </div>
+        <div style="font-size:12px;color:#adb5bd;margin-top:8px;">
+            手写签名作为收料确认电子留痕，可在PC端打印单据时显示
+        </div>
+    </div>
+</form>
+
+<!-- 底部提交栏 -->
+<div class="m-submit-bar">
+    <button type="button" class="m-btn m-btn-outline-primary" style="flex:1;" onclick="saveOffline()">
+        <i class="bi bi-cloud-arrow-down" style="margin-right:4px;"></i>离线保存
+    </button>
+    <button type="button" class="m-btn m-btn-primary" style="flex:1.4;" onclick="submitForm()">
+        <i class="bi bi-check-lg" style="margin-right:6px;"></i>提交入库单
+    </button>
+</div>
+
+<!-- 物资搜索弹层 -->
+<div class="m-search-modal" id="materialModal">
+    <div class="panel">
+        <div class="panel-header">
+            <input type="text" id="materialSearchInput" placeholder="搜索物资名称/编码" oninput="searchMaterials()">
+            <button type="button" class="close" onclick="closeMaterialModal()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="panel-body" id="materialOptions">
+            <div class="empty">输入关键字搜索物资</div>
+        </div>
+    </div>
+</div>
+
+<!-- 供应商搜索弹层 -->
+<div class="m-search-modal" id="supplierModal">
+    <div class="panel">
+        <div class="panel-header">
+            <input type="text" id="supplierSearchInput" placeholder="搜索供应商名称" oninput="searchSuppliers()">
+            <button type="button" class="close" onclick="closeSupplierModal()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="panel-body" id="supplierOptions">
+            <div class="empty">输入关键字搜索供应商</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var currentEditingRow = null;  // 当前正在选择物资的行
+
+// ========== 物资明细行 ==========
+function addItemRow() {
+    var container = document.getElementById('itemsContainer');
+    var idx = container.children.length;
+    var row = document.createElement('div');
+    row.className = 'm-item-row';
+    row.innerHTML = `
+        <div class="m-item-header">
+            <span>第 ${idx + 1} 行</span>
+            <button type="button" class="m-item-del" onclick="removeItemRow(this)"><i class="bi bi-trash"></i></button>
+        </div>
+        <input type="hidden" name="material_id[]" value="">
+        <div class="m-item-grid" style="grid-template-columns: 1fr 70px;">
+            <input type="text" class="m-form-control material-name"
+                   placeholder="点击选择物资" readonly onclick="openMaterialModal(this)">
+            <button type="button" class="m-btn m-btn-outline" style="height:44px;padding:0;font-size:18px;"
+                    onclick="scanMaterial(this)" title="扫码">
+                <i class="bi bi-qr-code-scan"></i>
+            </button>
+        </div>
+        <div style="margin-top:8px; display:grid; grid-template-columns: 1fr 70px; gap:8px;">
+            <input type="text" class="m-form-control material-qty"
+                   name="quantity[]" type="number" step="0.0001" min="0"
+                   placeholder="数量" inputmode="decimal">
+            <button type="button" class="m-btn m-btn-outline" style="height:44px;padding:0;font-size:18px;color:#6f42c1;border-color:#d1c4e8;"
+                    onclick="speakQty(this)" title="语音">
+                <i class="bi bi-mic"></i>
+            </button>
+        </div>
+        <div class="m-item-row-3" style="margin-top:8px;">
+            <input type="text" class="m-form-control material-spec"
+                   placeholder="规格" disabled style="font-size:13px;">
+            <input type="text" class="m-form-control material-unit"
+                   placeholder="单位" disabled style="font-size:13px;">
+            <input type="text" class="m-form-control material-stock"
+                   placeholder="库存" disabled style="font-size:13px;color:#165DFF;">
+        </div>
+    `;
+    container.appendChild(row);
+}
+
+function removeItemRow(btn) {
+    var row = btn.closest('.m-item-row');
+    row.remove();
+    // 重新编号
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    rows.forEach(function(r, i) {
+        r.querySelector('.m-item-header span').textContent = '第 ' + (i + 1) + ' 行';
+    });
+}
+
+// ========== 物资搜索弹层 ==========
+function openMaterialModal(inputEl) {
+    currentEditingRow = inputEl.closest('.m-item-row');
+    document.getElementById('materialModal').classList.add('show');
+    var input = document.getElementById('materialSearchInput');
+    input.value = '';
+    input.focus();
+    searchMaterials();
+}
+
+function closeMaterialModal() {
+    document.getElementById('materialModal').classList.remove('show');
+    currentEditingRow = null;
+}
+
+function searchMaterials() {
+    var kw = document.getElementById('materialSearchInput').value.trim();
+    fetch("{{ url_for('mobile.api_materials_search') }}?q=" + encodeURIComponent(kw))
+        .then(function(r) { return r.json(); })
+        .then(function(list) {
+            var box = document.getElementById('materialOptions');
+            if (!list || list.length === 0) {
+                box.innerHTML = '<div class="empty">未找到匹配的物资</div>';
+                return;
+            }
+            box.innerHTML = list.map(function(m) {
+                return `<div class="opt" onclick="selectMaterial(${m.id}, ${JSON.stringify(m).replace(/"/g, '&quot;')})">
+                    <div class="name">${escapeHtml(m.name)} <span class="stock-tag">库存 ${m.stock}</span></div>
+                    <div class="desc">${escapeHtml(m.code || '')} · ${escapeHtml(m.spec || '-')} · ${escapeHtml(m.unit || '-')}</div>
+                </div>`;
+            }).join('');
+        });
+}
+
+function selectMaterial(id, m) {
+    if (!currentEditingRow) return;
+    currentEditingRow.querySelector('input[name="material_id[]"]').value = id;
+    currentEditingRow.querySelector('.material-name').value = m.name;
+    currentEditingRow.querySelector('.material-spec').value = m.spec || '';
+    currentEditingRow.querySelector('.material-unit').value = m.unit || '';
+    currentEditingRow.querySelector('.material-stock').value = '库存 ' + m.stock;
+    // 最近使用记录（用户需求3.1）
+    if (window.MobileRecentUse) MobileRecentUse.record('material', { id: id, name: m.name });
+    // 聚焦数量输入框
+    var qtyInput = currentEditingRow.querySelector('.material-qty');
+    if (qtyInput) qtyInput.focus();
+    closeMaterialModal();
+}
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/[&<>"']/g, function(s) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s];
+    });
+}
+
+// ========== 供应商搜索弹层 ==========
+function openSupplierModal() {
+    document.getElementById('supplierModal').classList.add('show');
+    var input = document.getElementById('supplierSearchInput');
+    input.value = '';
+    input.focus();
+    searchSuppliers();
+}
+
+function closeSupplierModal() {
+    document.getElementById('supplierModal').classList.remove('show');
+}
+
+function searchSuppliers() {
+    var kw = document.getElementById('supplierSearchInput').value.trim();
+    fetch("{{ url_for('mobile.api_suppliers_search') }}?q=" + encodeURIComponent(kw))
+        .then(function(r) { return r.json(); })
+        .then(function(list) {
+            var box = document.getElementById('supplierOptions');
+            if (!list || list.length === 0) {
+                box.innerHTML = '<div class="empty">未找到匹配的供应商</div>';
+                return;
+            }
+            box.innerHTML = list.map(function(s) {
+                return `<div class="opt" onclick="selectSupplier(${s.id}, '${escapeHtml(s.name)}')">
+                    <div class="name">${escapeHtml(s.name)}</div>
+                    <div class="desc">${escapeHtml(s.contact || '-')} · ${escapeHtml(s.phone || '-')}</div>
+                </div>`;
+            }).join('');
+        });
+}
+
+function selectSupplier(id, name) {
+    document.getElementById('supplierId').value = id;
+    document.getElementById('supplierInput').value = name;
+    // 最近使用记录（用户需求3.1）
+    if (window.MobileRecentUse) MobileRecentUse.record('supplier', { id: id, name: name });
+    closeSupplierModal();
+}
+
+// ========== 合同联动供应商 ==========
+document.getElementById('contractSelect').addEventListener('change', function() {
+    var opt = this.options[this.selectedIndex];
+    var sid = opt.getAttribute('data-supplier');
+    if (sid) {
+        // 通过API获取供应商名称
+        fetch("{{ url_for('mobile.api_suppliers_search') }}?q=")
+            .then(function(r) { return r.json(); })
+            .then(function(list) {
+                for (var i = 0; i < list.length; i++) {
+                    if (list[i].id == sid) {
+                        document.getElementById('supplierId').value = sid;
+                        document.getElementById('supplierInput').value = list[i].name;
+                        break;
+                    }
+                }
+            });
+    }
+});
+
+// ========== 拍照上传 ==========
+var photoList = [];  // {file, dataUrl}
+
+// ========== 手写签名 ==========
+var signatureList = [];  // {dataUrl, blob, name}
+
+function openSignature() {
+    MobileSignature.open('收料人签字', function(dataUrl){
+        // dataUrl 是 JPEG base64 字符串
+        var arr = dataUrl.split(',');
+        var mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+        var byteStr = atob(arr[1]);
+        var ab = new ArrayBuffer(byteStr.length);
+        var u8 = new Uint8Array(ab);
+        for (var i = 0; i < byteStr.length; i++) u8[i] = byteStr.charCodeAt(i);
+        var blob = new Blob([ab], { type: mime });
+        signatureList = [{ dataUrl: dataUrl, blob: blob, name: 'signature_receiver.png' }];
+        renderSignature();
+        M.toast('签名已保存', 'success');
+    });
+}
+
+function renderSignature() {
+    var box = document.getElementById('signatureBox');
+    if (signatureList.length === 0) {
+        box.innerHTML = '<button type="button" class="m-btn m-btn-outline-primary" style="height:40px; padding:0 24px;" onclick="openSignature()"><i class="bi bi-pen" style="margin-right:6px;"></i>点击签字</button>';
+        return;
+    }
+    box.innerHTML = '<div style="width:100%;">' +
+        '<img src="' + signatureList[0].dataUrl + '" style="width:100%; max-height:160px; object-fit:contain; background:#fff; border-radius:6px;" onclick="previewSignature()">' +
+        '<div style="margin-top:6px; display:flex; gap:8px; justify-content:flex-end;">' +
+            '<button type="button" class="m-btn m-btn-outline" style="height:32px; padding:0 14px; font-size:13px;" onclick="openSignature()"><i class="bi bi-arrow-repeat"></i> 重新签字</button>' +
+            '<button type="button" class="m-btn m-btn-outline" style="height:32px; padding:0 14px; font-size:13px; color:#dc3545; border-color:#f5c2c7;" onclick="clearSignature()"><i class="bi bi-trash"></i></button>' +
+        '</div></div>';
+}
+
+function clearSignature() {
+    signatureList = [];
+    renderSignature();
+}
+
+function previewSignature() {
+    if (signatureList.length === 0) return;
+    if (window.MobilePreview) MobilePreview.open(signatureList[0].dataUrl);
+    else window.open(signatureList[0].dataUrl, '_blank');
+}
+
+function handlePhotoSelect(input) {
+    var files = input.files;
+    if (!files || files.length === 0) return;
+    var remain = 9 - photoList.length;
+    if (files.length > remain) {
+        M.toast('最多只能上传9张照片', 'warning');
+    }
+    for (var i = 0; i < Math.min(files.length, remain); i++) {
+        (function(file) {
+            compressImage(file, function(dataUrl, blob) {
+                photoList.push({file: file, dataUrl: dataUrl, blob: blob, name: file.name});
+                renderPhotos();
+            });
+        })(files[i]);
+    }
+    input.value = '';  // 清空，允许重复选择
+}
+
+function compressImage(file, callback) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var img = new Image();
+        img.onload = function() {
+            var maxLen = 1280;
+            var w = img.width, h = img.height;
+            if (w > h && w > maxLen) {
+                h = h * maxLen / w;
+                w = maxLen;
+            } else if (h > maxLen) {
+                w = w * maxLen / h;
+                h = maxLen;
+            }
+            var canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob(function(blob) {
+                var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                callback(dataUrl, blob);
+            }, 'image/jpeg', 0.7);
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function renderPhotos() {
+    var grid = document.getElementById('photoGrid');
+    var html = '';
+    photoList.forEach(function(p, idx) {
+        html += `<div class="m-photo-item">
+            <img src="${p.dataUrl}" onclick="previewPhoto(${idx})">
+            <button type="button" class="remove" onclick="removePhoto(${idx})"><i class="bi bi-x"></i></button>
+        </div>`;
+    });
+    if (photoList.length < 9) {
+        html += `<label class="m-photo-add">
+            <input type="file" accept="image/*" capture="environment" multiple
+                   style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;"
+                   onchange="handlePhotoSelect(this)">
+        </label>`;
+    }
+    grid.innerHTML = html;
+}
+
+function removePhoto(idx) {
+    photoList.splice(idx, 1);
+    renderPhotos();
+}
+
+function previewPhoto(idx) {
+    if (!window.MobilePreview) { window.open(photoList[idx].dataUrl, '_blank'); return; }
+    var urls = photoList.map(function(p){ return p.dataUrl; });
+    MobilePreview.open(urls, idx);
+}
+
+// ========== 提交表单 ==========
+function submitForm() {
+    // 离线检测
+    if (!navigator.onLine) {
+        M.confirm('当前处于离线状态，无法提交到服务器。\n是否保存为离线数据，待联网后同步？', function(){
+            saveOffline();
+        });
+        return;
+    }
+
+    // 校验
+    var supplierId = document.getElementById('supplierId').value;
+    if (!supplierId) {
+        M.toast('请选择供应商', 'warning');
+        return;
+    }
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    if (rows.length === 0) {
+        M.toast('请添加物资明细', 'warning');
+        return;
+    }
+    var validRows = 0;
+    for (var i = 0; i < rows.length; i++) {
+        var mid = rows[i].querySelector('input[name="material_id[]"]').value;
+        var qty = rows[i].querySelector('input[name="quantity[]"]').value;
+        if (mid && qty && parseFloat(qty) > 0) {
+            validRows++;
+        }
+    }
+    if (validRows === 0) {
+        M.toast('请添加至少1条有效的物资明细', 'warning');
+        return;
+    }
+
+    var form = document.getElementById('stockInForm');
+    // 获取定位后注入表单，再执行提交（loc 为 null 时不阻塞提交）
+    MobileLocation.capture().then(function(loc) {
+        if (loc) {
+            injectLocationToForm(form, loc);
+        }
+        _doSubmit(form);
+    });
+}
+
+function _doSubmit(form) {
+    // 构建 FormData
+    var formData = new FormData(form);
+    // 添加照片
+    for (var i = 0; i < photoList.length; i++) {
+        if (photoList[i].blob) {
+            formData.append('photos[]', photoList[i].blob, photoList[i].name || ('photo_' + i + '.jpg'));
+        } else if (photoList[i].file) {
+            formData.append('photos[]', photoList[i].file);
+        }
+    }
+    // 添加签名
+    for (var i = 0; i < signatureList.length; i++) {
+        if (signatureList[i].blob) {
+            formData.append('signatures[]', signatureList[i].blob, signatureList[i].name || ('signature_' + i + '.png'));
+        }
+    }
+
+    M.loading(true);
+    fetch(form.action || window.location.href, {
+        method: 'POST',
+        body: formData
+    }).then(function(r) {
+        M.loading(false);
+        if (r.redirected) {
+            window.location.href = r.url;
+        } else {
+            // 提交后通常是重定向，但 Flask POST redirect 会返回 302
+            window.location.href = "{{ url_for('mobile.records', type='in') }}";
+        }
+    }).catch(function(err) {
+        M.loading(false);
+        M.toast('提交失败（网络异常）：' + err + '\n可尝试离线保存', 'danger');
+    });
+}
+
+// ========== 离线保存 ==========
+function saveOffline() {
+    if (!window.MobileOffline) {
+        M.toast('离线组件未加载', 'danger');
+        return;
+    }
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    if (rows.length === 0) {
+        M.toast('请添加物资明细', 'warning');
+        return;
+    }
+    var validRows = 0;
+    for (var i = 0; i < rows.length; i++) {
+        var mid = rows[i].querySelector('input[name="material_id[]"]').value;
+        var qty = rows[i].querySelector('input[name="quantity[]"]').value;
+        if (mid && qty && parseFloat(qty) > 0) validRows++;
+    }
+    if (validRows === 0) {
+        M.toast('请添加至少1条有效的物资明细', 'warning');
+        return;
+    }
+
+    // 构建离线数据
+    var supplierInput = document.getElementById('supplierInput');
+    var data = {
+        project_id: {{ project.id if project else 'null' }},
+        stock_in_type: document.querySelector('[name=stock_in_type]').value,
+        supplier_id: document.getElementById('supplierId').value,
+        supplier_name: supplierInput ? supplierInput.value : '',
+        contract_id: document.querySelector('[name=contract_id]').value,
+        remark: document.querySelector('[name=remark]').value,
+        operator: '{{ current_user.name or current_user.username }}',
+        items: [],
+        photos: []
+    };
+    for (var i = 0; i < rows.length; i++) {
+        var mid = rows[i].querySelector('input[name="material_id[]"]').value;
+        var qty = rows[i].querySelector('input[name="quantity[]"]').value;
+        var name = rows[i].querySelector('.material-name').value;
+        var spec = rows[i].querySelector('.material-spec').value;
+        var unit = rows[i].querySelector('.material-unit').value;
+        if (mid && qty && parseFloat(qty) > 0) {
+            data.items.push({
+                material_id: mid, quantity: qty,
+                material_name: name, spec: spec, unit: unit
+            });
+        }
+    }
+    // 照片转 base64
+    data.photos = photoList.map(function(p){ return p.dataUrl; });
+    // 签名转 base64
+    data.signatures = signatureList.map(function(s){ return s.dataUrl; });
+
+    M.loading(true);
+    MobileOffline.save(MobileOffline.STORE_STOCK_IN, data).then(function(saved){
+        M.loading(false);
+        M.toast('已保存到离线存储（共'+data.items.length+'条明细）', 'success');
+        setTimeout(function(){
+            window.location.href = "{{ url_for('mobile.offline_data_new') }}";
+        }, 800);
+    }).catch(function(err){
+        M.loading(false);
+        M.toast('离线保存失败：' + err, 'danger');
+    });
+}
+
+// ========== 扫码选择物资 ==========
+function scanMaterial(btn) {
+    currentEditingRow = btn.closest('.m-item-row');
+    MobileScanner.open(function(code){
+        // 通过编码匹配物资
+        fetch("{{ url_for('mobile.api_materials_search') }}?q=" + encodeURIComponent(code))
+            .then(function(r){ return r.json(); })
+            .then(function(list){
+                // 精确匹配编码
+                var matched = null;
+                for (var i=0; i<list.length; i++){
+                    if (list[i].code === code || list[i].code === code.trim()) {
+                        matched = list[i]; break;
+                    }
+                }
+                if (!matched && list.length === 1) matched = list[0];
+                if (matched) {
+                    selectMaterial(matched.id, matched);
+                    // 自动新增下一行（连续扫码）
+                    setTimeout(function(){
+                        var lastRow = document.querySelector('#itemsContainer .m-item-row:last-child');
+                        if (lastRow && lastRow.querySelector('input[name="material_id[]"]').value) {
+                            addItemRow();
+                        }
+                    }, 200);
+                } else {
+                    M.toast('未找到编码为 ' + code + ' 的物资', 'warning');
+                }
+            });
+    });
+}
+
+// ========== 语音输入数量 ==========
+var _speechSupported = ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
+function speakQty(btn) {
+    if (!_speechSupported) {
+        M.toast('当前浏览器不支持语音，请使用Chrome', 'warning');
+        return;
+    }
+    var row = btn.closest('.m-item-row');
+    var qtyInput = row.querySelector('.material-qty');
+    var materialName = row.querySelector('.material-name').value || '物资';
+    btn.classList.add('listening');
+    btn.style.background = '#dc3545';
+    btn.style.color = '#fff';
+
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var rec = new SR();
+    rec.lang = 'zh-CN';
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onresult = function(e){
+        var text = e.results[0][0].transcript.trim();
+        // 解析数量：提取数字部分
+        var num = text.replace(/[^0-9.]/g, '');
+        if (num) {
+            qtyInput.value = parseFloat(num);
+            M.toast('识别为：' + text + ' → ' + num, 'success');
+        } else {
+            // 尝试匹配物资名称（用户可能说"螺纹钢 10吨"）
+            openMaterialModal(row.querySelector('.material-name'));
+            M.toast('请直接输入数量或选择物资', 'info');
+        }
+    };
+    rec.onerror = function(e){
+        M.toast('识别失败：' + (e.error || ''), 'danger');
+    };
+    rec.onend = function(){
+        btn.classList.remove('listening');
+        btn.style.background = '';
+        btn.style.color = '';
+    };
+    M.toast('请说：' + materialName + ' X 数量', 'info');
+    rec.start();
+}
+
+// 初始化添加一行
+addItemRow();
+</script>
+{% endblock %}

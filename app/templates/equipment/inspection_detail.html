@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}巡检计划详情 - 物资设备管理系统{% endblock %}
+{% block content %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+{% for cat, msg in messages %}
+<div class="alert alert-{{ cat }} alert-dismissible fade show">{{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endfor %}
+{% endif %}
+{% endwith %}
+
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-clipboard-check me-2"></i>{{ plan.plan_name }}</h5>
+        <div>
+            {% if current_user.can_edit() %}
+            <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#generateModal">
+                <i class="bi bi-magic me-1"></i>生成巡检任务
+            </button>
+            <a href="{{ url_for('equipment.inspection_edit', plan_id=plan.id) }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-pencil me-1"></i>编辑
+            </a>
+            <form method="POST" action="{{ url_for('equipment.inspection_delete', plan_id=plan.id) }}" class="d-inline"
+                  onsubmit="return confirm('确定删除该巡检计划？');">
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </form>
+            {% endif %}
+            <a href="{{ url_for('equipment.inspection_list') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left"></i> 返回
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><small class="text-muted d-block">计划类型</small>
+                {% if plan.plan_type == 'regular' %}定期{% else %}临时{% endif %}</div>
+            <div class="col-md-3"><small class="text-muted d-block">巡检周期</small>
+                {% if plan.cycle == 'daily' %}每日
+                {% elif plan.cycle == 'weekly' %}每周
+                {% elif plan.cycle == 'monthly' %}每月
+                {% elif plan.cycle == 'quarterly' %}每季
+                {% elif plan.cycle == 'yearly' %}每年{% endif %}</div>
+            <div class="col-md-3"><small class="text-muted d-block">设备类别</small>{{ plan.equipment_category or '全部' }}</div>
+            <div class="col-md-3"><small class="text-muted d-block">负责人</small>{{ plan.responsible_name or '-' }}</div>
+            <div class="col-md-3"><small class="text-muted d-block">开始日期</small>{{ plan.start_date.strftime('%Y-%m-%d') if plan.start_date else '-' }}</div>
+            <div class="col-md-3"><small class="text-muted d-block">结束日期</small>{{ plan.end_date.strftime('%Y-%m-%d') if plan.end_date else '-' }}</div>
+            <div class="col-md-3"><small class="text-muted d-block">下次巡检</small>{{ plan.next_inspect_date.strftime('%Y-%m-%d') if plan.next_inspect_date else '-' }}</div>
+            <div class="col-md-3"><small class="text-muted d-block">状态</small>
+                {% if plan.status == 'active' %}<span class="badge bg-success">启用</span>
+                {% else %}<span class="badge bg-secondary">停用</span>{% endif %}</div>
+            <div class="col-12"><small class="text-muted d-block">巡检项</small>
+                {% if inspect_items_list %}{% for it in inspect_items_list %}<span class="badge bg-light text-dark me-1">{{ it }}</span>{% endfor %}{% else %}-{% endif %}
+            </div>
+            {% if plan.remark %}<div class="col-12"><small class="text-muted d-block">备注</small>{{ plan.remark }}</div>{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-list-task me-2"></i>巡检任务（{{ tasks|length }}）</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>任务号</th>
+                        <th>设备</th>
+                        <th>计划日期</th>
+                        <th>巡检人</th>
+                        <th>状态</th>
+                        <th width="120">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in tasks %}
+                    <tr>
+                        <td><code>{{ t.task_no }}</code></td>
+                        <td>{{ t.equipment.name if t.equipment else '-' }}<br>
+                            <small class="text-muted">{{ t.equipment.code if t.equipment else '' }}</small></td>
+                        <td>{{ t.plan_inspect_date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ t.assignee_name or '-' }}</td>
+                        <td>
+                            {% if t.status == 'pending' %}<span class="badge bg-warning text-dark">待巡检</span>
+                            {% elif t.status == 'overdue' %}<span class="badge bg-danger">已逾期</span>
+                            {% elif t.status == 'done' %}<span class="badge bg-success">已完成</span>
+                            {% elif t.status == 'skipped' %}<span class="badge bg-secondary">已跳过</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if t.status == 'pending' and current_user.can_edit() %}
+                            <form method="POST" action="{{ url_for('equipment.inspection_task_skip', tid=t.id) }}" class="d-inline"
+                                  onsubmit="return confirm('确定跳过该任务？');">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary" title="跳过">
+                                    <i class="bi bi-skip-forward"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                            <a href="{{ url_for('mobile.inspection_form', tid=t.id) }}" target="_blank"
+                               class="btn btn-sm btn-outline-primary" title="移动端录入">
+                                <i class="bi bi-phone"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">暂无任务，点击上方"生成巡检任务"创建</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 生成任务模态框 -->
+<div class="modal fade" id="generateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('equipment.inspection_generate', plan_id=plan.id) }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">生成巡检任务</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">系统将为匹配设备类别「{{ plan.equipment_category or '全部' }}」的所有在用/闲置设备生成巡检任务。</p>
+                    <div class="mb-3">
+                        <label class="form-label">计划巡检日期</label>
+                        <input type="date" name="plan_date" class="form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>生成</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

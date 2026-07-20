@@ -8,7 +8,7 @@ from app import db
 from app.models import (PurchaseRequisition, PurchaseRequisitionItem,
                        Material, Category, Contract, ContractItem, Project)
 from app.decorators import editor_required, log_audit
-from app.utils import to_decimal
+from app.utils import to_decimal, apply_data_scope, get_project_materials
 
 
 def _gen_pr_no(project_id):
@@ -37,9 +37,11 @@ def _get_category_descendants(category_id):
 def index():
     from flask import session
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
@@ -49,7 +51,10 @@ def index():
     date_to = request.args.get('date_to', '', type=str)
     view_mode = request.args.get('view_mode', 'my')
 
-    query = PurchaseRequisition.query.filter_by(project_id=project_id)
+    query = PurchaseRequisition.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, PurchaseRequisition)
 
     if view_mode == 'my' and not current_user.is_admin():
         query = query.filter_by(apply_user=current_user.username)
@@ -159,7 +164,7 @@ def create():
         return redirect(url_for('purchase_requisition.detail', id=pr.id))
 
     categories = Category.query.filter_by(project_id=project_id, parent_id=0).order_by(Category.sort_order).all()
-    materials_raw = Material.query.filter_by(project_id=project_id).order_by(Material.name).all()
+    materials_raw = get_project_materials(project_id, common_only=True).all()
     materials = [{'id': m.id, 'name': m.name, 'specification': m.specification or '', 'unit': m.unit or ''} for m in materials_raw]
 
     copy_from_id = request.args.get('copy_from', type=int)
@@ -252,7 +257,7 @@ def edit(id):
         return redirect(url_for('purchase_requisition.detail', id=id))
 
     categories = Category.query.filter_by(project_id=pr.project_id, parent_id=0).order_by(Category.sort_order).all()
-    materials_raw = Material.query.filter_by(project_id=pr.project_id).order_by(Material.name).all()
+    materials_raw = get_project_materials(pr.project_id, common_only=True).all()
     materials = [{'id': m.id, 'name': m.name, 'specification': m.specification or '', 'unit': m.unit or ''} for m in materials_raw]
     return render_template('purchase_requisition/form.html', pr=pr,
                            categories=categories, materials=materials,
@@ -273,7 +278,7 @@ def submit(id):
         return redirect(url_for('purchase_requisition.detail', id=id))
 
     from app.approval.service import submit_approval
-    success, msg, instance = submit_approval('purchase_requisition', pr.id)
+    success, msg, instance = submit_approval('purchase_requisition', pr.id, project_id=pr.project_id)
     if success:
         pr.status = 'pending'
         db.session.commit()
@@ -338,6 +343,88 @@ def convert_contract(id):
     return redirect(url_for('contract.create', pr_id=id))
 
 
+@bp.route('/<int:id>/convert_stock_out', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='purchase_requisition', operation='转出库单')
+def convert_stock_out(id):
+    """领料申请审批通过后生成出库单（明细自动带入）"""
+    from app.models import StockOut, StockOutItem, Inventory
+    from app.services.inventory_cost import InventoryCostService
+    from app.utils import _gen_code_with_seq
+    from datetime import date as _date
+    pr = PurchaseRequisition.query.get_or_404(id)
+    if pr.status != 'passed':
+        flash('只有已通过审批的申请才能生成出库单。', 'danger')
+        return redirect(url_for('purchase_requisition.detail', id=id))
+
+    # 收集未出库的明细
+    items_to_out = []
+    insufficient = []
+    for item in pr.items:
+        if item.converted:
+            continue
+        # 库存校验
+        inv = Inventory.query.filter_by(
+            project_id=pr.project_id, material_id=item.material_id).first()
+        avail = float(inv.quantity) if inv else 0
+        qty = float(item.apply_qty or 0)
+        if qty > avail:
+            insufficient.append(f'{item.material_name}（需 {qty}，可用 {avail}）')
+            continue
+        items_to_out.append((item, qty, inv))
+
+    if insufficient:
+        flash('以下物资库存不足，无法生成出库单：\n' + '；'.join(insufficient), 'danger')
+        return redirect(url_for('purchase_requisition.detail', id=id))
+
+    if not items_to_out:
+        flash('没有可生成出库单的明细。', 'warning')
+        return redirect(url_for('purchase_requisition.detail', id=id))
+
+    # 生成出库单
+    code = _gen_code_with_seq('CK', pr.project_id, StockOut)
+    stock_out = StockOut(
+        project_id=pr.project_id,
+        code=code,
+        stock_out_date=_date.today(),
+        stock_out_type='工程领用',
+        operator=current_user.name or current_user.username,
+        remark=f'由领料申请 {pr.pr_no} 生成',
+        approval_status='passed',
+    )
+    db.session.add(stock_out)
+    db.session.flush()
+
+    total_qty = 0
+    total_amount = 0
+    for item, qty, inv in items_to_out:
+        # 调用加权平均成本扣减库存
+        amount = InventoryCostService.apply_outbound(pr.project_id, item.material_id, qty)
+        so_item = StockOutItem(
+            stock_out_id=stock_out.id,
+            material_id=item.material_id,
+            quantity=qty,
+            unit_price=(amount / qty) if qty > 0 else 0,
+            amount=amount,
+        )
+        db.session.add(so_item)
+        item.converted = True
+        total_qty += qty
+        total_amount += float(amount)
+
+    stock_out.total_quantity = total_qty
+    stock_out.total_amount = total_amount
+
+    # 全部明细已转 → 更新状态
+    if all(item.converted for item in pr.items):
+        pr.status = 'completed'
+
+    db.session.commit()
+    flash(f'已生成出库单 {code}，库存已扣减。', 'success')
+    return redirect(url_for('stock_out.detail', id=stock_out.id))
+
+
 @bp.route('/<int:id>/mark_converted', methods=['POST'])
 @login_required
 @editor_required
@@ -364,8 +451,7 @@ def api_materials_by_category(category_id):
     from flask import session
     project_id = session.get('current_project_id')
     cat_ids = _get_category_descendants(category_id)
-    materials = Material.query.filter(
-        Material.project_id == project_id,
+    materials = get_project_materials(project_id, common_only=True).filter(
         Material.category_id.in_(cat_ids)
     ).order_by(Material.name).all()
     return jsonify([{

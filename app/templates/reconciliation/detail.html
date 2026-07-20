@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}对账单详情 - {{ reconciliation.code }}{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('reconciliation.index') }}">对账管理</a></li>
+            <li class="breadcrumb-item active" aria-current="page">对账单详情 {{ reconciliation.code }}</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -18,18 +29,18 @@
                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
             </form>
             {% endif %}
-            <a href="{{ url_for('reconciliation.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+            <button onclick="goBack('{{ url_for('reconciliation.index') }}', 'reconciliation_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
         </div>
     </div>
     <div class="card-body">
         <div class="row g-3 mb-4">
             <div class="col-md-3">
                 <div class="text-muted small">供应商</div>
-                <div class="fw-bold">{{ reconciliation.supplier.name if reconciliation.supplier else '-' }}</div>
+                <div class="fw-bold">{% if reconciliation.supplier %}<a href="{{ url_for('supplier.detail', id=reconciliation.supplier_id) }}?from=reconciliation_detail&from_id={{ reconciliation.id }}">{{ reconciliation.supplier.name }}</a>{% else %}-{% endif %}</div>
             </div>
             <div class="col-md-3">
                 <div class="text-muted small">关联合同</div>
-                <div>{% if reconciliation.contract %}<a href="{{ url_for('contract.detail', id=reconciliation.contract.id) }}">{{ reconciliation.contract.code }}</a>{% else %}-{% endif %}</div>
+                <div>{% if reconciliation.contract %}<a href="{{ url_for('contract.detail', id=reconciliation.contract.id) }}?from=reconciliation_detail&from_id={{ reconciliation.id }}">{{ reconciliation.contract.code }}</a>{% else %}-{% endif %}</div>
             </div>
             <div class="col-md-3">
                 <div class="text-muted small">价格方案</div>

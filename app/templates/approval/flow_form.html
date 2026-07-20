@@ -31,20 +31,65 @@
                             <option value="stockout" {% if flow and flow.biz_type == 'stockout' %}selected{% endif %}>出库单</option>
                             <option value="reconcile" {% if flow and flow.biz_type == 'reconcile' %}selected{% endif %}>对账单</option>
                             <option value="payment" {% if flow and flow.biz_type == 'payment' %}selected{% endif %}>付款单</option>
+                            <option value="purchase_requisition" {% if flow and flow.biz_type == 'purchase_requisition' %}selected{% endif %}>采购申请</option>
+                            <option value="material_transfer" {% if flow and flow.biz_type == 'material_transfer' %}selected{% endif %}>调拨单</option>
+                            <option value="payment_application" {% if flow and flow.biz_type == 'payment_application' %}selected{% endif %}>付款申请</option>
+                            <option value="scrap" {% if flow and flow.biz_type == 'scrap' %}selected{% endif %}>物资报废</option>
                         </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">适用范围 <span class="text-danger">*</span></label>
+                        <div class="d-flex gap-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="scope" id="scopeCompany"
+                                       value="company" {% if not flow or flow.scope == 'company' %}checked{% endif %}
+                                       onchange="toggleProjectSelection()">
+                                <label class="form-check-label" for="scopeCompany">全公司通用</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="scope" id="scopeProject"
+                                       value="project" {% if flow and flow.scope == 'project' %}checked{% endif %}
+                                       onchange="toggleProjectSelection()">
+                                <label class="form-check-label" for="scopeProject">指定项目</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3" id="projectSelection" {% if not flow or flow.scope == 'company' %}style="display:none"{% endif %}>
+                        <label class="form-label">选择项目 <span class="text-danger">*</span></label>
+                        <div class="row">
+                            <div class="col-md-4 mb-2">
+                                <input type="text" class="form-control form-control-sm" id="projectSearch"
+                                       placeholder="搜索项目名称" oninput="filterProjects()">
+                            </div>
+                        </div>
+                        <div class="border rounded p-3 max-h-48 overflow-y-auto">
+                            {% if projects %}
+                                {% set selected_projects = flow.get_project_list() if flow else [] %}
+                                {% for project in projects %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="project_ids"
+                                           value="{{ project.id }}"
+                                           {% if project.id|string in selected_projects %}checked{% endif %}>
+                                    <label class="form-check-label">{{ project.name }}</label>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                            <p class="text-muted text-center py-2">暂无项目，请先创建项目</p>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">说明</label>
                         <textarea class="form-control" name="description" rows="3"
                                   placeholder="流程用途说明（选填）">{{ flow.description if flow else '' }}</textarea>
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="form-actions">
+                        <a href="{{ url_for('approval.flows') }}" class="btn btn-secondary" role="button">
+                            <i class="bi bi-arrow-left me-1"></i>返回
+                        </a>
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-check-lg me-1"></i>保存
                         </button>
-                        <a href="{{ url_for('approval.flows') }}" class="btn btn-secondary">
-                            <i class="bi bi-arrow-left me-1"></i>返回
-                        </a>
                     </div>
                 </form>
             </div>
@@ -54,12 +99,27 @@
 {% endblock %}
 {% block extra_js %}
 <script>
-// 根据业务类型自动建议流程编码
-document.getElementById('bizType').addEventListener('change', function() {
-    var codeInput = document.querySelector('input[name="flow_code"]');
-    if (!codeInput.value && this.value) {
-        codeInput.value = this.value + '_approval';
+function toggleProjectSelection() {
+    var scope = document.querySelector('input[name="scope"]:checked').value;
+    var projectSelection = document.getElementById('projectSelection');
+    if (scope === 'project') {
+        projectSelection.style.display = 'block';
+    } else {
+        projectSelection.style.display = 'none';
     }
-});
+}
+
+function filterProjects() {
+    var searchText = document.getElementById('projectSearch').value.toLowerCase();
+    var checkboxes = document.querySelectorAll('input[name="project_ids"]');
+    checkboxes.forEach(function(cb) {
+        var label = cb.nextElementSibling;
+        if (label.textContent.toLowerCase().includes(searchText)) {
+            cb.parentElement.style.display = 'block';
+        } else {
+            cb.parentElement.style.display = 'none';
+        }
+    });
+}
 </script>
 {% endblock %}

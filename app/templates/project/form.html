@@ -16,7 +16,10 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">项目编号</label>
-                            <input type="text" class="form-control" name="code" value="{{ project.code if project else '' }}">
+                            <input type="text" class="form-control" name="code" value="{{ project.code if project else '' }}"
+                                   {% if project %}readonly{% endif %}
+                                   placeholder="保存后自动生成">
+                            {% if not project %}<small class="text-muted">保存后自动生成</small>{% endif %}
                         </div>
                         <div class="col-12">
                             <label class="form-label">项目地址</label>
@@ -24,11 +27,11 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">开工日期</label>
-                            <input type="date" class="form-control" name="start_date" value="{{ project.start_date if project else '' }}">
+                            <input type="date" class="form-control" name="start_date" value="{{ project.start_date.strftime('%Y-%m-%d') if project and project.start_date else '' }}">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">计划完工日期</label>
-                            <input type="date" class="form-control" name="planned_end_date" value="{{ project.planned_end_date if project else '' }}">
+                            <input type="date" class="form-control" name="planned_end_date" value="{{ project.planned_end_date.strftime('%Y-%m-%d') if project and project.planned_end_date else '' }}">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">项目经理</label>
@@ -38,10 +41,35 @@
                             <label class="form-label">联系电话</label>
                             <input type="text" class="form-control" name="contact_phone" value="{{ project.contact_phone if project else '' }}">
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label">项目状态</label>
+                            <select class="form-select" name="status">
+                                {% for label, value in get_dict_items('project_status') %}
+                                <option value="{{ value }}" {% if project and project.status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">项目类型</label>
+                            <select class="form-select" name="project_type">
+                                <option value="">— 请选择 —</option>
+                                {% for label, value in get_dict_items('project_type') %}
+                                <option value="{{ value }}" {% if project and project.project_type == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">建筑面积（㎡）</label>
+                            <input type="number" step="0.01" class="form-control" name="building_area" value="{{ project.building_area if project else '0' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">合同金额（元）</label>
+                            <input type="number" step="0.01" class="form-control" name="contract_amount" value="{{ project.contract_amount if project else '0' }}">
+                        </div>
                     </div>
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-                        <button type="submit" class="btn btn-primary">保存</button>
+                    <div class="form-actions">
                         <a href="{{ url_for('project.index') }}" class="btn btn-secondary">返回</a>
+                        <button type="submit" class="btn btn-primary">保存</button>
                     </div>
                 </form>
             </div>

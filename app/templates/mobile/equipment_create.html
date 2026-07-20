@@ -1,0 +1,289 @@
+{% extends "mobile/base.html" %}
+{% block title %}设备进场登记{% endblock %}
+{% block nav_title %}设备进场登记{% endblock %}
+
+{% block content %}
+<form method="POST" id="equipmentForm" enctype="multipart/form-data">
+    <!-- 基本信息 -->
+    <div class="m-card">
+        <div class="m-form-group">
+            <label class="m-form-label">设备名称<span class="req">*</span></label>
+            <input type="text" name="name" class="m-form-control" required placeholder="如：塔式起重机">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">设备编号</label>
+            <input type="text" name="code" class="m-form-control" value="{{ default_code }}" readonly>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">设备来源<span class="req">*</span></label>
+            <select name="source_type" class="m-form-select" id="sourceType" onchange="toggleSourceFields()">
+                {% for item in source_items %}
+                <option value="{{ item.value }}" {% if item.value == 'self' %}selected{% endif %}>{{ item.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">设备类别</label>
+            <select name="category" class="m-form-select">
+                <option value="">-- 请选择 --</option>
+                {% for item in category_items %}
+                <option value="{{ item.value }}">{{ item.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">规格型号</label>
+            <input type="text" name="specification" class="m-form-control" placeholder="如：QTZ80">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">生产厂家</label>
+            <input type="text" name="manufacturer" class="m-form-control" placeholder="生产厂家">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">使用部门</label>
+            <input type="text" name="department" class="m-form-control" placeholder="使用部门">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">负责人</label>
+            <input type="text" name="responsible" class="m-form-control" placeholder="负责人">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">存放位置</label>
+            <input type="text" name="location" class="m-form-control" placeholder="存放位置">
+        </div>
+    </div>
+
+    <!-- 自有设备字段 -->
+    <div class="m-card" id="selfFields">
+        <div class="m-card-title"><i class="bi bi-info-circle"></i>自有设备信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">购置日期</label>
+            <input type="date" name="purchase_date" class="m-form-control" value="{{ today }}">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">原值（元）</label>
+            <input type="number" name="original_value" class="m-form-control" step="0.01" min="0" value="0">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">使用年限（年）</label>
+            <input type="number" name="use_years" class="m-form-control" step="1" min="0" value="10">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">残值率（%）</label>
+            <input type="number" name="residual_rate" class="m-form-control" step="0.01" min="0" max="100" value="5">
+        </div>
+    </div>
+
+    <!-- 租赁设备字段 -->
+    <div class="m-card" id="rentFields" style="display:none;">
+        <div class="m-card-title"><i class="bi bi-building"></i>租赁信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">租赁供应商</label>
+            <select name="supplier_id" class="m-form-select">
+                <option value="">-- 请选择 --</option>
+                {% for s in suppliers %}
+                <option value="{{ s.id }}">{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">租赁方式</label>
+            <select name="rent_type" class="m-form-select">
+                <option value="">-- 请选择 --</option>
+                {% for item in rent_type_items %}
+                <option value="{{ item.value }}">{{ item.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">租赁单价（元）</label>
+            <input type="number" name="rent_unit_price" class="m-form-control" step="0.01" min="0" value="0">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">租赁期限</label>
+            <input type="number" name="rent_period" class="m-form-control" step="1" min="0" value="0">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">进场日期<span class="req">*</span></label>
+            <input type="date" name="entry_date" class="m-form-control" value="{{ today }}">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">预计退场日期</label>
+            <input type="date" name="expected_exit_date" class="m-form-control">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">进出场费（元）</label>
+            <input type="number" name="entry_exit_fee" class="m-form-control" step="0.01" min="0" value="0">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">押金（元）</label>
+            <input type="number" name="deposit" class="m-form-control" step="0.01" min="0" value="0">
+        </div>
+    </div>
+
+    <!-- 劳务队自带字段 -->
+    <div class="m-card" id="laborFields" style="display:none;">
+        <div class="m-card-title"><i class="bi bi-people"></i>劳务队信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">所属劳务队<span class="req">*</span></label>
+            <input type="text" name="labor_team" class="m-form-control" placeholder="所属劳务队名称">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">进场日期<span class="req">*</span></label>
+            <input type="date" name="entry_date" class="m-form-control" value="{{ today }}">
+        </div>
+    </div>
+
+    <!-- 进场照片 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-camera"></i>进场照片（最多6张）</div>
+        <div class="m-photo-grid" id="photoGrid">
+            <label class="m-photo-add" style="position:relative;">
+                <input type="file" accept="image/*" capture="environment" multiple
+                       style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;"
+                       onchange="handlePhotoSelect(this)">
+            </label>
+        </div>
+        <div style="font-size:12px;color:#adb5bd;margin-top:8px;">点击"+"拍照或从相册选择</div>
+    </div>
+
+    <!-- 备注 -->
+    <div class="m-card">
+        <div class="m-form-group">
+            <label class="m-form-label">备注</label>
+            <textarea name="remark" class="m-form-control" rows="2" placeholder="备注..."></textarea>
+        </div>
+    </div>
+</form>
+
+<div class="m-submit-bar">
+    <button type="button" class="m-btn m-btn-primary" style="flex:1;" onclick="submitForm()">
+        <i class="bi bi-check-lg" style="margin-right:6px;"></i>提交登记
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var photos = [];
+
+function toggleSourceFields(){
+    var src = document.getElementById('sourceType').value;
+    document.getElementById('selfFields').style.display = (src === 'self') ? 'block' : 'none';
+    document.getElementById('rentFields').style.display = (src === 'rent') ? 'block' : 'none';
+    document.getElementById('laborFields').style.display = (src === 'labor') ? 'block' : 'none';
+}
+toggleSourceFields();
+
+function handlePhotoSelect(input){
+    var files = input.files;
+    if (!files || files.length === 0) return;
+    var remaining = 6 - photos.length;
+    if (files.length > remaining) {
+        M.toast('最多6张照片，仅添加前 ' + remaining + ' 张', 'warning');
+    }
+    for (var i = 0; i < Math.min(files.length, remaining); i++) {
+        compressImage(files[i]);
+    }
+    input.value = '';
+}
+
+function compressImage(file){
+    var reader = new FileReader();
+    reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+            var max = 1280;
+            var w = img.width, h = img.height;
+            if (w > max || h > max) {
+                if (w > h) { h = h * max / w; w = max; }
+                else { w = w * max / h; h = max; }
+            }
+            var canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            photos.push({ dataUrl: dataUrl, name: file.name });
+            renderPhotos();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function renderPhotos(){
+    var grid = document.getElementById('photoGrid');
+    var addBtn = grid.querySelector('.m-photo-add');
+    while (grid.children.length > 1) grid.removeChild(grid.lastChild);
+    photos.forEach(function(p, i){
+        var div = document.createElement('div');
+        div.className = 'm-photo-item';
+        div.style.cssText = 'position:relative;width:72px;height:72px;border-radius:6px;overflow:hidden;';
+        div.innerHTML = '<img src="' + p.dataUrl + '" style="width:100%;height:100%;object-fit:cover;" onclick="previewPhoto(' + i + ')">' +
+            '<div style="position:absolute;top:2px;right:2px;width:18px;height:18px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;text-align:center;line-height:18px;font-size:12px;cursor:pointer;" onclick="event.stopPropagation();removePhoto(' + i + ')">×</div>';
+        grid.appendChild(div);
+    });
+}
+
+function removePhoto(i){
+    photos.splice(i, 1);
+    renderPhotos();
+}
+
+function previewPhoto(i){
+    var urls = photos.map(function(p){ return p.dataUrl; });
+    if (window.MobilePreview) MobilePreview.open(urls, i);
+}
+
+function submitForm(){
+    var form = document.getElementById('equipmentForm');
+    if (!form.name.value.trim()) {
+        M.toast('请填写设备名称', 'danger');
+        return;
+    }
+    if (photos.length === 0) {
+        if (!confirm('未上传进场照片，确定提交吗？')) return;
+    }
+    // 获取定位后注入表单，再执行提交（loc 为 null 时不阻塞提交）
+    MobileLocation.capture().then(function(loc) {
+        if (loc) {
+            injectLocationToForm(form, loc);
+        }
+        _doSubmit(form);
+    });
+}
+
+function _doSubmit(form) {
+    var fd = new FormData(form);
+    photos.forEach(function(p, i){
+        var arr = p.dataUrl.split(',');
+        var mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+        var byteStr = atob(arr[1]);
+        var ab = new ArrayBuffer(byteStr.length);
+        var u8 = new Uint8Array(ab);
+        for (var j = 0; j < byteStr.length; j++) u8[j] = byteStr.charCodeAt(j);
+        var blob = new Blob([ab], { type: mime });
+        fd.append('photos[]', blob, p.name);
+    });
+    M.loading(true);
+    fetch(form.action || window.location.href, {
+        method: 'POST', body: fd, credentials: 'same-origin'
+    }).then(function(r){
+        M.loading(false);
+        if (r.redirected) window.location.href = r.url;
+        else window.location.href = "{{ url_for('mobile.equipment_list') }}";
+    }).catch(function(err){
+        M.loading(false);
+        M.toast('提交失败：' + err, 'danger');
+    });
+}
+</script>
+{% endblock %}

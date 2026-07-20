@@ -56,7 +56,7 @@
                     {% set months = (depreciated / monthly)|int if monthly > 0 else 0 %}
                     <tr>
                         <td>{{ e.code }}</td>
-                        <td class="fw-bold"><a href="{{ url_for('equipment.detail', id=e.id) }}" class="text-decoration-none">{{ e.name }}</a></td>
+                        <td class="fw-bold"><a href="{{ url_for('equipment.detail', id=e.id) }}?from=equipment_depreciation&from_id={{ e.id }}" class="text-decoration-none">{{ e.name }}</a></td>
                         <td>{{ original }}</td>
                         <td>{{ monthly }}</td>
                         <td>{{ months }}</td>

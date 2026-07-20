@@ -1,0 +1,84 @@
+{% extends "mobile/base.html" %}
+{% block title %}盘点单{% endblock %}
+{% block nav_title %}盘点单列表{% endblock %}
+
+{% block content %}
+<!-- 项目信息 -->
+{% if project %}
+<div class="m-card" style="padding:10px 16px;">
+    <div style="font-size:13px; color:#6c757d;">
+        <i class="bi bi-building"></i>
+        当前项目：{{ project.name }}
+    </div>
+</div>
+{% endif %}
+
+<!-- 盘点单列表 -->
+<div id="listContainer">
+    {% if items %}
+    <div class="m-list-summary">
+        共 {{ items|length }} 条盘点单
+    </div>
+
+    {% for c in items %}
+    <div class="m-record-card" onclick="location.href='{{ url_for('mobile.stock_check_detail', check_id=c.id) }}'" style="cursor:pointer;">
+        <div class="header">
+            <span class="code">{{ c.check_no }}</span>
+            <span class="date">{{ c.check_date }}</span>
+        </div>
+        <div class="party">
+            <i class="bi bi-clipboard-check"></i>
+            {% if c.check_type == 'full' %}全盘{% else %}分类盘点{% endif %}
+            {% if c.checker %} · 盘点人：{{ c.checker }}{% endif %}
+        </div>
+        <div class="items-summary">
+            {% set item_list = c.items.all() %}
+            {% set total = item_list|length %}
+            {% set filled_list = item_list|rejectattr('actual_qty', 'none')|list %}
+            <div class="total">物资 {{ total }} 种 · 已盘 {{ filled_list|length }} 种</div>
+        </div>
+        <div class="footer">
+            <span class="status-tag
+                {% if c.status == 'confirmed' %}passed
+                {% elif c.status == 'ongoing' %}pending
+                {% elif c.status == 'draft' %}draft
+                {% elif c.status == 'cancelled' %}rejected
+                {% endif %}">
+                {% if c.status == 'confirmed' %}已完成
+                {% elif c.status == 'ongoing' %}盘点中
+                {% elif c.status == 'draft' %}草稿
+                {% elif c.status == 'cancelled' %}已取消
+                {% else %}{{ c.status }}{% endif %}
+            </span>
+            {% if c.diff_count > 0 and c.status == 'confirmed' %}
+            <span class="qc-tag rejected">差异 {{ c.diff_count }} 笔</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-clipboard"></i>
+        <div>暂无盘点单</div>
+        <div style="font-size:12px; color:#adb5bd; margin-top:6px;">请在PC端创建盘点单后在此查看</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{# 需要导入 StockCheckItem 以便模板中过滤使用 #}
+<script>
+// 下拉刷新
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){
+                window.location.reload();
+                done();
+            }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}

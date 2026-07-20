@@ -154,7 +154,7 @@
                                                 {% for order in item.order_details %}
                                                 <tr>
                                                     <td>{{ order.date_str }}</td>
-                                                    <td><a href="{{ url_for('stock_out.detail', id=order.stock_out_id) }}" target="_blank">{{ order.code }}</a></td>
+                                                    <td><a href="{{ url_for('stock_out.detail', id=order.stock_out_id) }}?from=report_cost&from_id={{ item.id }}" target="_blank">{{ order.code }}</a></td>
                                                     <td>{{ order.unit_name or '-' }}</td>
                                                     <td class="text-end">{{ "%.4f"|format(order.qty) }}</td>
                                                     <td class="text-end">{{ "%.2f"|format(order.amount) }}</td>

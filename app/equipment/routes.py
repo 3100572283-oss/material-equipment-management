@@ -9,10 +9,11 @@ from app.equipment import bp
 from app import db
 from app.models import (
     Equipment, EquipmentMaintenance, EquipmentStatusLog, EquipmentRentSettle,
-    Project, Supplier
+    Project, Supplier,
+    EquipmentInspection, EquipmentInspectionTask, EquipmentInspectionRecord
 )
 from app.decorators import editor_required, log_audit
-from app.utils import log_operation, get_dict_items
+from app.utils import log_operation, get_dict_items, apply_data_scope
 
 
 def _get_project_id():
@@ -101,16 +102,22 @@ def _common_form_ctx():
 @bp.route('/')
 @login_required
 def index():
-    project_id = _get_project_id()
+    project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目', 'warning')
+            return redirect(url_for('main.index'))
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
     category = request.args.get('category', '', type=str)
     status = request.args.get('status', '', type=str)
     source_type = request.args.get('source_type', '', type=str)
 
-    query = Equipment.query.filter_by(project_id=project_id, is_deleted=False)
+    query = Equipment.query.filter_by(is_deleted=False)
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, Equipment)
     if keyword:
         query = query.filter(Equipment.name.contains(keyword) | Equipment.code.contains(keyword))
     if category:
@@ -632,3 +639,267 @@ def api_expiring_maintenance():
             'status': status
         })
     return jsonify(result)
+
+
+# ============================================================
+# 设备巡检计划管理（PC端）
+# ============================================================
+
+def _gen_inspection_task_no(project_id):
+    today = datetime.now().strftime('%Y%m%d')
+    prefix = f'XJ-{project_id}-{today}-'
+    existing = EquipmentInspectionTask.query.filter(
+        EquipmentInspectionTask.task_no.like(f'{prefix}%')
+    ).count()
+    return f'{prefix}{existing + 1:03d}'
+
+
+def _parse_inspect_items(value):
+    """解析巡检项输入：支持 JSON 数组或逗号分隔"""
+    if not value:
+        return '[]'
+    import json as _json
+    # 尝试解析为 JSON
+    try:
+        items = _json.loads(value)
+        if isinstance(items, list):
+            return _json.dumps([str(i).strip() for i in items if str(i).strip()],
+                               ensure_ascii=False)
+    except Exception:
+        pass
+    # 按逗号/换行分隔
+    parts = [s.strip() for s in value.replace('\n', ',').split(',') if s.strip()]
+    return _json.dumps(parts, ensure_ascii=False) if parts else '[]'
+
+
+@bp.route('/inspection')
+@login_required
+def inspection_list():
+    """巡检计划列表"""
+    project_id = _get_project_id()
+    if not project_id:
+        return redirect(url_for('main.index'))
+    plans = EquipmentInspection.query.filter_by(project_id=project_id) \
+        .order_by(EquipmentInspection.created_at.desc()).all()
+    return render_template('equipment/inspection_list.html', plans=plans)
+
+
+@bp.route('/inspection/create', methods=['GET', 'POST'])
+@login_required
+@editor_required
+def inspection_create():
+    """创建巡检计划"""
+    project_id = _get_project_id()
+    if not project_id:
+        return redirect(url_for('main.index'))
+    if request.method == 'POST':
+        try:
+            plan = EquipmentInspection(
+                project_id=project_id,
+                plan_name=request.form.get('plan_name', '').strip(),
+                plan_type=request.form.get('plan_type', 'regular'),
+                cycle=request.form.get('cycle', 'monthly'),
+                inspect_items=_parse_inspect_items(request.form.get('inspect_items', '')),
+                equipment_category=request.form.get('equipment_category', '').strip() or None,
+                responsible_id=request.form.get('responsible_id', type=int),
+                responsible_name=request.form.get('responsible_name', '').strip() or None,
+                start_date=_parse_date(request.form.get('start_date')),
+                end_date=_parse_date(request.form.get('end_date')),
+                next_inspect_date=_parse_date(request.form.get('next_inspect_date')),
+                remark=request.form.get('remark', '').strip()
+            )
+            if not plan.plan_name:
+                flash('请输入计划名称', 'warning')
+                return redirect(url_for('equipment.inspection_create'))
+            db.session.add(plan)
+            db.session.commit()
+            log_operation('巡检', module='设备巡检计划',
+                          description=f'创建巡检计划：{plan.plan_name}')
+            flash('巡检计划创建成功', 'success')
+            return redirect(url_for('equipment.inspection_detail', plan_id=plan.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'创建失败：{e}', 'danger')
+            return redirect(url_for('equipment.inspection_create'))
+    # 默认巡检项
+    import json as _json
+    default_items = _json.dumps(
+        ['外观检查', '运行情况', '油位/液位', '仪表读数', '紧固件', '清洁度'],
+        ensure_ascii=False, indent=2)
+    return render_template('equipment/inspection_form.html',
+                           plan=None, default_items=default_items)
+
+
+@bp.route('/inspection/<int:plan_id>/edit', methods=['GET', 'POST'])
+@login_required
+@editor_required
+def inspection_edit(plan_id):
+    """编辑巡检计划"""
+    plan = EquipmentInspection.query.get_or_404(plan_id)
+    if request.method == 'POST':
+        try:
+            plan.plan_name = request.form.get('plan_name', '').strip()
+            plan.plan_type = request.form.get('plan_type', 'regular')
+            plan.cycle = request.form.get('cycle', 'monthly')
+            plan.inspect_items = _parse_inspect_items(request.form.get('inspect_items', ''))
+            plan.equipment_category = request.form.get('equipment_category', '').strip() or None
+            plan.responsible_id = request.form.get('responsible_id', type=int)
+            plan.responsible_name = request.form.get('responsible_name', '').strip() or None
+            plan.start_date = _parse_date(request.form.get('start_date'))
+            plan.end_date = _parse_date(request.form.get('end_date'))
+            plan.next_inspect_date = _parse_date(request.form.get('next_inspect_date'))
+            plan.remark = request.form.get('remark', '').strip()
+            db.session.commit()
+            flash('巡检计划已更新', 'success')
+            return redirect(url_for('equipment.inspection_detail', plan_id=plan.id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'更新失败：{e}', 'danger')
+    return render_template('equipment/inspection_form.html', plan=plan, default_items='')
+
+
+@bp.route('/inspection/<int:plan_id>/delete', methods=['POST'])
+@login_required
+@editor_required
+def inspection_delete(plan_id):
+    """删除巡检计划（仅在没有进行中的任务时）"""
+    plan = EquipmentInspection.query.get_or_404(plan_id)
+    pending = EquipmentInspectionTask.query.filter_by(
+        inspection_id=plan_id, status='pending').count()
+    if pending > 0:
+        flash(f'该计划下有 {pending} 个待巡检任务，无法删除', 'warning')
+        return redirect(url_for('equipment.inspection_detail', plan_id=plan_id))
+    db.session.delete(plan)
+    db.session.commit()
+    flash('巡检计划已删除', 'success')
+    return redirect(url_for('equipment.inspection_list'))
+
+
+@bp.route('/inspection/<int:plan_id>')
+@login_required
+def inspection_detail(plan_id):
+    """巡检计划详情 + 任务列表"""
+    import json as _json
+    plan = EquipmentInspection.query.get_or_404(plan_id)
+    tasks = EquipmentInspectionTask.query.filter_by(inspection_id=plan_id) \
+        .order_by(EquipmentInspectionTask.plan_inspect_date.desc()).all()
+    # 预解析巡检项 JSON
+    inspect_items_list = []
+    if plan.inspect_items:
+        try:
+            inspect_items_list = _json.loads(plan.inspect_items)
+            if not isinstance(inspect_items_list, list):
+                inspect_items_list = []
+        except Exception:
+            inspect_items_list = [s.strip() for s in plan.inspect_items.split(',') if s.strip()]
+    return render_template('equipment/inspection_detail.html',
+                           plan=plan, tasks=tasks,
+                           inspect_items_list=inspect_items_list)
+
+
+@bp.route('/inspection/<int:plan_id>/generate', methods=['POST'])
+@login_required
+@editor_required
+def inspection_generate(plan_id):
+    """手动生成巡检任务：为当前项目下匹配类型的所有设备生成待巡检任务"""
+    plan = EquipmentInspection.query.get_or_404(plan_id)
+    try:
+        # 查询匹配类型的设备
+        q = Equipment.query.filter_by(project_id=plan.project_id, is_deleted=False)
+        if plan.equipment_category:
+            q = q.filter(Equipment.category == plan.equipment_category)
+        equipments = q.all()
+        if not equipments:
+            flash('未找到匹配的设备', 'warning')
+            return redirect(url_for('equipment.inspection_detail', plan_id=plan_id))
+
+        plan_date = _parse_date(request.form.get('plan_date')) or date.today()
+        count = 0
+        for eq in equipments:
+            # 跳过已退场/报废的设备
+            if eq.status in ('exited', 'scrapped'):
+                continue
+            # 避免重复生成同日任务
+            exists = EquipmentInspectionTask.query.filter_by(
+                inspection_id=plan.id, equipment_id=eq.id,
+                plan_inspect_date=plan_date).first()
+            if exists:
+                continue
+            task = EquipmentInspectionTask(
+                project_id=plan.project_id,
+                inspection_id=plan.id,
+                equipment_id=eq.id,
+                task_no=_gen_inspection_task_no(plan.project_id),
+                plan_inspect_date=plan_date,
+                assignee_id=plan.responsible_id,
+                assignee_name=plan.responsible_name,
+                status='pending'
+            )
+            db.session.add(task)
+            count += 1
+        db.session.commit()
+        flash(f'已生成 {count} 个巡检任务', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'生成失败：{e}', 'danger')
+    return redirect(url_for('equipment.inspection_detail', plan_id=plan_id))
+
+
+@bp.route('/inspection/tasks')
+@login_required
+def inspection_tasks():
+    """巡检任务列表"""
+    project_id = _get_project_id()
+    if not project_id:
+        return redirect(url_for('main.index'))
+    status = request.args.get('status', '').strip()
+    q = EquipmentInspectionTask.query.filter_by(project_id=project_id)
+    if status:
+        q = q.filter_by(status=status)
+    tasks = q.order_by(EquipmentInspectionTask.plan_inspect_date.desc()).limit(100).all()
+    return render_template('equipment/inspection_tasks.html',
+                           tasks=tasks, current_status=status)
+
+
+@bp.route('/inspection/records')
+@login_required
+def inspection_records():
+    """巡检记录列表"""
+    project_id = _get_project_id()
+    if not project_id:
+        return redirect(url_for('main.index'))
+    records = EquipmentInspectionRecord.query.filter_by(project_id=project_id) \
+        .order_by(EquipmentInspectionRecord.inspect_date.desc()).limit(100).all()
+    return render_template('equipment/inspection_records.html', records=records)
+
+
+@bp.route('/inspection/records/<int:rid>')
+@login_required
+def inspection_record_detail(rid):
+    """巡检记录详情"""
+    rec = EquipmentInspectionRecord.query.get_or_404(rid)
+    import json as _json
+    items_result = {}
+    if rec.items_result:
+        try:
+            items_result = _json.loads(rec.items_result)
+        except Exception:
+            pass
+    return render_template('equipment/inspection_record_detail.html',
+                           rec=rec, items_result=items_result)
+
+
+@bp.route('/inspection/tasks/<int:tid>/skip', methods=['POST'])
+@login_required
+@editor_required
+def inspection_task_skip(tid):
+    """跳过巡检任务"""
+    task = EquipmentInspectionTask.query.get_or_404(tid)
+    if task.status == 'pending':
+        task.status = 'skipped'
+        task.remark = (task.remark or '') + ' [管理员跳过]'
+        db.session.commit()
+        flash('任务已跳过', 'success')
+    else:
+        flash('仅待巡检任务可跳过', 'warning')
+    return redirect(url_for('equipment.inspection_detail', plan_id=task.inspection_id))

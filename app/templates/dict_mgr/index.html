@@ -57,6 +57,9 @@
                         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#itemCreateModal">
                             <i class="bi bi-plus-lg me-1"></i>新增字典项
                         </button>
+                        <button class="btn btn-success btn-sm ms-1" data-bs-toggle="modal" data-bs-target="#itemBatchModal">
+                            <i class="bi bi-plus-square me-1"></i>批量新增
+                        </button>
                     </div>
                 </div>
                 <div class="table-responsive">
@@ -210,7 +213,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">排序号</label>
-                        <input type="number" class="form-control" name="sort_order" value="0" min="0">
+                        <input type="number" class="form-control" name="sort_order" value="" min="0" placeholder="自动编号">
                     </div>
                     <div class="form-check">
                         <input type="checkbox" class="form-check-input" name="is_active" id="itemCreateActive" checked>
@@ -220,6 +223,46 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 批量新增字典项 Modal -->
+<div class="modal fade" id="itemBatchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('dict_mgr.item_batch_create') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-square me-1"></i>批量新增字典项</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="dict_type_id" value="{{ selected_type.id }}">
+                    <div class="mb-3">
+                        <label class="form-label">输入格式说明</label>
+                        <div class="alert alert-info small">
+                            <p>每行输入一个字典项，格式为：<code>标签,值</code></p>
+                            <p>示例：</p>
+                            <pre>合同签订,contract_signed
+合同履行,contract_execution
+合同结算,contract_settlement</pre>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">字典项列表 <span class="text-danger">*</span></label>
+                        <textarea class="form-control" name="batch_items" rows="10"
+                                  placeholder="合同签订,contract_signed&#10;合同履行,contract_execution"></textarea>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" name="is_active" id="batchCreateActive" checked>
+                        <label class="form-check-label" for="batchCreateActive">启用</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-success">批量保存</button>
                 </div>
             </form>
         </div>

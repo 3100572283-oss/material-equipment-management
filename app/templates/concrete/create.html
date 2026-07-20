@@ -10,8 +10,14 @@
         <form method="POST" enctype="multipart/form-data">
             <div class="row g-3 mb-3">
                 <div class="col-md-3">
-                    <label class="form-label">小票号 <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="ticket_no" required placeholder="如 ST-001">
+                    <label class="form-label">小票号</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="ticket_no" value="{{ default_ticket_no }}" placeholder="留空自动生成">
+                        <button type="button" class="btn btn-outline-secondary" id="genTicketNoBtn" title="重新生成">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <small class="text-muted">格式：CT-项目-日期-序号，可修改</small>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">供货单位</label>
@@ -50,6 +56,14 @@
                     <input type="number" class="form-control" name="vehicle_count" min="1" value="1">
                 </div>
                 <div class="col-md-3">
+                    <label class="form-label">运输车号</label>
+                    <input type="text" class="form-control" name="vehicle_no" placeholder="如 陕A12345">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">司机姓名</label>
+                    <input type="text" class="form-control" name="driver_name" placeholder="司机">
+                </div>
+                <div class="col-md-3">
                     <label class="form-label">方量(m³) <span class="text-danger">*</span></label>
                     <input type="number" step="0.0001" min="0" class="form-control" name="volume" required placeholder="如 8.0">
                 </div>
@@ -75,11 +89,9 @@
                 </div>
             </div>
 
-            <hr class="my-4">
-
-            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>保存</button>
+            <div class="form-actions">
                 <a href="{{ url_for('concrete.index') }}" class="btn btn-secondary">返回</a>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>保存</button>
             </div>
         </form>
     </div>
@@ -90,6 +102,17 @@
 document.getElementById('supplierSelect').addEventListener('change', function() {
     const opt = this.options[this.selectedIndex];
     document.getElementById('supplierName').value = opt ? opt.dataset.name || '' : '';
+});
+document.getElementById('genTicketNoBtn').addEventListener('click', function() {
+    fetch('{{ url_for("concrete.api_gen_ticket_no") }}')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                document.querySelector('input[name="ticket_no"]').value = data.ticket_no;
+            } else {
+                alert(data.message || '生成失败');
+            }
+        }).catch(err => alert('请求失败：' + err));
 });
 </script>
 {% endblock %}

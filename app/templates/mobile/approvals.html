@@ -1,0 +1,91 @@
+{% extends "mobile/base.html" %}
+{% block title %}待审批{% endblock %}
+{% block nav_title %}待我审批{% endblock %}
+
+{% block content %}
+<!-- 待审批统计 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-clipboard-check"></i>待我审批</div>
+    <div style="font-size:24px; font-weight:700; color:#165DFF;">
+        {{ pending_count }}
+        <span style="font-size:13px; color:#6c757d; font-weight:normal; margin-left:4px;">条待处理</span>
+    </div>
+</div>
+
+<!-- 分类Tab -->
+<div class="m-tab-switch m-tab-scroll">
+    <a href="{{ url_for('mobile.approvals') }}" class="{% if not current_type %}active{% endif %}">全部</a>
+    <a href="{{ url_for('mobile.approvals', type='stockin') }}" class="{% if current_type == 'stockin' %}active{% endif %}">入库</a>
+    <a href="{{ url_for('mobile.approvals', type='stockout') }}" class="{% if current_type == 'stockout' %}active{% endif %}">出库</a>
+    <a href="{{ url_for('mobile.approvals', type='contract') }}" class="{% if current_type == 'contract' %}active{% endif %}">合同</a>
+    <a href="{{ url_for('mobile.approvals', type='payment') }}" class="{% if current_type == 'payment' %}active{% endif %}">付款</a>
+    <a href="{{ url_for('mobile.approvals', type='purchase_requisition') }}" class="{% if current_type == 'purchase_requisition' %}active{% endif %}">采购申请</a>
+    <a href="{{ url_for('mobile.approvals', type='material_transfer') }}" class="{% if current_type == 'material_transfer' %}active{% endif %}">调拨</a>
+</div>
+
+<style>
+.m-tab-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; white-space:nowrap; }
+.m-tab-scroll a { display:inline-block; flex:0 0 auto; padding:8px 14px; }
+</style>
+
+<!-- 审批列表 -->
+<div id="listContainer">
+    {% if instances %}
+    <div class="m-list-summary">
+        共 {{ instances|length }} 条
+    </div>
+
+    {% for inst in instances %}
+    <div class="m-record-card" onclick="location.href='{{ url_for('mobile.approval_detail', instance_id=inst.id) }}'" style="cursor:pointer;">
+        <div class="header">
+            <span class="code">
+                {% if inst.biz_type == 'stockin' %}入库单
+                {% elif inst.biz_type == 'stockout' %}出库单
+                {% elif inst.biz_type == 'contract' %}合同
+                {% elif inst.biz_type == 'payment' %}付款单
+                {% elif inst.biz_type == 'purchase_requisition' %}采购申请
+                {% elif inst.biz_type == 'material_transfer' %}调拨单
+                {% elif inst.biz_type == 'reconcile' %}对账单
+                {% else %}{{ inst.biz_type }}{% endif %}
+            </span>
+            <span class="date">{{ inst.submit_time.strftime('%Y-%m-%d %H:%M') if inst.submit_time else '-' }}</span>
+        </div>
+        <div class="party">
+            <i class="bi bi-person"></i>
+            申请人：{{ inst.applicant.name if inst.applicant else inst.applicant.username if inst.applicant else '-' }}
+        </div>
+        <div class="items-summary">
+            <div class="total">{{ inst.biz_title or ('单据ID #' ~ inst.biz_id) }}</div>
+        </div>
+        <div class="footer">
+            <span class="status-tag pending">待审批</span>
+            {% if inst.current_node %}
+            <span class="qc-tag pending">当前节点：{{ inst.current_node.node_name }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-check2-circle"></i>
+        <div>暂无待审批事项</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 下拉刷新
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){
+                window.location.reload();
+                done();
+            }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,264 @@
+{% extends "mobile/base.html" %}
+{% block title %}领料申请详情{% endblock %}
+{% block nav_title %}领料申请详情{% endblock %}
+
+{% block content %}
+<!-- 基本信息 -->
+<div class="m-card">
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:8px;">
+        <div style="font-size:16px; font-weight:600; color:#212529;">
+            <i class="bi bi-file-earmark-text" style="color:#fab005; margin-right:6px;"></i>{{ pr.pr_no }}
+        </div>
+        <span class="status-tag {{ pr.status }}">
+            {% if pr.status == 'draft' %}草稿
+            {% elif pr.status == 'pending' %}待审批
+            {% elif pr.status == 'passed' %}已通过
+            {% elif pr.status == 'rejected' %}已驳回
+            {% elif pr.status == 'completed' %}已完成
+            {% else %}{{ pr.status }}{% endif %}
+        </span>
+    </div>
+    <div class="m-info-row">
+        <span class="label">申请日期</span>
+        <span class="value">{{ pr.apply_date.strftime('%Y-%m-%d') if pr.apply_date else '-' }}</span>
+    </div>
+    <div class="m-info-row">
+        <span class="label">申请部门</span>
+        <span class="value">{{ pr.apply_dept or '-' }}</span>
+    </div>
+    <div class="m-info-row">
+        <span class="label">申请人</span>
+        <span class="value">{{ pr.apply_user or '-' }}</span>
+    </div>
+    <div class="m-info-row">
+        <span class="label">期望领料</span>
+        <span class="value">{{ pr.demand_date.strftime('%Y-%m-%d') if pr.demand_date else '-' }}</span>
+    </div>
+    {% if pr.remark %}
+    <div class="m-info-row">
+        <span class="label">备注</span>
+        <span class="value">{{ pr.remark }}</span>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 审批进度 -->
+{% if instance %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-clipboard-check"></i>审批进度</div>
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:13px; color:#6c757d;">当前状态</div>
+            <div style="font-size:15px; font-weight:500; margin-top:2px;">
+                {% if instance.status == 'pending' %}审批中（{{ instance.current_node.node_name if instance.current_node else '待处理' }}）
+                {% elif instance.status == 'approved' %}已通过
+                {% elif instance.status == 'rejected' %}已驳回
+                {% elif instance.status == 'withdrawn' %}已撤回
+                {% else %}{{ instance.status }}{% endif %}
+            </div>
+            {% if instance.submit_time %}
+            <div style="font-size:12px; color:#adb5bd; margin-top:4px;">
+                提交于 {{ instance.submit_time.strftime('%Y-%m-%d %H:%M') }}
+            </div>
+            {% endif %}
+        </div>
+        <a href="{{ url_for('mobile.approval_detail', instance_id=instance.id) }}" class="m-btn m-btn-outline-primary" style="height:32px; padding:0 12px; font-size:13px;">
+            查看 <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<!-- 物资明细 -->
+<div class="m-card">
+    <div class="m-card-title">
+        <i class="bi bi-list-ul"></i>物资明细
+        <span style="font-size:12px; color:#6c757d; font-weight:normal; margin-left:6px;">共 {{ pr.item_count }} 条</span>
+    </div>
+    {% if pr.items.count() > 0 %}
+    {% for item in pr.items %}
+    <div class="m-pr-item">
+        <div class="m-pr-item-header">
+            <span class="name">{{ item.material_name }}</span>
+            {% if item.converted %}
+            <span class="converted-tag">已出库</span>
+            {% else %}
+            <span class="unconverted-tag">未出库</span>
+            {% endif %}
+        </div>
+        <div class="m-pr-item-body">
+            {% if item.specification %}<span>规格：{{ item.specification }}</span>{% endif %}
+            {% if item.unit %}<span>单位：{{ item.unit }}</span>{% endif %}
+            <span class="qty">申请数量：<strong>{{ item.apply_qty }}</strong></span>
+        </div>
+        {% if item.purpose %}
+        <div class="m-pr-item-purpose">
+            <i class="bi bi-info-circle"></i> 用途：{{ item.purpose }}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty" style="padding:20px;">
+        <i class="bi bi-inbox"></i>
+        <div>暂无明细</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 操作按钮 -->
+<div class="m-card">
+    {% if pr.status in ('draft', 'rejected') %}
+    <a href="{{ url_for('mobile.pr_edit', id=pr.id) }}" class="m-btn m-btn-outline-primary m-btn-block">
+        <i class="bi bi-pencil"></i> 编辑
+    </a>
+    <form method="POST" action="{{ url_for('mobile.pr_submit', id=pr.id) }}" style="margin-top:8px;">
+        <button type="submit" class="m-btn m-btn-success m-btn-block">
+            <i class="bi bi-send"></i> 提交审批
+        </button>
+    </form>
+    {% elif pr.status == 'pending' %}
+    <form method="POST" action="{{ url_for('mobile.pr_withdraw', id=pr.id) }}">
+        <button type="submit" class="m-btn m-btn-outline-danger m-btn-block" onclick="return confirm('确定撤回该领料申请？')">
+            <i class="bi bi-arrow-counterclockwise"></i> 撤回
+        </button>
+    </form>
+    {% elif pr.status == 'passed' %}
+    {% if pr.unapproved_qty > 0 %}
+    <form method="POST" action="{{ url_for('mobile.pr_convert_stock_out', id=pr.id) }}">
+        <button type="submit" class="m-btn m-btn-primary m-btn-block" onclick="return confirm('确定根据未出库明细生成出库单？')">
+            <i class="bi bi-box-arrow-up"></i> 生成出库单
+        </button>
+    </form>
+    <div style="font-size:12px; color:#6c757d; margin-top:6px; text-align:center;">
+        <i class="bi bi-info-circle"></i> 还有 {{ pr.unapproved_qty }} 个数量未生成出库单
+    </div>
+    {% else %}
+    <div style="text-align:center; padding:12px; color:#198754; font-size:14px;">
+        <i class="bi bi-check-circle" style="font-size:24px; display:block; margin-bottom:4px;"></i>
+        所有明细已生成出库单
+    </div>
+    {% endif %}
+    {% elif pr.status == 'completed' %}
+    <div style="text-align:center; padding:12px; color:#1971c2; font-size:14px;">
+        <i class="bi bi-check2-all" style="font-size:24px; display:block; margin-bottom:4px;"></i>
+        领料申请已完成
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){ window.location.reload(); done(); }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}
+
+<style>
+.status-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.status-tag.draft { background: #e9ecef; color: #495057; }
+.status-tag.pending { background: #fff3bf; color: #f08c00; }
+.status-tag.passed { background: #d3f9d8; color: #2b8a3e; }
+.status-tag.rejected { background: #ffe0e0; color: #c92a2a; }
+.status-tag.completed { background: #d0ebff; color: #1971c2; }
+.m-info-row {
+    display: flex;
+    padding: 6px 0;
+    font-size: 14px;
+    border-bottom: 1px solid #f1f3f5;
+}
+.m-info-row:last-child { border-bottom: none; }
+.m-info-row .label {
+    width: 80px;
+    color: #6c757d;
+    flex-shrink: 0;
+}
+.m-info-row .value {
+    flex: 1;
+    color: #212529;
+    word-break: break-all;
+}
+.m-pr-item {
+    padding: 12px 0;
+    border-bottom: 1px solid #f1f3f5;
+}
+.m-pr-item:last-child { border-bottom: none; }
+.m-pr-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.m-pr-item-header .name {
+    font-size: 15px;
+    font-weight: 500;
+    color: #212529;
+}
+.converted-tag {
+    background: #d3f9d8;
+    color: #2b8a3e;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+.unconverted-tag {
+    background: #fff3bf;
+    color: #f08c00;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+.m-pr-item-body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 13px;
+    color: #6c757d;
+}
+.m-pr-item-body .qty {
+    color: #495057;
+}
+.m-pr-item-body .qty strong {
+    color: #165DFF;
+    font-size: 15px;
+}
+.m-pr-item-purpose {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #6c757d;
+    background: #f8f9fa;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+.m-btn-block {
+    width: 100%;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-decoration: none;
+}
+.m-btn-success {
+    background: #198754;
+    color: #fff;
+    border: none;
+}
+.m-btn-outline-danger {
+    background: #fff;
+    color: #dc3545;
+    border: 1px solid #f5c2c7;
+}
+</style>

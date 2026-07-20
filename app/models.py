@@ -99,16 +99,58 @@ class User(UserMixin, db.Model):
         return exists is not None
 
     def get_allowed_projects(self):
-        """获取用户可访问的项目ID列表"""
-        import json
-        if self.data_scope == 'all' or self.is_admin():
+        """获取用户可访问的项目ID列表
+
+        返回 None 表示拥有全部数据权限，可访问所有项目；
+        返回列表表示仅可访问这些项目ID。
+        可见项目 = 数据权限为全部 → 所有项目 ∪ 用户归属部门及下级关联项目 ∪ 直接分配项目
+        """
+        if self.get_data_scope() == 'all' or self.is_admin():
             return None
-        if self.allowed_projects:
-            try:
-                return json.loads(self.allowed_projects)
-            except Exception:
-                return []
-        return []
+
+        project_ids = set()
+
+        # 1. 用户归属部门及下级部门关联的项目
+        if self.dept_id:
+            dept = SysDept.query.get(self.dept_id)
+            if dept:
+                dept_ids = dept.get_children_recursive()
+                depts = SysDept.query.filter(SysDept.id.in_(dept_ids), SysDept.project_id.isnot(None)).all()
+                for d in depts:
+                    project_ids.add(d.project_id)
+
+        # 2. 用户被直接分配的项目（sys_user_project）
+        for up in self.user_projects:
+            project_ids.add(up.project_id)
+
+        return list(project_ids) if project_ids else []
+
+    def get_visible_projects(self):
+        """获取用户可见的Project对象列表"""
+        from app.models import Project
+        allowed = self.get_allowed_projects()
+        if allowed is None:
+            return Project.query.filter_by(is_archived=False).order_by(Project.created_at.desc()).all()
+        if not allowed:
+            return []
+        return Project.query.filter(Project.id.in_(allowed), Project.is_archived == False).order_by(Project.created_at.desc()).all()
+
+    def get_main_project(self):
+        """获取用户主项目，返回Project对象或None"""
+        for up in self.user_projects:
+            if up.is_main:
+                return up.project
+        # 没有主项目时取第一个
+        if self.user_projects:
+            return self.user_projects[0].project
+        return None
+
+    def can_access_project(self, project_id):
+        """检查用户是否可访问指定项目"""
+        allowed = self.get_allowed_projects()
+        if allowed is None:
+            return True
+        return project_id in allowed
 
     def can_view_amount_field(self):
         return self.can_view_amount if self.can_view_amount is not None else True
@@ -127,18 +169,60 @@ class User(UserMixin, db.Model):
 
 
 class SysDept(db.Model):
-    """部门表"""
+    """部门表 - 支持树形组织架构"""
     __tablename__ = 'sys_dept'
     id = db.Column(db.Integer, primary_key=True)
     dept_code = db.Column(db.String(64), nullable=False, unique=True)
     dept_name = db.Column(db.String(128), nullable=False)
     parent_id = db.Column(db.Integer, db.ForeignKey('sys_dept.id'), default=0)
+    dept_type = db.Column(db.String(16), default='dept')  # company/branch/project/dept/team 公司/分公司/项目部/部门/班组
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)  # 仅项目部类型有值
+    leader = db.Column(db.String(64), nullable=True)  # 负责人
     sort = db.Column(db.Integer, default=0)
     status = db.Column(db.Boolean, default=True)
     remark = db.Column(db.String(256), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     children = db.relationship('SysDept', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
+    project = db.relationship('Project', backref='depts')
+
+    _DEPT_TYPE_MAP = {
+        'company': '公司', 'branch': '分公司', 'project': '项目部',
+        'dept': '部门', 'team': '班组',
+    }
+
+    def get_dept_type_display(self):
+        return self._DEPT_TYPE_MAP.get(self.dept_type, self.dept_type)
+
+    def get_children_recursive(self):
+        """递归获取所有子部门ID列表"""
+        result = [self.id]
+        children = self.children.all()
+        for child in children:
+            result.extend(child.get_children_recursive())
+        return result
+
+    def has_children(self):
+        return self.children.count() > 0
+
+    def has_users(self):
+        return self.users.count() > 0
+
+
+class SysUserProject(db.Model):
+    """用户项目关联表 - 支持一个用户归属/兼职多个项目"""
+    __tablename__ = 'sys_user_project'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    is_main = db.Column(db.Boolean, default=False)  # 是否主项目
+
+    user = db.relationship('User', backref=db.backref('user_projects', cascade='all, delete-orphan'))
+    project = db.relationship('Project', backref=db.backref('user_projects', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'project_id', name='uq_user_project'),
+    )
 
 
 class SysAnnouncement(db.Model):
@@ -245,9 +329,15 @@ class Project(db.Model):
     address = db.Column(db.String(256), nullable=True)
     start_date = db.Column(db.Date, nullable=True)
     planned_end_date = db.Column(db.Date, nullable=True)
+    actual_end_date = db.Column(db.Date, nullable=True)
     manager = db.Column(db.String(64), nullable=True)
     contact_phone = db.Column(db.String(32), nullable=True)
+    building_area = db.Column(db.Numeric(18, 2), default=0)  # 建筑面积（平方米）
+    contract_amount = db.Column(db.Numeric(18, 2), default=0)  # 合同金额（元）
+    status = db.Column(db.String(16), default='active')  # active在建/completed已竣工/suspended停工
+    project_type = db.Column(db.String(32), nullable=True)  # 项目类型（字典 project_type）
     is_archived = db.Column(db.Boolean, default=False)
+    module_config = db.Column(db.Text, nullable=True)  # JSON格式存储模块开关配置
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -256,6 +346,72 @@ class Project(db.Model):
     categories = db.relationship('Category', backref='project', lazy='dynamic', cascade='all, delete-orphan')
     usage_units = db.relationship('UsageUnit', backref='project', lazy='dynamic', cascade='all, delete-orphan')
     work_numbers = db.relationship('WorkNumber', backref='project', lazy='dynamic', cascade='all, delete-orphan')
+
+    _STATUS_MAP = {
+        'active': '在建',
+        'completed': '已竣工',
+        'suspended': '停工',
+    }
+
+    def get_status_display(self):
+        return self._STATUS_MAP.get(self.status, self.status)
+
+    # 默认模块配置
+    _DEFAULT_MODULES = {
+        'module_turnover': False,       # 周转材管理
+        'module_equipment': True,       # 设备管理
+        'module_quality_check': False,  # 入库质检流程
+        'module_batch': False,          # 批次保质期管理
+        'module_approval': True,        # 审批流程
+        'module_ai': False,             # AI助手功能
+        'module_industry_tools': True,  # 行业工具（商砼、钢材、条码）
+        'module_scrap': True,           # 物资报废
+        'module_period_close': False,   # 期末结账
+        'module_subcontract': False,    # 分包扣款
+    }
+
+    _MODULE_LABELS = {
+        'module_turnover': ('周转材管理', '管理周转材料的出入库、摊销、盘点'),
+        'module_equipment': ('设备管理', '管理设备台账、租赁、折旧、状态'),
+        'module_quality_check': ('入库质检流程', '入库单增加待检状态，需质检后才能入库'),
+        'module_batch': ('批次保质期管理', '出入库记录批次，库存按批次管理'),
+        'module_approval': ('审批流程', '单据需审批后生效，支持多级审批'),
+        'module_ai': ('AI助手功能', 'AI智能问答、数据洞察等AI功能'),
+        'module_industry_tools': ('行业工具', '商砼小票、钢材过磅、条码扫描等工具'),
+        'module_scrap': ('物资报废', '物资报废申请、审批、处理记录'),
+        'module_period_close': ('期末结账', '月度期末结账，锁定历史数据'),
+        'module_subcontract': ('分包扣款', '分包队伍扣款管理、台账统计'),
+    }
+
+    def get_module_config(self):
+        """获取项目模块配置（合并默认值）"""
+        import json
+        config = dict(self._DEFAULT_MODULES)
+        if self.module_config:
+            try:
+                user_config = json.loads(self.module_config)
+                config.update(user_config)
+            except Exception:
+                pass
+        return config
+
+    def is_module_enabled(self, module_key):
+        """检查指定模块是否启用"""
+        config = self.get_module_config()
+        return config.get(module_key, self._DEFAULT_MODULES.get(module_key, False))
+
+    def set_module_config(self, config_dict):
+        """设置模块配置（只保存非默认值）"""
+        import json
+        self.module_config = json.dumps(config_dict, ensure_ascii=False)
+
+    @classmethod
+    def get_default_module_config(cls):
+        return dict(cls._DEFAULT_MODULES)
+
+    @classmethod
+    def get_module_labels(cls):
+        return dict(cls._MODULE_LABELS)
 
 
 class Supplier(db.Model):
@@ -275,6 +431,10 @@ class Supplier(db.Model):
     license_expire_date = db.Column(db.Date, nullable=True)
     certificate_expire_date = db.Column(db.Date, nullable=True)
     opening_balance = db.Column(db.Numeric(18, 2), default=0)
+    # 主数据统一改造：公司级/项目级 + 状态
+    source = db.Column(db.String(16), default='project')  # company 公司级主库 / project 项目级
+    status = db.Column(db.String(16), default='qualified')  # qualified 合格 / unqualified 不合格 / blacklist 黑名单
+    create_dept = db.Column(db.Integer, nullable=True)  # 创建部门
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -289,6 +449,8 @@ class Category(db.Model):
     sort_order = db.Column(db.Integer, default=0)
     negative_stock_policy = db.Column(db.String(16), default='global')  # global / allow / forbid
     batch_management = db.Column(db.Boolean, default=False)  # 是否启用批次管理
+    # 主数据统一改造：公司级统一分类（source=company 时全公司共享）
+    source = db.Column(db.String(16), default='project')  # company 公司级 / project 项目级
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     materials = db.relationship('Material', backref='category', lazy='dynamic')
@@ -305,7 +467,43 @@ class Material(db.Model):
     specification = db.Column(db.String(256), nullable=True)
     unit = db.Column(db.String(32), nullable=False)
     remark = db.Column(db.Text, nullable=True)
+    # 主数据统一改造：公司级/项目级 + 状态 + 创建部门
+    source = db.Column(db.String(16), default='project')  # company 公司级主库 / project 项目级
+    status = db.Column(db.String(16), default='active')  # active 启用 / inactive 停用
+    create_dept = db.Column(db.Integer, nullable=True)  # 创建部门
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# 主数据统一改造：项目常用物资关联表
+class ProjectMaterial(db.Model):
+    """项目常用物资关联表：记录每个项目从公司库勾选的常用物资子集"""
+    __tablename__ = 'project_material'
+    __table_args__ = (db.UniqueConstraint('project_id', 'material_id', name='uq_project_material_link'),)
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    material_id = db.Column(db.Integer, db.ForeignKey('materials.id'), nullable=False)
+    is_common = db.Column(db.Boolean, default=True)  # 是否常用
+    sort = db.Column(db.Integer, default=0)  # 项目内排序
+    create_time = db.Column(db.DateTime, default=datetime.utcnow)
+
+    project = db.relationship('Project', backref='project_materials')
+    material = db.relationship('Material', backref='project_links')
+
+
+# 主数据统一改造：项目常用供应商关联表
+class ProjectSupplier(db.Model):
+    """项目常用供应商关联表：记录每个项目从公司库勾选的常用供应商子集"""
+    __tablename__ = 'project_supplier'
+    __table_args__ = (db.UniqueConstraint('project_id', 'supplier_id', name='uq_project_supplier_link'),)
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
+    is_common = db.Column(db.Boolean, default=True)  # 是否常用
+    sort = db.Column(db.Integer, default=0)  # 项目内排序
+    create_time = db.Column(db.DateTime, default=datetime.utcnow)
+
+    project = db.relationship('Project', backref='project_suppliers')
+    supplier = db.relationship('Supplier', backref='project_links')
 
 
 class UsageUnit(db.Model):
@@ -511,6 +709,10 @@ class StockIn(db.Model):
     quality_checker = db.Column(db.String(64), nullable=True)
     quality_check_time = db.Column(db.DateTime, nullable=True)
     quality_remark = db.Column(db.Text, nullable=True)
+    location_lat = db.Column(db.Float, nullable=True)
+    location_lng = db.Column(db.Float, nullable=True)
+    location_accuracy = db.Column(db.Float, nullable=True)
+    location_time = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     items = db.relationship('StockInItem', backref='stock_in', lazy='dynamic', cascade='all, delete-orphan')
@@ -573,6 +775,10 @@ class StockOut(db.Model):
     total_amount = db.Column(db.Numeric(18, 2), default=0)
     is_reconciled = db.Column(db.Boolean, default=False)
     approval_status = db.Column(db.String(16), default='passed')
+    location_lat = db.Column(db.Float, nullable=True)
+    location_lng = db.Column(db.Float, nullable=True)
+    location_accuracy = db.Column(db.Float, nullable=True)
+    location_time = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     items = db.relationship('StockOutItem', backref='stock_out', lazy='dynamic', cascade='all, delete-orphan')
@@ -754,6 +960,9 @@ class ApprovalFlow(db.Model):
     enabled = db.Column(db.Boolean, default=True)
     has_branch = db.Column(db.Boolean, default=False)
     description = db.Column(db.String(256), nullable=True)
+    scope = db.Column(db.String(16), default='company', index=True)  # company/project
+    project_ids = db.Column(db.Text, nullable=True)  # JSON数组 ["1", "2"]
+    is_default = db.Column(db.Boolean, default=False)  # 是否公司默认流程
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -762,6 +971,20 @@ class ApprovalFlow(db.Model):
     branches = db.relationship('ApprovalBranch', backref='flow', lazy='dynamic',
                                cascade='all, delete-orphan', order_by='ApprovalBranch.priority')
     instances = db.relationship('ApprovalInstance', backref='flow', lazy='dynamic')
+
+    def get_project_list(self):
+        """获取适用项目ID列表"""
+        if not self.project_ids:
+            return []
+        import json
+        try:
+            return json.loads(self.project_ids)
+        except:
+            return []
+
+    def is_project_flow(self):
+        """是否项目级流程"""
+        return self.scope == 'project'
 
 
 class ApprovalBranch(db.Model):
@@ -846,6 +1069,7 @@ class ApprovalInstance(db.Model):
     biz_id = db.Column(db.Integer, nullable=False, index=True)
     biz_title = db.Column(db.String(256), nullable=True)
     applicant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True, index=True)
     submit_time = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(16), default='draft', index=True)  # draft/pending/approving/passed/rejected/withdrawn
     current_node_id = db.Column(db.Integer, db.ForeignKey('approval_node.id'), nullable=True)
@@ -855,6 +1079,7 @@ class ApprovalInstance(db.Model):
     applicant = db.relationship('User', foreign_keys=[applicant_id], backref='submitted_approvals')
     current_node = db.relationship('ApprovalNode', foreign_keys=[current_node_id])
     branch = db.relationship('ApprovalBranch', foreign_keys=[branch_id])
+    project = db.relationship('Project', foreign_keys=[project_id])
     records = db.relationship('ApprovalRecord', backref='instance', lazy='dynamic',
                               cascade='all, delete-orphan', order_by='ApprovalRecord.approve_time')
 
@@ -1229,7 +1454,7 @@ class EquipmentMaintenance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     equipment_id = db.Column(db.Integer, db.ForeignKey('equipment.id'), nullable=False)
     maintain_date = db.Column(db.Date, nullable=False)
-    maintain_type = db.Column(db.String(16), default='保养')  # 保养/维修
+    maintain_type = db.Column(db.String(16), default='保养')  # 保养/维修/巡检
     content = db.Column(db.Text, nullable=True)
     cost = db.Column(db.Numeric(18, 2), default=0)
     vendor = db.Column(db.String(128), nullable=True)
@@ -1239,6 +1464,73 @@ class EquipmentMaintenance(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     equipment = db.relationship('Equipment')
+
+
+# ========== 设备巡检 ==========
+
+class EquipmentInspection(db.Model):
+    """设备巡检计划表"""
+    __tablename__ = 'equipment_inspection'
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    plan_name = db.Column(db.String(128), nullable=False)
+    plan_type = db.Column(db.String(32), default='regular')  # regular定期/temporary临时
+    cycle = db.Column(db.String(16), default='monthly')  # daily/weekly/monthly/quarterly/yearly
+    inspect_items = db.Column(db.Text, nullable=True)  # 巡检项JSON
+    equipment_category = db.Column(db.String(64), nullable=True)  # 适用设备类别，空为全部
+    responsible_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    responsible_name = db.Column(db.String(64), nullable=True)
+    start_date = db.Column(db.Date, nullable=True)
+    end_date = db.Column(db.Date, nullable=True)
+    next_inspect_date = db.Column(db.Date, nullable=True)
+    status = db.Column(db.String(16), default='active')  # active/inactive
+    remark = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    project = db.relationship('Project')
+    responsible = db.relationship('User', foreign_keys=[responsible_id])
+
+
+class EquipmentInspectionTask(db.Model):
+    """设备巡检任务表（按计划生成的待执行任务）"""
+    __tablename__ = 'equipment_inspection_task'
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    inspection_id = db.Column(db.Integer, db.ForeignKey('equipment_inspection.id'), nullable=False)
+    equipment_id = db.Column(db.Integer, db.ForeignKey('equipment.id'), nullable=False)
+    task_no = db.Column(db.String(64), nullable=False, index=True)
+    plan_inspect_date = db.Column(db.Date, nullable=False)
+    assignee_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    assignee_name = db.Column(db.String(64), nullable=True)
+    status = db.Column(db.String(16), default='pending')  # pending/done/skipped/overdue
+    remark = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    inspection = db.relationship('EquipmentInspection', backref='tasks')
+    equipment = db.relationship('Equipment')
+    assignee = db.relationship('User', foreign_keys=[assignee_id])
+
+
+class EquipmentInspectionRecord(db.Model):
+    """设备巡检记录表"""
+    __tablename__ = 'equipment_inspection_record'
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    task_id = db.Column(db.Integer, db.ForeignKey('equipment_inspection_task.id'), nullable=True)
+    equipment_id = db.Column(db.Integer, db.ForeignKey('equipment.id'), nullable=False)
+    inspect_date = db.Column(db.Date, nullable=False)
+    inspector_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    inspector_name = db.Column(db.String(64), nullable=True)
+    overall_status = db.Column(db.String(16), default='normal')  # normal/abnormal
+    items_result = db.Column(db.Text, nullable=True)  # 巡检项结果JSON
+    meter_reading = db.Column(db.String(64), nullable=True)  # 仪表读数
+    issue_desc = db.Column(db.Text, nullable=True)  # 异常描述
+    auto_maintenance = db.Column(db.Boolean, default=False)  # 是否已自动生成维修工单
+    remark = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    equipment = db.relationship('Equipment')
+    inspector = db.relationship('User', foreign_keys=[inspector_id])
 
 
 # ========== 物资二维码 ==========
@@ -1360,6 +1652,23 @@ class NotificationLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class Message(db.Model):
+    """站内消息（移动端消息中心）"""
+    __tablename__ = 'sys_message'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    title = db.Column(db.String(128), nullable=False)
+    content = db.Column(db.Text, nullable=True)
+    msg_type = db.Column(db.String(16), default='info')  # info/approval/stock/notice
+    biz_type = db.Column(db.String(32), nullable=True)  # stockin/stockout/contract/payment/requisition
+    biz_id = db.Column(db.Integer, nullable=True)
+    url = db.Column(db.String(256), nullable=True)
+    is_read = db.Column(db.Boolean, default=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('messages', cascade='all, delete-orphan'))
+
+
 # ========== 数据变更记录 ==========
 
 class DataChangeLog(db.Model):
@@ -1467,8 +1776,13 @@ class MaterialScrap(db.Model):
     applicant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     applicant_name = db.Column(db.String(64), nullable=True)
     approval_status = db.Column(db.String(16), default='draft')  # draft/pending/passed/rejected
+    approval_instance_id = db.Column(db.Integer, nullable=True)  # 审批实例ID
     total_quantity = db.Column(db.Numeric(18, 4), default=0)
     total_amount = db.Column(db.Numeric(18, 2), default=0)
+    location_lat = db.Column(db.Float, nullable=True)  # 现场定位-纬度
+    location_lng = db.Column(db.Float, nullable=True)  # 现场定位-经度
+    location_accuracy = db.Column(db.Float, nullable=True)  # 定位精度（米）
+    location_time = db.Column(db.DateTime, nullable=True)  # 定位时间
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     items = db.relationship('MaterialScrapItem', backref='scrap', cascade='all, delete-orphan')
@@ -1498,7 +1812,7 @@ class ConcreteTicket(db.Model):
     __tablename__ = 'concrete_ticket'
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False, index=True)
-    ticket_no = db.Column(db.String(64), nullable=False)  # 小票号
+    ticket_no = db.Column(db.String(64), nullable=False)  # 小票号（自动生成 CT-{pid}-{YYYYMMDD}-{seq}，可修改）
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=True)
     supplier_name = db.Column(db.String(128), nullable=True)
     strength_grade = db.Column(db.String(32), nullable=True)  # 强度等级 C30/C40
@@ -1507,11 +1821,17 @@ class ConcreteTicket(db.Model):
     vehicle_count = db.Column(db.Integer, default=1)  # 车次
     volume = db.Column(db.Numeric(18, 4), default=0)  # 方量 m³
     arrival_time = db.Column(db.DateTime, nullable=True)  # 到场时间
+    vehicle_no = db.Column(db.String(32), nullable=True)  # 运输车号
+    driver_name = db.Column(db.String(32), nullable=True)  # 司机姓名
     slump = db.Column(db.String(32), nullable=True)  # 坍落度
     temperature = db.Column(db.String(32), nullable=True)  # 温度
     photo_path = db.Column(db.String(256), nullable=True)  # 随车照片
     is_reconciled = db.Column(db.Boolean, default=False)  # 是否已对账
     is_transferred = db.Column(db.Boolean, default=False)  # 是否已转入库单
+    location_lat = db.Column(db.Float, nullable=True)
+    location_lng = db.Column(db.Float, nullable=True)
+    location_accuracy = db.Column(db.Float, nullable=True)
+    location_time = db.Column(db.DateTime, nullable=True)
     remark = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

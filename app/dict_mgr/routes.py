@@ -7,6 +7,16 @@ from app.decorators import admin_required, log_audit
 from app.utils import clear_dict_cache
 
 
+def _reorder_dict_items(dict_type_id):
+    """删除字典项后重新整理排序号"""
+    items = SysDictItem.query.filter_by(dict_type_id=dict_type_id).order_by(
+        SysDictItem.sort_order, SysDictItem.id).all()
+    for index, item in enumerate(items):
+        if item.sort_order != index:
+            item.sort_order = index
+    db.session.commit()
+
+
 @bp.route('/')
 @login_required
 @admin_required
@@ -133,12 +143,16 @@ def item_create():
     dict_type_id = request.form.get('dict_type_id', type=int)
     item_label = request.form.get('item_label', '').strip()
     item_value = request.form.get('item_value', '').strip()
-    sort_order = request.form.get('sort_order', 0, type=int)
+    sort_order = request.form.get('sort_order', type=int, default=None)
     is_active = request.form.get('is_active') == 'on'
 
     if not dict_type_id or not item_label or not item_value:
         flash('所属类型、标签、值不能为空。', 'danger')
         return redirect(url_for('dict_mgr.index', type_id=dict_type_id))
+
+    if sort_order is None:
+        max_sort = db.session.query(db.func.max(SysDictItem.sort_order)).filter_by(dict_type_id=dict_type_id).scalar() or 0
+        sort_order = max_sort + 1
 
     SysDictType.query.get_or_404(dict_type_id)
     item = SysDictItem(
@@ -152,6 +166,73 @@ def item_create():
     db.session.commit()
     clear_dict_cache()
     flash('字典项创建成功。', 'success')
+    return redirect(url_for('dict_mgr.index', type_id=dict_type_id))
+
+
+@bp.route('/item/batch_create', methods=['POST'])
+@login_required
+@admin_required
+@log_audit(module='dict_mgr', operation='批量新增字典项')
+def item_batch_create():
+    dict_type_id = request.form.get('dict_type_id', type=int)
+    batch_items = request.form.get('batch_items', '').strip()
+    is_active = request.form.get('is_active') == 'on'
+
+    if not dict_type_id:
+        flash('所属类型不能为空。', 'danger')
+        return redirect(url_for('dict_mgr.index'))
+
+    if not batch_items:
+        flash('请输入字典项列表。', 'danger')
+        return redirect(url_for('dict_mgr.index', type_id=dict_type_id))
+
+    SysDictType.query.get_or_404(dict_type_id)
+
+    max_sort = db.session.query(db.func.max(SysDictItem.sort_order)).filter_by(dict_type_id=dict_type_id).scalar() or 0
+    base_sort = max_sort + 1
+    sort_step = 1
+
+    lines = batch_items.split('\n')
+    created_count = 0
+    errors = []
+
+    for idx, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(',', 1)
+        if len(parts) != 2:
+            errors.append(f'第{idx+1}行格式错误：{line}')
+            continue
+        item_label, item_value = parts[0].strip(), parts[1].strip()
+        if not item_label or not item_value:
+            errors.append(f'第{idx+1}行标签或值为空：{line}')
+            continue
+
+        existing = SysDictItem.query.filter_by(dict_type_id=dict_type_id, item_value=item_value).first()
+        if existing:
+            errors.append(f'第{idx+1}行值已存在：{item_value}')
+            continue
+
+        item = SysDictItem(
+            dict_type_id=dict_type_id,
+            item_label=item_label,
+            item_value=item_value,
+            sort_order=base_sort + idx * sort_step,
+            is_active=is_active
+        )
+        db.session.add(item)
+        created_count += 1
+
+    if created_count > 0:
+        db.session.commit()
+        clear_dict_cache()
+
+    if errors:
+        flash(f'批量创建完成，成功{created_count}条，失败{len(errors)}条：{"; ".join(errors[:5])}{"..." if len(errors) > 5 else ""}', 'warning')
+    else:
+        flash(f'批量创建成功，共{created_count}条。', 'success')
+
     return redirect(url_for('dict_mgr.index', type_id=dict_type_id))
 
 
@@ -189,6 +270,7 @@ def item_delete(id):
     type_id = item.dict_type_id
     db.session.delete(item)
     db.session.commit()
+    _reorder_dict_items(type_id)
     clear_dict_cache()
     flash('字典项删除成功。', 'success')
     return redirect(url_for('dict_mgr.index', type_id=type_id))

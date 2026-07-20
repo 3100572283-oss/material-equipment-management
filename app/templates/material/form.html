@@ -66,9 +66,9 @@
                             <textarea class="form-control" name="remark" rows="3">{{ material.remark if material else '' }}</textarea>
                         </div>
                     </div>
-                    <div class="mt-4">
+                    <div class="form-actions">
+                        <a href="{{ url_for('material.index') }}" class="btn btn-secondary">返回</a>
                         <button type="submit" class="btn btn-primary">保存</button>
-                        <a href="{{ url_for('material.index') }}" class="btn btn-secondary ms-2">返回</a>
                     </div>
                 </form>
             </div>

@@ -274,7 +274,11 @@ def config():
             'api_key': request.form.get('ai_api_key', ''),
             'model': request.form.get('ai_model', 'doubao-pro-32k'),
             'base_url': request.form.get('ai_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'),
-            'max_tokens': int(request.form.get('ai_max_tokens', '2000'))
+            'max_tokens': int(request.form.get('ai_max_tokens', '2000')),
+            'vision_enabled': request.form.get('ai_vision_enabled', 'false'),
+            'vision_model': request.form.get('ai_vision_model', 'doubao-vision-pro-32k'),
+            'vision_base_url': request.form.get('ai_vision_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'),
+            'vision_max_tokens': int(request.form.get('ai_vision_max_tokens', '2000'))
         }
         save_ai_config(config)
         flash('AI配置已更新', 'success')
@@ -314,4 +318,44 @@ def logs():
 def is_enabled():
     """检查AI是否启用"""
     ai = get_ai_service()
-    return jsonify({'enabled': ai.is_enabled()})
+    return jsonify({'enabled': ai.is_enabled(), 'vision_enabled': ai.is_vision_enabled()})
+
+
+@bp.route('/vision/recognize', methods=['POST'])
+@login_required
+def vision_recognize():
+    """视觉识别API"""
+    ai = get_ai_service()
+    if not ai.is_vision_enabled():
+        return jsonify({'success': False, 'message': '视觉识别未启用'})
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'message': '无效请求数据'})
+    
+    image_base64 = data.get('image', '')
+    recognize_type = data.get('type', 'ocr')  # license/invoice/receipt/ocr
+    
+    if not image_base64:
+        return jsonify({'success': False, 'message': '请上传图片'})
+    
+    # 移除可能的data:image/xxx;base64,前缀
+    if ',' in image_base64:
+        image_base64 = image_base64.split(',')[1]
+    
+    result = None
+    error = None
+    
+    if recognize_type == 'license':
+        result, error = ai.recognize_business_license(image_base64)
+    elif recognize_type == 'invoice':
+        result, error = ai.recognize_invoice(image_base64)
+    elif recognize_type == 'receipt':
+        result, error = ai.recognize_receipt(image_base64)
+    else:
+        result, error = ai.extract_text(image_base64)
+    
+    if error:
+        return jsonify({'success': False, 'message': error})
+    
+    return jsonify({'success': True, 'data': result})

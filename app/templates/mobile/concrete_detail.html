@@ -1,0 +1,124 @@
+{% extends "mobile/base.html" %}
+{% block title %}商砼小票详情{% endblock %}
+{% block nav_title %}商砼小票详情{% endblock %}
+
+{% block nav_right %}
+<a href="{{ url_for('mobile.concrete_list') }}" style="color:#165DFF; font-size:14px; margin-right:8px;">列表</a>
+<button type="button" class="m-theme-toggle" id="mThemeToggle" onclick="toggleTheme()" title="切换深色/浅色">
+    <i class="bi bi-moon-stars"></i>
+</button>
+{% endblock %}
+
+{% block content %}
+<!-- 头部信息 -->
+<div class="m-card">
+    <div style="display:flex; align-items:flex-start; justify-content:space-between;">
+        <div style="flex:1;">
+            <div style="font-size:16px; font-weight:600; color:#212529;">{{ ticket.ticket_no }}</div>
+            <div style="font-size:13px; color:#6c757d; margin-top:4px;">
+                <i class="bi bi-receipt"></i>
+                {% if ticket.strength_grade %}{{ ticket.strength_grade }}{% else %}未指定标号{% endif %}
+                {% if ticket.vehicle_no %} · 车号 {{ ticket.vehicle_no }}{% endif %}
+            </div>
+        </div>
+        <span class="m-status-tag
+            {% if ticket.is_transferred %}passed
+            {% elif ticket.is_reconciled %}passed
+            {% else %}pending{% endif %}">
+            {% if ticket.is_transferred %}已转入库
+            {% elif ticket.is_reconciled %}已对账
+            {% else %}待对账{% endif %}
+        </span>
+    </div>
+</div>
+
+<!-- 基本信息 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-info-circle"></i>基本信息</div>
+    <div class="m-info-row"><span>供应单位</span><span>{{ ticket.supplier_name or (ticket.supplier.name if ticket.supplier else '-') }}</span></div>
+    <div class="m-info-row"><span>砼标号</span><span>{{ ticket.strength_grade or '-' }}</span></div>
+    <div class="m-info-row"><span>浇筑部位</span><span>{{ ticket.pour_part or '-' }}</span></div>
+    <div class="m-info-row"><span>关联工号</span><span>{% if ticket.work_number %}{{ ticket.work_number.code }}{% if ticket.work_number.division_name %}（{{ ticket.work_number.division_name }}）{% endif %}{% else %}-{% endif %}</span></div>
+    <div class="m-info-row"><span>运输车号</span><span>{{ ticket.vehicle_no or '-' }}</span></div>
+    <div class="m-info-row"><span>司机姓名</span><span>{{ ticket.driver_name or '-' }}</span></div>
+    <div class="m-info-row"><span>方量</span><span><strong style="color:#165DFF;">{{ '%.2f'|format(ticket.volume|float) }}</strong> m³</span></div>
+    <div class="m-info-row"><span>车次</span><span>{{ ticket.vehicle_count or 1 }} 车</span></div>
+    <div class="m-info-row"><span>坍落度</span><span>{{ ticket.slump or '-' }}</span></div>
+    <div class="m-info-row"><span>进场时间</span><span>{{ ticket.arrival_time.strftime('%Y-%m-%d %H:%M') if ticket.arrival_time else '-' }}</span></div>
+    {% if ticket.remark %}
+    <div class="m-info-row"><span>备注</span><span style="max-width:65%;">{{ ticket.remark }}</span></div>
+    {% endif %}
+</div>
+
+<!-- 现场照片 -->
+{% if attachments %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-camera"></i>现场照片（{{ attachments|length }}）</div>
+    <div class="m-photo-grid" id="photoGallery" style="grid-template-columns:repeat(3,1fr);">
+        {% for att in attachments %}
+        <div class="m-photo-item" style="position:relative;width:100%;padding-bottom:100%;">
+            <img src="{{ url_for('static', filename=att.file_path) }}"
+                 data-preview data-group="concrete"
+                 data-preview-url="{{ url_for('static', filename=att.file_path) }}"
+                 style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;"
+                 alt="{{ att.original_name }}">
+        </div>
+        {% endfor %}
+    </div>
+    <div style="font-size:12px; color:#adb5bd; margin-top:8px;">点击图片可放大查看</div>
+</div>
+{% endif %}
+
+<!-- 定位信息 -->
+{% if ticket.location_lat and ticket.location_lng %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-geo-alt"></i>定位信息</div>
+    <div class="m-info-row"><span>经度</span><span>{{ '%.6f'|format(ticket.location_lng|float) }}</span></div>
+    <div class="m-info-row"><span>纬度</span><span>{{ '%.6f'|format(ticket.location_lat|float) }}</span></div>
+    {% if ticket.location_accuracy %}
+    <div class="m-info-row"><span>精度</span><span>±{{ '%.1f'|format(ticket.location_accuracy|float) }} 米</span></div>
+    {% endif %}
+    {% if ticket.location_time %}
+    <div class="m-info-row"><span>定位时间</span><span>{{ ticket.location_time.strftime('%Y-%m-%d %H:%M') }}</span></div>
+    {% endif %}
+    <a href="https://uri.amap.com/marker?position={{ ticket.location_lng }},{{ ticket.location_lat }}&coordinate=wgs84&callnative=1"
+       target="_blank" class="m-btn m-btn-outline-primary" style="display:block; text-align:center; margin-top:10px;">
+        <i class="bi bi-map"></i> 在地图中查看
+    </a>
+</div>
+{% endif %}
+
+<!-- 操作按钮 -->
+<div class="m-card" style="display:flex; gap:8px;">
+    <a href="{{ url_for('mobile.concrete_list') }}" class="m-btn m-btn-outline" style="flex:1; text-align:center;">
+        <i class="bi bi-arrow-left"></i> 返回列表
+    </a>
+    {% if can_edit %}
+    <a href="{{ url_for('mobile.concrete_edit', tid=ticket.id) }}" class="m-btn m-btn-primary" style="flex:1; text-align:center;">
+        <i class="bi bi-pencil"></i> 编辑
+    </a>
+    {% else %}
+    <span class="m-btn m-btn-outline" style="flex:1; text-align:center; opacity:0.5; cursor:not-allowed;">
+        <i class="bi bi-lock"></i> 不可编辑
+    </span>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+if (window.MobilePreview) {
+    MobilePreview.bindGallery('#photoGallery');
+}
+</script>
+{% endblock %}
+
+<style>
+.m-info-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 0; border-bottom:1px solid #f1f3f5; font-size:14px;
+}
+.m-info-row:last-child { border-bottom:none; }
+.m-info-row span:first-child { color:#6c757d; }
+.m-info-row span:last-child { color:#212529; font-weight:500; text-align:right; max-width:60%; word-break:break-all; }
+</style>

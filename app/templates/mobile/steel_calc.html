@@ -1,0 +1,212 @@
+{% extends "mobile/base.html" %}
+{% block title %}钢材换算{% endblock %}
+{% block nav_title %}钢材理论重量计算{% endblock %}
+
+{% block content %}
+<!-- 计算器卡片 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-calculator"></i>钢材理论重量</div>
+
+    <div class="m-form-group">
+        <label class="m-form-label">钢材类型</label>
+        <select class="m-form-select" id="specType" onchange="onTypeChange()">
+            <option value="rebar">钢筋（圆钢/螺纹钢）</option>
+            <option value="plate">钢板</option>
+            <option value="angle">角钢</option>
+            <option value="pipe">钢管</option>
+        </select>
+    </div>
+
+    <div class="m-form-group">
+        <label class="m-form-label">规格 <span class="req">*</span></label>
+        <select class="m-form-select" id="specName">
+        </select>
+        <div style="font-size:11px; color:#adb5bd; margin-top:4px;">
+            理论重量：<span id="specWeight" style="color:#165DFF;">-</span> <span id="specUnit">kg/m</span>
+        </div>
+    </div>
+
+    <div class="m-form-group">
+        <label class="m-form-label">计算方式</label>
+        <select class="m-form-select" id="calcMode" onchange="onModeChange()">
+            <option value="length">按长度/根数</option>
+            <option value="pieces">按根数（输入单根长度）</option>
+            <option value="area">按面积（钢板）</option>
+        </select>
+    </div>
+
+    <div class="m-form-group" id="groupLength">
+        <label class="m-form-label">总长度 (米) <span class="req">*</span></label>
+        <input type="number" step="0.001" min="0" class="m-form-control" id="inputLength" placeholder="输入总长度" oninput="calcResult()">
+    </div>
+
+    <div class="m-form-group" id="groupPieces" style="display:none;">
+        <label class="m-form-label">根数</label>
+        <input type="number" step="1" min="0" class="m-form-control" id="inputPieces" placeholder="根数" oninput="calcResult()">
+        <label class="m-form-label" style="margin-top:8px;">单根长度 (米)</label>
+        <input type="number" step="0.001" min="0" class="m-form-control" id="inputPieceLen" placeholder="单根长度" oninput="calcResult()">
+    </div>
+
+    <div class="m-form-group" id="groupArea" style="display:none;">
+        <label class="m-form-label">面积 (㎡) <span class="req">*</span></label>
+        <input type="number" step="0.001" min="0" class="m-form-control" id="inputArea" placeholder="输入面积" oninput="calcResult()">
+    </div>
+
+    <!-- 计算结果 -->
+    <div class="m-calc-result">
+        <div class="m-calc-label">理论重量</div>
+        <div class="m-calc-value">
+            <span id="resultValue">0.000</span>
+            <span class="m-calc-unit">kg</span>
+        </div>
+        <div class="m-calc-sub">
+            ≈ <span id="resultTon">0.000</span> 吨
+        </div>
+    </div>
+</div>
+
+<!-- 快速参考 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-table"></i>常用规格参考</div>
+    <div style="font-size:12px; color:#6c757d; margin-bottom:6px;">点击规格可直接选用</div>
+    <div class="m-quick-grid">
+        {% for s in specs %}
+        <div class="m-quick-item" data-type="{{ s.spec_type }}" data-name="{{ s.spec_name }}"
+             onclick="quickPick('{{ s.spec_type }}', '{{ s.spec_name }}')">
+            <div class="m-quick-name">{{ s.spec_name }}</div>
+            <div class="m-quick-weight">{{ '%.3f'|format(s.theoretical_weight|float) }} {{ s.unit }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.m-calc-result {
+    margin-top:14px; padding:16px;
+    background:linear-gradient(135deg, #165DFF 0%, #4d8bff 100%);
+    border-radius:10px; color:#fff; text-align:center;
+}
+.m-calc-label { font-size:13px; opacity:0.9; }
+.m-calc-value {
+    font-size:32px; font-weight:700; margin-top:4px;
+}
+.m-calc-unit { font-size:14px; font-weight:normal; margin-left:4px; opacity:0.9; }
+.m-calc-sub { font-size:13px; opacity:0.85; margin-top:6px; }
+.m-quick-grid {
+    display:grid; grid-template-columns:repeat(2, 1fr);
+    gap:6px;
+}
+.m-quick-item {
+    padding:8px; background:#f8f9fa;
+    border-radius:6px; cursor:pointer;
+    border:1px solid #e9ecef;
+    transition:all 0.15s;
+}
+.m-quick-item:active {
+    background:#165DFF; color:#fff;
+}
+.m-quick-item:active .m-quick-weight {
+    color:#fff;
+}
+.m-quick-name { font-size:13px; font-weight:600; color:#212529; }
+.m-quick-weight { font-size:11px; color:#6c757d; margin-top:2px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 所有规格数据
+var allSpecs = [
+    {% for s in specs %}
+    {
+        type: '{{ s.spec_type }}',
+        name: '{{ s.spec_name }}',
+        weight: {{ s.theoretical_weight|float }},
+        unit: '{{ s.unit }}'
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+function onTypeChange(){
+    var type = document.getElementById('specType').value;
+    var sel = document.getElementById('specName');
+    sel.innerHTML = '';
+    var filtered = allSpecs.filter(function(s){ return s.type === type; });
+    filtered.forEach(function(s){
+        var opt = document.createElement('option');
+        opt.value = s.name;
+        opt.textContent = s.name + ' (' + s.weight.toFixed(3) + ' ' + s.unit + ')';
+        opt.dataset.weight = s.weight;
+        opt.dataset.unit = s.unit;
+        sel.appendChild(opt);
+    });
+    if (filtered.length > 0) {
+        updateSpecInfo();
+    }
+    calcResult();
+}
+
+function updateSpecInfo(){
+    var sel = document.getElementById('specName');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt) return;
+    document.getElementById('specWeight').textContent = opt.dataset.weight;
+    document.getElementById('specUnit').textContent = opt.dataset.unit;
+}
+
+document.getElementById('specName').addEventListener('change', function(){
+    updateSpecInfo();
+    calcResult();
+});
+
+function onModeChange(){
+    var mode = document.getElementById('calcMode').value;
+    document.getElementById('groupLength').style.display = (mode === 'length') ? 'block' : 'none';
+    document.getElementById('groupPieces').style.display = (mode === 'pieces') ? 'block' : 'none';
+    document.getElementById('groupArea').style.display = (mode === 'area') ? 'block' : 'none';
+    calcResult();
+}
+
+function calcResult(){
+    var sel = document.getElementById('specName');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt) {
+        document.getElementById('resultValue').textContent = '0.000';
+        document.getElementById('resultTon').textContent = '0.000';
+        return;
+    }
+    var weight = parseFloat(opt.dataset.weight) || 0;
+    var mode = document.getElementById('calcMode').value;
+    var qty = 0;
+
+    if (mode === 'length') {
+        var len = parseFloat(document.getElementById('inputLength').value) || 0;
+        qty = len;
+    } else if (mode === 'pieces') {
+        var pieces = parseFloat(document.getElementById('inputPieces').value) || 0;
+        var pieceLen = parseFloat(document.getElementById('inputPieceLen').value) || 0;
+        qty = pieces * pieceLen;
+    } else if (mode === 'area') {
+        var area = parseFloat(document.getElementById('inputArea').value) || 0;
+        qty = area;
+    }
+
+    var totalKg = weight * qty;
+    document.getElementById('resultValue').textContent = totalKg.toFixed(3);
+    document.getElementById('resultTon').textContent = (totalKg / 1000).toFixed(3);
+}
+
+function quickPick(type, name){
+    document.getElementById('specType').value = type;
+    onTypeChange();
+    document.getElementById('specName').value = name;
+    updateSpecInfo();
+    calcResult();
+    M.toast('已选用 ' + name, 'success');
+    document.getElementById('inputLength').focus();
+}
+
+// 初始化
+onTypeChange();
+</script>
+{% endblock %}

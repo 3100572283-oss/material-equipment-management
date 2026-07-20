@@ -7,9 +7,14 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.supplier import bp
 from app import db
-from app.models import Supplier, SupplierEvaluation, StockIn, Contract, Inventory
+from app.models import Supplier, SupplierEvaluation, StockIn, Contract, Inventory, ProjectSupplier
 from app.decorators import editor_required, log_audit
-from app.utils import log_operation, export_to_excel, get_config
+from app.utils import (
+    log_operation, export_to_excel, get_config,
+    get_project_suppliers,
+    add_supplier_to_project,
+    remove_supplier_from_project,
+)
 
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
@@ -23,6 +28,7 @@ def allowed_file(filename):
 @login_required
 def index():
     project_id = session.get('current_project_id')
+    # 必须选择项目（常用表为项目级视图）
     if not project_id:
         flash('请先选择项目。', 'warning')
         return redirect(url_for('main.index'))
@@ -30,38 +36,46 @@ def index():
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
     level = request.args.get('level', '', type=str)
-    
-    query = Supplier.query.filter_by(project_id=project_id)
+
+    # 通过 ProjectSupplier 关联表获取项目常用供应商（包含公司主库 + 项目级临时供应商）
+    query = get_project_suppliers(project_id, common_only=True)
     if keyword:
         query = query.filter(Supplier.name.contains(keyword) | Supplier.code.contains(keyword))
-    
+
     if level:
         subquery = db.session.query(
             SupplierEvaluation.supplier_id,
             SupplierEvaluation.level
         ).order_by(SupplierEvaluation.evaluate_date.desc()).group_by(SupplierEvaluation.supplier_id).subquery()
         query = query.join(subquery, Supplier.id == subquery.c.supplier_id).filter(subquery.c.level == level)
-    
+
     pagination = query.order_by(Supplier.created_at.desc()).paginate(
         page=page, per_page=10, error_out=False
     )
-    
+
+    # 标记每条供应商是否已加入项目常用
+    linked_ids = set(
+        ps.supplier_id for ps in ProjectSupplier.query.filter_by(project_id=project_id).all()
+    )
     for s in pagination.items:
         s.latest_evaluation = SupplierEvaluation.query.filter_by(supplier_id=s.id).order_by(SupplierEvaluation.evaluate_date.desc()).first()
-    
-    return render_template('supplier/index.html', pagination=pagination, keyword=keyword, level=level)
+        s._is_project_common = s.id in linked_ids
+
+    return render_template('supplier/index.html', pagination=pagination, keyword=keyword, level=level,
+                           linked_supplier_ids=sorted(linked_ids))
 
 
 @bp.route('/export')
 @login_required
 def export():
-    """导出供应商列表Excel"""
+    """导出供应商列表Excel（导出本项目常用供应商）"""
     project_id = session.get('current_project_id')
     if not project_id:
         flash('请先选择项目', 'warning')
         return redirect(url_for('supplier.index'))
-    
-    suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.created_at.desc()).all()
+
+    # 与列表页保持一致：导出本项目常用供应商（包含公司主库 + 项目级）
+    suppliers = get_project_suppliers(project_id, common_only=True).order_by(Supplier.created_at.desc()).all()
     
     headers = ['序号', '供应商编码', '供应商名称', '统一社会信用代码', '联系人', '联系电话', 
                '法定代表人', '地址', '开户银行', '银行账号']
@@ -113,10 +127,15 @@ def create():
             address=request.form.get('address', '').strip(),
             bank_name=request.form.get('bank_name', '').strip(),
             bank_account=request.form.get('bank_account', '').strip(),
-            license_image=license_path
+            license_image=license_path,
+            # 主数据统一改造：项目级新增供应商标记为 project，自动加入项目常用
+            source='project',
+            status='qualified',
         )
         db.session.add(supplier)
         db.session.commit()
+        # 项目级供应商创建后自动加入项目常用表
+        add_supplier_to_project(supplier.id, project_id)
         flash('供应商创建成功。', 'success')
         return redirect(url_for('supplier.index'))
     return render_template('supplier/form.html')
@@ -167,6 +186,118 @@ def delete(id):
     log_operation('删除', module='供应商管理', description=f'删除供应商：{supplier.name}')
     flash('供应商删除成功。', 'success')
     return redirect(url_for('supplier.index'))
+
+
+@bp.route('/<int:supplier_id>/remove_from_project', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='supplier', operation='移除常用')
+def remove_from_project(supplier_id):
+    """从项目常用供应商移除（仅删除 ProjectSupplier 关联，不影响主库数据）"""
+    project_id = session.get('current_project_id')
+    if not project_id:
+        flash('请先选择项目。', 'warning')
+        return redirect(url_for('supplier.index'))
+
+    supplier = Supplier.query.get(supplier_id)
+    if not supplier:
+        flash('供应商不存在。', 'danger')
+        return redirect(url_for('supplier.index'))
+
+    # 项目级供应商（source='project'）不允许仅移除常用，否则会变成游离数据
+    if supplier.source == 'project':
+        flash('项目级临时供应商无法仅移除常用，请直接删除。', 'warning')
+        return redirect(url_for('supplier.index'))
+
+    remove_supplier_from_project(supplier_id, project_id)
+    flash(f'已将供应商「{supplier.name}」从本项目常用移除。', 'success')
+    return redirect(url_for('supplier.index'))
+
+
+@bp.route('/api/add_to_project', methods=['POST'])
+@login_required
+@editor_required
+def api_add_to_project():
+    """批量将公司库供应商加入项目常用（AJAX 接口）
+
+    请求 JSON: {"supplier_ids": [1, 2, 3]}
+    返回 JSON: {"success": true, "added_count": N}
+    """
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'success': False, 'message': '请先选择项目'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    supplier_ids = payload.get('supplier_ids', []) or []
+    if not isinstance(supplier_ids, list) or not supplier_ids:
+        return jsonify({'success': False, 'message': 'supplier_ids 不能为空'}), 400
+
+    added = 0
+    for sid in supplier_ids:
+        try:
+            sid_int = int(sid)
+        except (TypeError, ValueError):
+            continue
+        # 仅允许添加公司级供应商
+        s = Supplier.query.get(sid_int)
+        if not s or s.source != 'company':
+            continue
+        add_supplier_to_project(sid_int, project_id)
+        added += 1
+
+    return jsonify({'success': True, 'added_count': added})
+
+
+@bp.route('/api/project_suppliers')
+@login_required
+def api_project_suppliers():
+    """API：返回当前项目常用供应商列表（JSON）
+
+    供业务单据（入库/合同等）的统一供应商选择弹窗使用。
+    支持关键字搜索、分页。
+
+    返回 JSON:
+        {items: [{id, code, name, credit_code, contact_person, phone}], total, page, pages}
+    """
+    from sqlalchemy import or_
+
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'items': [], 'total': 0, 'page': 1, 'pages': 0})
+
+    q = request.args.get('q', '', type=str)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    # 限制最大返回数量，避免一次性拉取过多
+    per_page = min(max(per_page, 1), 100)
+
+    query = get_project_suppliers(project_id, common_only=True)
+    if q:
+        query = query.filter(
+            or_(Supplier.name.contains(q), Supplier.code.contains(q))
+        )
+
+    pagination = query.order_by(Supplier.name.asc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    items = []
+    for s in pagination.items:
+        items.append({
+            'id': s.id,
+            'code': s.code or '',
+            'name': s.name,
+            'credit_code': s.credit_code or '',
+            'contact_person': s.contact_person or '',
+            'phone': s.phone or '',
+        })
+
+    return jsonify({
+        'items': items,
+        'total': pagination.total,
+        'page': pagination.page,
+        'pages': pagination.pages,
+    })
 
 
 @bp.route('/api/ocr_license', methods=['POST'])
@@ -350,9 +481,24 @@ def import_excel():
                 address=address,
                 bank_name=bank_name,
                 bank_account=bank_account,
-                remark=remark
+                remark=remark,
+                # 主数据统一改造：项目级导入供应商标记为 project，自动加入项目常用
+                source='project',
+                status='qualified',
             )
             db.session.add(supplier)
+            db.session.flush()
+            # 加入项目常用表（与新增逻辑保持一致）
+            existing_link = ProjectSupplier.query.filter_by(
+                project_id=project_id, supplier_id=supplier.id
+            ).first()
+            if not existing_link:
+                db.session.add(ProjectSupplier(
+                    project_id=project_id,
+                    supplier_id=supplier.id,
+                    is_common=True,
+                    sort=0,
+                ))
             success_count += 1
         
         if success_count > 0:

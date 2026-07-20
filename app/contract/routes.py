@@ -13,7 +13,18 @@ from app.models import (Contract, ContractItem, Invoice, Payment, Supplier,
 from app.decorators import editor_required, log_audit
 from app.utils import (gen_contract_code, gen_payment_code, calc_without_tax,
                        calc_unit_price_without_tax, get_contract_stats, to_decimal,
-                       record_changes, get_change_logs, model_to_dict, get_field_label)
+                       record_changes, get_change_logs, model_to_dict, get_field_label,
+                       apply_data_scope, get_project_materials, get_project_suppliers,
+                       ConfigCache)
+
+
+def _ai_vision_enabled():
+    """判断AI视觉识别是否启用"""
+    try:
+        return (ConfigCache.get('ai_enabled', 'false') == 'true'
+                and ConfigCache.get('ai_vision_enabled', 'false') == 'true')
+    except Exception:
+        return False
 
 ALLOWED_ATTACHMENT = {'pdf', 'png', 'jpg', 'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx'}
 
@@ -58,16 +69,21 @@ def _gen_unique_code(model, project_id, prefix, field_name='code'):
 def index():
     from flask import session
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
     supplier_id = request.args.get('supplier_id', 0, type=int)
     status = request.args.get('status', '', type=str)
 
-    query = Contract.query.filter_by(project_id=project_id)
+    query = Contract.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, Contract)
     if keyword:
         query = query.filter(or_(Contract.code.contains(keyword), Contract.name.contains(keyword)))
     if supplier_id:
@@ -82,7 +98,7 @@ def index():
     for c in pagination.items:
         c.stats = get_contract_stats(c)
 
-    suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
+    suppliers = get_project_suppliers(project_id, common_only=True).all()
     return render_template('contract/index.html', pagination=pagination, keyword=keyword,
                            supplier_id=supplier_id, status=status, suppliers=suppliers)
 
@@ -131,7 +147,7 @@ def create():
         flash('合同创建成功。', 'success')
         return redirect(url_for('contract.detail', id=contract.id))
 
-    suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
+    suppliers = get_project_suppliers(project_id, common_only=True).all()
     default_code = _gen_unique_code(Contract, project_id, 'HT')
 
     copy_from_id = request.args.get('copy_from', type=int)
@@ -182,7 +198,7 @@ def edit(id):
         flash('合同更新成功。', 'success')
         return redirect(url_for('contract.detail', id=contract.id))
 
-    suppliers = Supplier.query.filter_by(project_id=contract.project_id).order_by(Supplier.name).all()
+    suppliers = get_project_suppliers(contract.project_id, common_only=True).all()
     return render_template('contract/form.html', contract=contract, suppliers=suppliers)
 
 
@@ -194,7 +210,7 @@ def detail(id):
     items = contract.items.order_by(ContractItem.id).all()
     invoices = contract.invoices.order_by(Invoice.invoice_date.desc()).all()
     payments = contract.payments.order_by(Payment.payment_date.desc()).all()
-    materials = Material.query.filter_by(project_id=contract.project_id).order_by(Material.name).all()
+    materials = get_project_materials(contract.project_id, common_only=True).all()
 
     from app.models import StockInItem, StockIn
     over_inbounds = db.session.query(StockInItem, StockIn).join(
@@ -342,7 +358,7 @@ def invoices():
     pagination = query.order_by(Invoice.invoice_date.desc()).paginate(
         page=page, per_page=10, error_out=False)
 
-    suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
+    suppliers = get_project_suppliers(project_id, common_only=True).all()
     contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
     return render_template('contract/invoices.html', pagination=pagination,
                            suppliers=suppliers, contracts=contracts,
@@ -388,7 +404,8 @@ def create_invoice():
     contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
     pre_contract_id = request.args.get('contract_id', type=int)
     return render_template('contract/invoice_form.html', invoice=None, contracts=contracts,
-                           pre_contract_id=pre_contract_id)
+                           pre_contract_id=pre_contract_id,
+                           ai_vision_enabled=_ai_vision_enabled())
 
 
 @bp.route('/invoices/<int:id>/edit', methods=['GET', 'POST'])
@@ -416,7 +433,8 @@ def edit_invoice(id):
         return redirect(url_for('contract.invoices'))
 
     contracts = Contract.query.filter_by(project_id=invoice.project_id).order_by(Contract.code).all()
-    return render_template('contract/invoice_form.html', invoice=invoice, contracts=contracts)
+    return render_template('contract/invoice_form.html', invoice=invoice, contracts=contracts,
+                           ai_vision_enabled=_ai_vision_enabled())
 
 
 @bp.route('/invoices/<int:id>/delete', methods=['POST'])
@@ -453,7 +471,7 @@ def payments():
     pagination = query.order_by(Payment.payment_date.desc()).paginate(
         page=page, per_page=10, error_out=False)
 
-    suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
+    suppliers = get_project_suppliers(project_id, common_only=True).all()
     contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
     return render_template('contract/payments.html', pagination=pagination,
                            suppliers=suppliers, contracts=contracts,
@@ -570,11 +588,14 @@ def api_contract_items(id):
 @bp.route('/api/materials_by_category/<int:category_id>')
 @login_required
 def api_materials_by_category(category_id):
-    """按分类获取物资列表（供合同明细批量选择弹窗使用）"""
+    """按分类获取物资列表（供合同明细批量选择弹窗使用）
+
+    限定返回项目常用物资，确保业务单据只能从本项目常用列表中选择。
+    """
     from flask import session
     project_id = session.get('current_project_id')
-    materials = Material.query.filter_by(
-        project_id=project_id, category_id=category_id
+    materials = get_project_materials(project_id, common_only=True).filter(
+        Material.category_id == category_id
     ).order_by(Material.code).all()
     return jsonify([{
         'id': m.id,

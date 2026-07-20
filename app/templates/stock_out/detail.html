@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}出库单详情 - {{ stock_out.code }}{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('stock_out.index') }}">出库管理</a></li>
+            <li class="breadcrumb-item active" aria-current="page">出库单详情 {{ stock_out.code }}</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -18,14 +29,16 @@
             <a href="{{ url_for('stock_out.print_stock_out', id=stock_out.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-printer me-1"></i>打印</a>
             {% if current_user.can_edit() and stock_out.approval_status == 'draft' %}
             <form method="POST" action="{{ url_for('approval.submit', biz_type='stockout', biz_id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定提交审批？提交后将进入审批流程。');">
+                <input type="hidden" name="project_id" value="{{ stock_out.project_id }}">
                 <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-send me-1"></i>提交审批</button>
             </form>
             {% endif %}
             {% if stock_out.approval_status in ('pending', 'approving') and approval_instance %}
-            <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}" class="btn btn-sm btn-outline-info"><i class="bi bi-clipboard-check me-1"></i>查看审批</a>
+            <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}?from=stock_out_detail&from_id={{ stock_out.id }}" class="btn btn-sm btn-outline-info"><i class="bi bi-clipboard-check me-1"></i>查看审批</a>
             {% endif %}
             {% if current_user.can_edit() and stock_out.approval_status in ('rejected', 'withdrawn') %}
             <form method="POST" action="{{ url_for('approval.submit', biz_type='stockout', biz_id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定重新提交审批？');">
+                <input type="hidden" name="project_id" value="{{ stock_out.project_id }}">
                 <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-arrow-repeat me-1"></i>重新提交审批</button>
             </form>
             {% endif %}
@@ -36,7 +49,7 @@
             </form>
             {% endif %}
             {% if stock_out.is_reconciled %}<span class="badge bg-secondary me-2">已对账</span>{% endif %}
-            <a href="{{ url_for('stock_out.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+            <button onclick="goBack('{{ url_for('stock_out.index') }}', 'stock_out_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
         </div>
     </div>
     <div class="card-body">
@@ -47,8 +60,8 @@
                 {% elif stock_out.stock_out_type == '调拨出库' %}<span class="badge bg-info">{{ stock_out.stock_out_type }}</span>
                 {% else %}<span class="badge bg-warning text-dark">{{ stock_out.stock_out_type }}</span>{% endif %}
             </div></div>
-            <div class="col-md-3"><div class="text-muted small">领料单位</div><div>{{ stock_out.usage_unit.name if stock_out.usage_unit else '-' }}</div></div>
-            <div class="col-md-3"><div class="text-muted small">工号</div><div>{{ stock_out.work_number.code if stock_out.work_number else '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">领料单位</div><div>{% if stock_out.usage_unit %}<a href="{{ url_for('unit.detail', id=stock_out.usage_unit_id) }}?from=stock_out_detail&from_id={{ stock_out.id }}">{{ stock_out.usage_unit.name }}</a>{% else %}-{% endif %}</div></div>
+            <div class="col-md-3"><div class="text-muted small">工号</div><div>{% if stock_out.work_number %}<a href="{{ url_for('work_number.detail', id=stock_out.work_number_id) }}?from=stock_out_detail&from_id={{ stock_out.id }}">{{ stock_out.work_number.code }}</a>{% else %}-{% endif %}</div></div>
             <div class="col-md-3"><div class="text-muted small">发料部位</div><div>{{ stock_out.issue_location or (stock_out.work_number.division_name if stock_out.work_number else '') or '-' }}</div></div>
             <div class="col-md-3"><div class="text-muted small">用途</div><div>{{ stock_out.purpose or (stock_out.work_number.item_name if stock_out.work_number else '') or '-' }}</div></div>
             <div class="col-md-3"><div class="text-muted small">经办人</div><div>{{ stock_out.operator or '-' }}</div></div>
@@ -59,6 +72,28 @@
         </div>
     </div>
 </div>
+
+{% if stock_out.location_lat and stock_out.location_lng %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-geo-alt me-2"></i>现场定位</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">纬度</div><div>{{ '%.6f'|format(stock_out.location_lat) }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">经度</div><div>{{ '%.6f'|format(stock_out.location_lng) }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">定位精度</div><div>±{{ '%.1f'|format(stock_out.location_accuracy or 0) }} 米</div></div>
+            <div class="col-md-3"><div class="text-muted small">定位时间</div><div>{{ stock_out.location_time.strftime('%Y-%m-%d %H:%M:%S') if stock_out.location_time else '-' }}</div></div>
+            <div class="col-12">
+                <a href="https://uri.amap.com/marker?position={{ stock_out.location_lng }},{{ stock_out.location_lat }}&name=单据录入位置"
+                   target="_blank" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-map me-1"></i>在高德地图中查看
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="card shadow-sm">
     <div class="card-header bg-white"><h6 class="mb-0">物资明细</h6></div>

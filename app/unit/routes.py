@@ -1,11 +1,12 @@
 import os
 from flask import render_template, request, redirect, url_for, flash, current_app, jsonify
-from flask_login import login_required
+from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.unit import bp
 from app import db
 from app.models import UsageUnit, UnitTeam
 from app.decorators import editor_required, log_audit
+from app.utils import apply_data_scope
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 
@@ -19,13 +20,18 @@ def allowed_file(filename):
 def index():
     from flask import session
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
-    query = UsageUnit.query.filter_by(project_id=project_id)
+    query = UsageUnit.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, UsageUnit)
     if keyword:
         query = query.filter(UsageUnit.name.contains(keyword) | UsageUnit.code.contains(keyword))
     pagination = query.order_by(UsageUnit.created_at.desc()).paginate(

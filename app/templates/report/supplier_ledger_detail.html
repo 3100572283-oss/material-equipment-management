@@ -55,11 +55,11 @@
                         </td>
                         <td>
                             {% if item.type == '入库单' and item.ref_id %}
-                            <a href="{{ url_for('stock_in.detail', id=item.ref_id) }}" target="_blank">{{ item.code }}</a>
+                            <a href="{{ url_for('stock_in.detail', id=item.ref_id) }}?from=report_ledger&from_id={{ item.id }}" target="_blank">{{ item.code }}</a>
                             {% elif item.type == '付款' and item.ref_id %}
-                            <a href="{{ url_for('payment_application.detail', id=item.ref_id) }}" target="_blank">{{ item.code }}</a>
+                            <a href="{{ url_for('payment_application.detail', id=item.ref_id) }}?from=report_ledger&from_id={{ item.id }}" target="_blank">{{ item.code }}</a>
                             {% elif item.type == '发票' and item.ref_id %}
-                            <a href="{{ url_for('invoice.detail', id=item.ref_id) }}" target="_blank">{{ item.code }}</a>
+                            <a href="{{ url_for('invoice.detail', id=item.ref_id) }}?from=report_ledger&from_id={{ item.id }}" target="_blank">{{ item.code }}</a>
                             {% else %}
                             {{ item.code or '-' }}
                             {% endif %}

@@ -5,7 +5,7 @@
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-arrow-repeat me-2"></i>周转材台账</h5>
         {% if current_user.can_edit() %}
-        <a href="{{ url_for('turnover_material.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增周转材</a>
+        <a href="{{ url_for('turnover_material.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增周转材</a>
         {% endif %}
     </div>
     <div class="card-body">
@@ -42,6 +42,7 @@
                         <td>{{ m.unit or '-' }}</td>
                         <td>{% if m.status == 'active' %}<span class="badge bg-success">启用</span>{% else %}<span class="badge bg-secondary">停用</span>{% endif %}</td>
                         <td class="text-end">
+                            <a href="{{ url_for('mobile.turnover_qrcode', tid=m.id) }}" target="_blank" class="btn btn-sm btn-outline-info" title="二维码标签"><i class="bi bi-qr-code"></i></a>
                             {% if current_user.can_edit() %}
                             <a href="{{ url_for('turnover_material.edit', id=m.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
                             <form method="POST" action="{{ url_for('turnover_material.delete', id=m.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');"><button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form>

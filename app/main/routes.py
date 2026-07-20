@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from app.main import bp
 from app import db
 from app.decorators import log_audit
+from app.utils import apply_data_scope
 from app.models import (Project, Material, Supplier, UsageUnit, Contract,
                         StockIn, StockInItem, StockOut, StockOutItem,
                         Category, Payment, PurchaseRequisition,
@@ -22,46 +23,91 @@ def index():
 @login_required
 def dashboard():
     project_id = session.get('current_project_id')
-    if not project_id:
-        return render_template('index.html')
+    is_all_projects_mode = (project_id is None)
+
+    # 获取当前用户可见项目列表（用于汇总模式）
+    if is_all_projects_mode:
+        visible_projects = current_user.get_visible_projects()
+        visible_project_ids = [p.id for p in visible_projects]
+        if not visible_project_ids:
+            return render_template('index.html', stats={}, is_all_projects_mode=True,
+                                   visible_projects=[])
 
     # 1. 关键指标
-    material_count = Material.query.filter_by(project_id=project_id).count()
-    supplier_count = Supplier.query.filter_by(project_id=project_id).count()
-    usage_unit_count = UsageUnit.query.filter_by(project_id=project_id).count()
-    contract_count = Contract.query.filter_by(project_id=project_id).count()
+    if is_all_projects_mode:
+        material_count = Material.query.filter(Material.project_id.in_(visible_project_ids)).count()
+        supplier_count = Supplier.query.filter(Supplier.project_id.in_(visible_project_ids)).count()
+        usage_unit_count = UsageUnit.query.filter(UsageUnit.project_id.in_(visible_project_ids)).count()
+        contract_count = Contract.query.filter(Contract.project_id.in_(visible_project_ids)).count()
+    else:
+        material_count = Material.query.filter_by(project_id=project_id).count()
+        supplier_count = Supplier.query.filter_by(project_id=project_id).count()
+        usage_unit_count = UsageUnit.query.filter_by(project_id=project_id).count()
+        contract_count = Contract.query.filter_by(project_id=project_id).count()
 
-    stock_in_total = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
-        StockIn.project_id == project_id).scalar() or 0
-    contract_total = db.session.query(func.coalesce(func.sum(Contract.amount_with_tax), 0)).filter(
-        Contract.project_id == project_id).scalar() or 0
-    payment_total = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
-        Payment.project_id == project_id).scalar() or 0
+    # 2. 金额统计
+    if is_all_projects_mode:
+        stock_in_total = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
+            StockIn.project_id.in_(visible_project_ids)).scalar() or 0
+        contract_total = db.session.query(func.coalesce(func.sum(Contract.amount_with_tax), 0)).filter(
+            Contract.project_id.in_(visible_project_ids)).scalar() or 0
+        payment_total = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+            Payment.project_id.in_(visible_project_ids)).scalar() or 0
+    else:
+        stock_in_total = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
+            StockIn.project_id == project_id).scalar() or 0
+        contract_total = db.session.query(func.coalesce(func.sum(Contract.amount_with_tax), 0)).filter(
+            Contract.project_id == project_id).scalar() or 0
+        payment_total = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+            Payment.project_id == project_id).scalar() or 0
 
-    # 履约异常合同（已结算但未完全付款视为异常，或简单用status字段）
-    warning_contracts = Contract.query.filter(
-        Contract.project_id == project_id,
-        Contract.status.in_(['履约异常', '已终止'])
-    ).count()
-
-    pending_pr_count = PurchaseRequisition.query.filter(
-        PurchaseRequisition.project_id == project_id,
-        PurchaseRequisition.status.in_(['pending', 'approving'])
-    ).count()
-
-    from app.utils import ConfigCache
-    enable_quality_check = ConfigCache.get('enable_quality_check') == 'true'
-    pending_quality_count = 0
-    if enable_quality_check:
-        pending_quality_count = StockIn.query.filter(
-            StockIn.project_id == project_id,
-            StockIn.quality_status == 'pending'
+    # 履约异常合同
+    if is_all_projects_mode:
+        warning_contracts = Contract.query.filter(
+            Contract.project_id.in_(visible_project_ids),
+            Contract.status.in_(['履约异常', '已终止'])
+        ).count()
+    else:
+        warning_contracts = Contract.query.filter(
+            Contract.project_id == project_id,
+            Contract.status.in_(['履约异常', '已终止'])
         ).count()
 
+    # 待审批采购申请
+    if is_all_projects_mode:
+        pending_pr_count = PurchaseRequisition.query.filter(
+            PurchaseRequisition.project_id.in_(visible_project_ids),
+            PurchaseRequisition.status.in_(['pending', 'approving'])
+        ).count()
+    else:
+        pending_pr_count = PurchaseRequisition.query.filter(
+            PurchaseRequisition.project_id == project_id,
+            PurchaseRequisition.status.in_(['pending', 'approving'])
+        ).count()
+
+    from app.utils import ConfigCache, is_module_enabled
+    enable_quality_check = is_module_enabled('module_quality_check')
+    pending_quality_count = 0
+    if enable_quality_check:
+        if is_all_projects_mode:
+            pending_quality_count = StockIn.query.filter(
+                StockIn.project_id.in_(visible_project_ids),
+                StockIn.quality_status == 'pending'
+            ).count()
+        else:
+            pending_quality_count = StockIn.query.filter(
+                StockIn.project_id == project_id,
+                StockIn.quality_status == 'pending'
+            ).count()
+
+    # 供应商资质到期提醒
     today = datetime.now().date()
     warning_date = today + timedelta(days=30)
     expiring_suppliers = []
-    suppliers = Supplier.query.filter_by(project_id=project_id).all()
+    if is_all_projects_mode:
+        suppliers = Supplier.query.filter(Supplier.project_id.in_(visible_project_ids)).all()
+    else:
+        suppliers = Supplier.query.filter_by(project_id=project_id).all()
     for s in suppliers:
         if s.license_expire_date and s.license_expire_date < today:
             expiring_suppliers.append({'name': s.name, 'type': '营业执照', 'date': s.license_expire_date, 'status': 'expired'})
@@ -73,22 +119,35 @@ def dashboard():
             expiring_suppliers.append({'name': s.name, 'type': '资质证书', 'date': s.certificate_expire_date, 'status': 'warning'})
 
     # 周转材统计
-    turnover_count = TurnoverMaterial.query.filter_by(project_id=project_id).count()
+    if is_all_projects_mode:
+        turnover_count = TurnoverMaterial.query.filter(TurnoverMaterial.project_id.in_(visible_project_ids)).count()
+    else:
+        turnover_count = TurnoverMaterial.query.filter_by(project_id=project_id).count()
 
     # 设备统计
-    equipment_count = Equipment.query.filter_by(project_id=project_id).count()
-    equipment_in_use = Equipment.query.filter_by(project_id=project_id, status='in_use').count()
-    equipment_repairing = Equipment.query.filter_by(project_id=project_id, status='repairing').count()
+    if is_all_projects_mode:
+        equipment_count = Equipment.query.filter(Equipment.project_id.in_(visible_project_ids)).count()
+        equipment_in_use = Equipment.query.filter(Equipment.project_id.in_(visible_project_ids), Equipment.status == 'in_use').count()
+        equipment_repairing = Equipment.query.filter(Equipment.project_id.in_(visible_project_ids), Equipment.status == 'repairing').count()
+    else:
+        equipment_count = Equipment.query.filter_by(project_id=project_id).count()
+        equipment_in_use = Equipment.query.filter_by(project_id=project_id, status='in_use').count()
+        equipment_repairing = Equipment.query.filter_by(project_id=project_id, status='repairing').count()
 
     # 设备维保到期提醒
-    today = datetime.now().date()
-    warning_date = today + timedelta(days=30)
     expiring_maintenance = []
-    maint_records = EquipmentMaintenance.query.join(Equipment).filter(
-        Equipment.project_id == project_id,
-        EquipmentMaintenance.next_maintain_date != None,
-        EquipmentMaintenance.next_maintain_date <= warning_date
-    ).order_by(EquipmentMaintenance.next_maintain_date.asc()).limit(5).all()
+    if is_all_projects_mode:
+        maint_records = EquipmentMaintenance.query.join(Equipment).filter(
+            Equipment.project_id.in_(visible_project_ids),
+            EquipmentMaintenance.next_maintain_date != None,
+            EquipmentMaintenance.next_maintain_date <= warning_date
+        ).order_by(EquipmentMaintenance.next_maintain_date.asc()).limit(5).all()
+    else:
+        maint_records = EquipmentMaintenance.query.join(Equipment).filter(
+            Equipment.project_id == project_id,
+            EquipmentMaintenance.next_maintain_date != None,
+            EquipmentMaintenance.next_maintain_date <= warning_date
+        ).order_by(EquipmentMaintenance.next_maintain_date.asc()).limit(5).all()
     for r in maint_records:
         status = 'expired' if r.next_maintain_date < today else 'warning'
         expiring_maintenance.append({
@@ -98,14 +157,45 @@ def dashboard():
         })
 
     # 在途调拨统计
-    in_transfer_count = MaterialTransfer.query.filter(
-        MaterialTransfer.from_project_id == project_id,
-        MaterialTransfer.status == 'out_done'
-    ).count()
-    pending_transfer_count = MaterialTransfer.query.filter(
-        MaterialTransfer.to_project_id == project_id,
-        MaterialTransfer.status == 'out_done'
-    ).count()
+    if is_all_projects_mode:
+        in_transfer_count = MaterialTransfer.query.filter(
+            MaterialTransfer.from_project_id.in_(visible_project_ids),
+            MaterialTransfer.status == 'out_done'
+        ).count()
+        pending_transfer_count = MaterialTransfer.query.filter(
+            MaterialTransfer.to_project_id.in_(visible_project_ids),
+            MaterialTransfer.status == 'out_done'
+        ).count()
+    else:
+        in_transfer_count = MaterialTransfer.query.filter(
+            MaterialTransfer.from_project_id == project_id,
+            MaterialTransfer.status == 'out_done'
+        ).count()
+        pending_transfer_count = MaterialTransfer.query.filter(
+            MaterialTransfer.to_project_id == project_id,
+            MaterialTransfer.status == 'out_done'
+        ).count()
+
+    # 汇总模式特有数据
+    project_stats = []
+    if is_all_projects_mode:
+        # 各项目库存金额排行
+        for p in visible_projects:
+            p_stock_in = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
+                StockIn.project_id == p.id).scalar() or 0
+            project_stats.append({
+                'id': p.id,
+                'name': p.name,
+                'stock_in_total': round(float(p_stock_in) / 10000, 2),
+                'material_count': Material.query.filter_by(project_id=p.id).count(),
+                'contract_count': Contract.query.filter_by(project_id=p.id).count(),
+            })
+        # 按库存金额降序排序
+        project_stats.sort(key=lambda x: x['stock_in_total'], reverse=True)
+
+    # 在建项目数、项目总数
+    active_project_count = len([p for p in (visible_projects if is_all_projects_mode else []) if p.status == 'active'])
+    total_project_count = len(visible_projects) if is_all_projects_mode else 0
 
     stats = {
         'material_count': material_count,
@@ -129,7 +219,12 @@ def dashboard():
         'pending_transfer_count': pending_transfer_count,
     }
 
-    return render_template('index.html', stats=stats)
+    return render_template('index.html', stats=stats,
+                           is_all_projects_mode=is_all_projects_mode,
+                           visible_projects=visible_projects if is_all_projects_mode else [],
+                           project_stats=project_stats,
+                           active_project_count=active_project_count,
+                           total_project_count=total_project_count)
 
 
 @bp.route('/api/dashboard_data')
@@ -273,9 +368,26 @@ def dashboard_data():
 @log_audit(module='main', operation='切换项目')
 def set_project(project_id):
     project = Project.query.get_or_404(project_id)
+    # 权限校验：用户必须可访问该项目
+    if not current_user.can_access_project(project.id):
+        flash('您没有权限访问该项目', 'error')
+        return redirect(request.referrer or url_for('main.index'))
     session['current_project_id'] = project.id
     session['current_project_name'] = project.name
     flash(f'已切换到项目：{project.name}', 'info')
+    return redirect(request.referrer or url_for('main.index'))
+
+
+@bp.route('/set_all_projects')
+@login_required
+def set_all_projects():
+    """切换到全部项目模式（仅全部数据权限用户可用）"""
+    if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+        flash('您没有权限查看全部项目', 'error')
+        return redirect(request.referrer or url_for('main.index'))
+    session['current_project_id'] = None
+    session['current_project_name'] = '全部项目'
+    flash('已切换到全部项目模式', 'info')
     return redirect(request.referrer or url_for('main.index'))
 
 
@@ -290,9 +402,16 @@ def global_search():
     keyword = f'%{q}%'
     result = {}
 
+    def _build_query(model_cls, filter_cond):
+        query = model_cls.query
+        if project_id:
+            query = query.filter(model_cls.project_id == project_id)
+        else:
+            query = apply_data_scope(query, model_cls)
+        return query.filter(filter_cond)
+
     # 物资
-    mats = Material.query.filter(
-        Material.project_id == project_id,
+    mats = _build_query(Material,
         db.or_(Material.name.like(keyword), Material.code.like(keyword), Material.specification.like(keyword))
     ).limit(5).all()
     result['materials'] = [
@@ -301,10 +420,7 @@ def global_search():
     ]
 
     # 供应商
-    sups = Supplier.query.filter(
-        Supplier.project_id == project_id,
-        Supplier.name.like(keyword)
-    ).limit(5).all()
+    sups = _build_query(Supplier, Supplier.name.like(keyword)).limit(5).all()
     result['suppliers'] = [
         {'name': s.name, 'code': s.code or '', 'url': url_for('supplier.detail', id=s.id)}
         for s in sups
@@ -320,28 +436,21 @@ def global_search():
     ]
 
     # 入库单
-    sis = StockIn.query.filter(
-        StockIn.project_id == project_id,
-        StockIn.code.like(keyword)
-    ).limit(5).all()
+    sis = _build_query(StockIn, StockIn.code.like(keyword)).limit(5).all()
     result['stock_ins'] = [
         {'name': s.code, 'code': '', 'url': url_for('stock_in.detail', id=s.id)}
         for s in sis
     ]
 
     # 出库单
-    sos = StockOut.query.filter(
-        StockOut.project_id == project_id,
-        StockOut.code.like(keyword)
-    ).limit(5).all()
+    sos = _build_query(StockOut, StockOut.code.like(keyword)).limit(5).all()
     result['stock_outs'] = [
         {'name': s.code, 'code': '', 'url': url_for('stock_out.detail', id=s.id)}
         for s in sos
     ]
 
     # 合同
-    cons = Contract.query.filter(
-        Contract.project_id == project_id,
+    cons = _build_query(Contract,
         db.or_(Contract.code.like(keyword), Contract.name.like(keyword))
     ).limit(5).all()
     result['contracts'] = [
@@ -350,20 +459,14 @@ def global_search():
     ]
 
     # 对账单
-    recs = Reconciliation.query.filter(
-        Reconciliation.project_id == project_id,
-        Reconciliation.code.like(keyword)
-    ).limit(5).all()
+    recs = _build_query(Reconciliation, Reconciliation.code.like(keyword)).limit(5).all()
     result['reconciliations'] = [
         {'name': r.code, 'code': '', 'url': url_for('reconciliation.detail', id=r.id)}
         for r in recs
     ]
 
     # 付款单
-    pays = Payment.query.filter(
-        Payment.project_id == project_id,
-        Payment.payment_code.like(keyword)
-    ).limit(5).all()
+    pays = _build_query(Payment, Payment.payment_code.like(keyword)).limit(5).all()
     result['payments'] = [
         {'name': p.payment_code, 'code': '', 'url': url_for('contract.detail', id=p.contract_id) if p.contract_id else '#'}
         for p in pays

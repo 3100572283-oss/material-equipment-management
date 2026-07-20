@@ -12,16 +12,143 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
     <script>
         // 提前加载主题，防止页面闪烁
+        // 支持 'light' / 'dark' / 'auto' 三种模式，默认 'auto' 跟随系统
         (function() {
-            var theme = localStorage.getItem('theme');
-            if (!theme) {
-                theme = 'light';
-            }
-            if (theme === 'dark') {
+            var theme = localStorage.getItem('theme') || 'auto';
+            var isDark = theme === 'dark' ||
+                (theme === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            if (isDark) {
                 document.documentElement.setAttribute('data-theme', 'dark');
             }
         })();
     </script>
+    <style>
+    {% if is_system_page() %}
+        #page-content-wrapper { padding-top: 0 !important; }
+        .sys-layout {
+            display: flex;
+            height: calc(100vh - 56px);
+            min-height: 0;
+        }
+        .sys-sidebar {
+            width: 220px;
+            flex-shrink: 0;
+            background: #fff;
+            border-right: 1px solid #e5e6eb;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        .sys-sidebar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .sys-sidebar::-webkit-scrollbar-thumb {
+            background: #d9dde3;
+            border-radius: 2px;
+        }
+        .sys-content {
+            flex: 1;
+            min-width: 0;
+            overflow-y: auto;
+            padding: 24px;
+            background: #f5f7fa;
+        }
+        .sys-breadcrumb {
+            padding: 0 0 16px 0;
+            margin-bottom: 0;
+            font-size: 14px;
+            color: #666;
+        }
+        .sys-breadcrumb a {
+            color: #666;
+            text-decoration: none;
+        }
+        .sys-breadcrumb a:hover {
+            color: #409eff;
+        }
+        .sys-breadcrumb .breadcrumb-separator {
+            margin: 0 8px;
+            color: #c0c4cc;
+        }
+        .sys-breadcrumb .breadcrumb-current {
+            color: #303133;
+        }
+        .sys-menu-group-title {
+            font-size: 12px;
+            color: #909399;
+            font-weight: 600;
+            letter-spacing: 1px;
+            padding: 16px 20px 8px;
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .sys-menu-group-title::before {
+            content: '';
+            display: inline-block;
+            width: 2px;
+            height: 12px;
+            background: #409eff;
+            margin-right: 8px;
+            border-radius: 1px;
+        }
+        .sys-menu-group:first-child .sys-menu-group-title {
+            padding-top: 12px;
+        }
+        .sys-menu-item {
+            height: 38px;
+            line-height: 38px;
+            padding: 0 20px;
+            font-size: 14px;
+            color: #333;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            position: relative;
+            transition: background 0.2s;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .sys-menu-item:hover {
+            background: #f5f7fa;
+            color: #333;
+        }
+        .sys-menu-item.active {
+            background: #ecf5ff;
+            color: #409eff;
+        }
+        .sys-menu-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: #409eff;
+        }
+        .sys-menu-item i {
+            font-size: 14px;
+            margin-right: 8px;
+            color: #666;
+            flex-shrink: 0;
+        }
+        .sys-menu-item.active i {
+            color: #409eff;
+        }
+        .sys-content > .container-fluid.py-3 {
+            padding: 0 !important;
+        }
+        .sys-content .card {
+            background: #fff;
+            border: none;
+            box-shadow: none;
+            border-radius: 4px;
+        }
+        .sys-content nav[aria-label="breadcrumb"] {
+            display: none !important;
+        }
+    {% endif %}
+    </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -50,6 +177,7 @@
             <div class="sidebar-menu" id="sidebarMenu">
                 {% set menu_groups = get_menu_groups() %}
                 {% set current_ep = request.endpoint or '' %}
+                {% set is_sys_page = current_ep and (current_ep.startswith('admin.') or current_ep.startswith('system.') or current_ep.startswith('approval.flows') or current_ep.startswith('dict_mgr.') or current_ep.startswith('org_sync.') or current_ep.startswith('ai.config') or current_ep.startswith('ai.logs') or current_ep.startswith('batch.category_config') or current_ep.startswith('period_close.')) %}
                 {% for group in menu_groups %}
                     {% set group_state = namespace(active=false) %}
                     {% for item in group['items'] %}
@@ -62,6 +190,16 @@
                     {% if group.divider_before %}
                         <div class="sidebar-group-divider"></div>
                     {% endif %}
+                    {% if group.id == 'system' %}
+                    <!-- 系统管理：保留箭头样式，点击跳转独立页面 -->
+                    <div class="sidebar-group {% if is_system_page() %}active{% endif %}" data-group-id="{{ group.id }}" data-sys-link="{{ url_for('system.index') }}">
+                        <div class="sidebar-group-title" role="button" aria-expanded="false">
+                            <span class="sidebar-group-icon"><i class="bi {{ group.icon }}"></i></span>
+                            <span class="sidebar-group-text">{{ group.title }}</span>
+                            <span class="sidebar-group-arrow ms-auto"><i class="bi bi-chevron-down"></i></span>
+                        </div>
+                    </div>
+                    {% else %}
                     <div class="sidebar-group {% if group_state.active %}active{% endif %}" data-group-id="{{ group.id }}">
                         <div class="sidebar-group-title" role="button" aria-expanded="{% if group_state.active %}true{% else %}false{% endif %}">
                             <span class="sidebar-group-icon"><i class="bi {{ group.icon }}"></i></span>
@@ -98,6 +236,7 @@
                             {% endfor %}
                         </div>
                     </div>
+                    {% endif %}
                 {% endfor %}
             </div>
         </div>
@@ -136,24 +275,59 @@
                         </div>
 
                         <!-- Project Switcher -->
+                        {% if can_switch_project %}
                         <div class="dropdown me-2">
-                            <button class="btn btn-outline-primary btn-sm dropdown-toggle project-name-mobile" type="button" data-bs-toggle="dropdown">
+                            <button class="btn btn-outline-primary btn-sm dropdown-toggle project-name-mobile" type="button" data-bs-toggle="dropdown" id="projectSwitcherBtn">
                                 <i class="bi bi-building me-1"></i>
-                                <span class="d-none d-md-inline">{{ session.get('current_project_name', '请选择项目') }}</span>
-                                <span class="d-md-none">{{ session.get('current_project_name', '选择项目') }}</span>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li><h6 class="dropdown-header">切换项目</h6></li>
-                                {% for p in all_projects %}
-                                <li><a class="dropdown-item {% if p.id == current_project_id %}active{% endif %}" href="{{ url_for('main.set_project', project_id=p.id) }}">{{ p.name }}</a></li>
-                                {% endfor %}
-                                {% if not all_projects %}
-                                <li><span class="dropdown-item-text text-muted">暂无项目</span></li>
+                                <span class="d-none d-md-inline">{{ current_project_name or '请选择项目' }}</span>
+                                <span class="d-md-none">{{ current_project_name or '选择项目' }}</span>
+                                {% if is_all_projects_mode %}
+                                <span class="badge bg-warning text-dark ms-1">汇总</span>
                                 {% endif %}
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end project-switcher-menu" id="projectSwitcherMenu">
+                                {% if switcher_projects|length > 8 %}
+                                <li class="px-2 py-1">
+                                    <input type="text" class="form-control form-control-sm" id="projectSearchInput" placeholder="搜索项目..." autocomplete="off">
+                                </li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="{{ url_for('project.index') }}"><i class="bi bi-gear me-1"></i>管理项目</a></li>
+                                {% endif %}
+                                {% if can_view_all_projects %}
+                                <li><a class="dropdown-item {% if is_all_projects_mode %}active{% endif %}" href="{{ url_for('main.set_all_projects') }}">
+                                    <i class="bi bi-grid me-2"></i>全部项目
+                                    {% if is_all_projects_mode %}<i class="bi bi-check-lg float-end"></i>{% endif %}
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                {% endif %}
+                                {% for p in switcher_projects %}
+                                <li class="project-item" data-name="{{ p.name }}">
+                                    <a class="dropdown-item {% if p.id == current_project_id %}active{% endif %}" href="{{ url_for('main.set_project', project_id=p.id) }}">
+                                        {% if p.id == current_project_id %}<i class="bi bi-check-lg me-1"></i>{% else %}<i class="bi bi-circle me-1 text-muted"></i>{% endif %}
+                                        {{ p.name }}
+                                        {% if p.id == main_project_id %}<span class="text-warning ms-1" title="主项目">★</span>{% endif %}
+                                    </a>
+                                </li>
+                                {% endfor %}
+                                {% if not switcher_projects %}
+                                <li><span class="dropdown-item-text text-muted">暂无在建项目</span></li>
+                                {% endif %}
+                                {% if current_project_id %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    {% set can_config_project = current_user.is_admin() or current_user.get_role_code() == 'project_admin' or current_user.has_permission('project:config') %}
+                                    <a class="dropdown-item" href="{{ url_for('project.modules', id=current_project_id) if can_config_project else '#' }}"
+                                       {% if not can_config_project %}onclick="return false;title='您没有权限配置项目'"{% endif %}>
+                                        <i class="bi bi-gear me-1"></i>项目设置
+                                    </a>
+                                </li>
+                                {% endif %}
                             </ul>
                         </div>
+                        {% elif current_project_name %}
+                        <span class="navbar-text text-primary me-2">
+                            <i class="bi bi-building me-1"></i>{{ current_project_name }}
+                        </span>
+                        {% endif %}
 
                         <!-- Date Display - 桌面端显示 -->
                         <span class="navbar-text me-3 d-none d-md-block" id="currentDate"></span>
@@ -226,9 +400,16 @@
                         {% endif %}
 
                         <!-- Theme Toggle -->
-                        <button class="btn btn-icon btn-outline-secondary me-2" id="themeToggle" title="切换主题">
-                            <i class="bi bi-moon-stars" id="themeIcon"></i>
-                        </button>
+                        <div class="dropdown">
+                            <button class="btn btn-icon btn-outline-secondary me-2" id="themeToggle" title="切换主题" data-bs-toggle="dropdown">
+                                <i class="bi bi-moon-stars" id="themeIcon"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" id="themeMenu">
+                                <li><a class="dropdown-item theme-option" href="#" data-theme="auto"><i class="bi bi-circle-half me-2"></i>跟随系统</a></li>
+                                <li><a class="dropdown-item theme-option" href="#" data-theme="light"><i class="bi bi-sun me-2"></i>浅色模式</a></li>
+                                <li><a class="dropdown-item theme-option" href="#" data-theme="dark"><i class="bi bi-moon-stars me-2"></i>深色模式</a></li>
+                            </ul>
+                        </div>
 
                         <!-- User Dropdown -->
                         <div class="dropdown">
@@ -250,8 +431,61 @@
                 </div>
             </nav>
 
-            <!-- Flash Messages -->
+            {% if is_system_page() %}
+            <!-- 系统管理布局：左侧菜单 + 右侧内容 -->
+            <div class="sys-layout">
+                <div class="sys-sidebar">
+                    {% set _sys_groups = get_sys_menu_groups() %}
+                    {% set _current_ep = request.endpoint or '' %}
+                    {% for group in _sys_groups %}
+                    {% if group['items'] %}
+                    <div class="sys-menu-group">
+                        <div class="sys-menu-group-title">{{ group['title'] }}</div>
+                        {% for item in group['items'] %}
+                    {% set _item_active = false %}
+                    {% if item['active'].endswith('.') %}
+                        {% if _current_ep.startswith(item['active']) %}{% set _item_active = true %}{% endif %}
+                    {% else %}
+                        {% if _current_ep == item['active'] %}{% set _item_active = true %}{% endif %}
+                        {% if not _item_active and _current_ep.startswith(item['active'] + '.') %}{% set _item_active = true %}{% endif %}
+                        {% if not _item_active and _current_ep.startswith(item['active'] + '_') %}{% set _item_active = true %}{% endif %}
+                        {% if not _item_active and _current_ep.startswith(item['active']) and _current_ep != item['active'] %}
+                            {% set _rest = _current_ep[item['active']|length:] %}
+                            {% if _rest[:1] in ['_', '.'] %}{% set _item_active = true %}{% endif %}
+                        {% endif %}
+                    {% endif %}
+                    <a href="{{ url_for(item['endpoint']) }}" class="sys-menu-item {% if _item_active %}active{% endif %}">
+                            <i class="bi {{ item['icon'] }}"></i>
+                            <span>{{ item['title'] }}</span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                <div class="sys-content">
+                    <div class="sys-breadcrumb">
+                        <a href="{{ url_for('main.index') }}">首页</a>
+                        <span class="breadcrumb-separator">/</span>
+                        <a href="{{ url_for('system.index') }}">系统管理</a>
+                        <span class="breadcrumb-separator">/</span>
+                        <span class="breadcrumb-current">{{ get_sys_menu_title(_current_ep) }}</span>
+                    </div>
+                    <!-- Flash Messages -->
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show mb-3" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+            {% else %}
+            <!-- 普通页面布局 -->
             <div class="container-fluid py-3">
+                <!-- Flash Messages -->
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
                         {% for category, message in messages %}
@@ -296,8 +530,18 @@
                 {% endif %}
                 {% endif %}
 
-                {% block content %}{% endblock %}
+                <!-- 面包屑导航和返回按钮 -->
+                {% block breadcrumb %}{% endblock %}
+            {% endif %}
+
+            {% block content %}{% endblock %}
+
+            {% if is_system_page() %}
+                </div>
             </div>
+            {% else %}
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -334,34 +578,72 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-    // ========== 主题切换 ==========
+    // ========== 主题切换（跟随系统 / 浅色 / 深色） ==========
     (function() {
-        function getTheme() {
-            return localStorage.getItem('theme') || 'light';
+        function getStoredTheme() {
+            return localStorage.getItem('theme') || 'auto';
         }
-        function setTheme(theme) {
-            localStorage.setItem('theme', theme);
-            if (theme === 'dark') {
+        function getResolvedTheme(theme) {
+            if (theme === 'auto') {
+                return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            return theme;
+        }
+        function applyTheme(theme) {
+            var resolved = getResolvedTheme(theme);
+            if (resolved === 'dark') {
                 document.documentElement.setAttribute('data-theme', 'dark');
             } else {
                 document.documentElement.removeAttribute('data-theme');
             }
-            updateIcon(theme);
+            updateIcon(theme, resolved);
+            updateMenuSelection(theme);
         }
-        function updateIcon(theme) {
+        function updateIcon(theme, resolved) {
             var icon = document.getElementById('themeIcon');
             if (icon) {
-                icon.className = theme === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+                if (theme === 'auto') {
+                    icon.className = 'bi bi-circle-half';
+                } else if (resolved === 'dark') {
+                    icon.className = 'bi bi-sun';
+                } else {
+                    icon.className = 'bi bi-moon-stars';
+                }
             }
         }
-        // 页面加载时更新图标
+        function updateMenuSelection(theme) {
+            document.querySelectorAll('.theme-option').forEach(function(el) {
+                if (el.getAttribute('data-theme') === theme) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+        function setTheme(theme) {
+            localStorage.setItem('theme', theme);
+            applyTheme(theme);
+        }
+
+        // 页面加载时应用主题
         document.addEventListener('DOMContentLoaded', function() {
-            updateIcon(getTheme());
-            var btn = document.getElementById('themeToggle');
-            if (btn) {
-                btn.addEventListener('click', function() {
-                    var next = getTheme() === 'dark' ? 'light' : 'dark';
-                    setTheme(next);
+            var stored = getStoredTheme();
+            applyTheme(stored);
+
+            // 绑定下拉菜单选项点击
+            document.querySelectorAll('.theme-option').forEach(function(el) {
+                el.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    setTheme(el.getAttribute('data-theme'));
+                });
+            });
+
+            // 监听系统主题变化（仅 'auto' 模式生效）
+            if (window.matchMedia) {
+                window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+                    if (getStoredTheme() === 'auto') {
+                        applyTheme('auto');
+                    }
                 });
             }
         });
@@ -369,6 +651,25 @@
     </script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script>
+    // ========== 项目切换器搜索 ==========
+    document.addEventListener('DOMContentLoaded', function() {
+        var searchInput = document.getElementById('projectSearchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                var keyword = this.value.trim().toLowerCase();
+                var items = document.querySelectorAll('#projectSwitcherMenu .project-item');
+                items.forEach(function(item) {
+                    var name = (item.getAttribute('data-name') || '').toLowerCase();
+                    item.style.display = name.indexOf(keyword) !== -1 ? '' : 'none';
+                });
+            });
+            // 阻止点击搜索框时关闭下拉菜单
+            searchInput.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+        }
+    });
+
     // ========== 数字千分位格式化工具 ==========
     window.fmtNumber = function(value, decimals) {
         decimals = (decimals === undefined || decimals === null) ? 2 : decimals;
@@ -398,6 +699,103 @@
             }
         });
     });
+
+    // ========== 详情页返回工具函数 ==========
+    window.getUrlParam = function(name) {
+        var params = new URLSearchParams(window.location.search);
+        return params.get(name);
+    };
+
+    window.buildBackUrl = function(listUrl, defaultFrom) {
+        var from = window.getUrlParam('from');
+        var fromId = window.getUrlParam('from_id');
+        
+        if (!from) {
+            from = defaultFrom || 'list';
+        }
+
+        var returnMap = {
+            'stock_in_list': '{{ url_for("stock_in.index") }}',
+            'stock_in_detail': function() { 
+                return '/stock_in/' + (fromId || '') + '?from=stock_in_list'; 
+            },
+            'stock_out_list': '{{ url_for("stock_out.index") }}',
+            'stock_out_detail': function() { 
+                return '/stock_out/' + (fromId || '') + '?from=stock_out_list'; 
+            },
+            'contract_list': '{{ url_for("contract.index") }}',
+            'contract_detail': function() { 
+                return '/contract/' + (fromId || '') + '?from=contract_list'; 
+            },
+            'reconciliation_list': '{{ url_for("reconciliation.index") }}',
+            'reconciliation_detail': function() { 
+                return '/reconciliation/' + (fromId || '') + '?from=reconciliation_list'; 
+            },
+            'payment_list': '{{ url_for("payment_application.index") }}',
+            'payment_detail': function() { 
+                return '/payment_application/' + (fromId || '') + '?from=payment_list'; 
+            },
+            'stock_check_list': '{{ url_for("stock_check.index") }}',
+            'stock_check_detail': function() { 
+                return '/stock_check/' + (fromId || '') + '?from=stock_check_list'; 
+            },
+            'purchase_requisition_list': '{{ url_for("purchase_requisition.index") }}',
+            'purchase_requisition_detail': function() { 
+                return '/purchase_requisition/' + (fromId || '') + '?from=purchase_requisition_list'; 
+            },
+            'supplier_list': '{{ url_for("supplier.index") }}',
+            'supplier_detail': function() { 
+                return '/supplier/' + (fromId || '') + '/detail?from=supplier_list'; 
+            },
+            'equipment_list': '{{ url_for("equipment.index") }}',
+            'equipment_detail': function() { 
+                return '/equipment/' + (fromId || '') + '/detail?from=equipment_list'; 
+            },
+            'scrap_list': '{{ url_for("scrap.index") }}',
+            'scrap_detail': function() { 
+                return '/scrap/' + (fromId || '') + '?from=scrap_list'; 
+            },
+            'material_transfer_list': '{{ url_for("material_transfer.index") }}',
+            'material_transfer_detail': function() { 
+                return '/material_transfer/' + (fromId || '') + '?from=material_transfer_list'; 
+            },
+            'work_number_list': '{{ url_for("work_number.index") }}',
+            'work_number_detail': function() { 
+                return '/work_number/' + (fromId || '') + '?from=work_number_list'; 
+            },
+            'unit_list': '{{ url_for("unit.index") }}',
+            'unit_detail': function() { 
+                return '/unit/' + (fromId || '') + '/detail?from=unit_list'; 
+            },
+            'turnover_material_list': '{{ url_for("turnover_material.index") }}',
+            'turnover_material_detail': function() { 
+                return '/turnover_material/' + (fromId || '') + '?from=turnover_material_list'; 
+            },
+            'concrete_list': '{{ url_for("concrete.index") }}',
+            'concrete_detail': function() { 
+                return '/concrete/' + (fromId || '') + '?from=concrete_list'; 
+            },
+            'subcontract_list': '{{ url_for("subcontract.index") }}',
+            'subcontract_detail': function() { 
+                return '/subcontract/' + (fromId || '') + '/detail?from=subcontract_list'; 
+            },
+            'approval_list': '{{ url_for("approval.my_approvals") }}'
+        };
+
+        var target = returnMap[from];
+        if (typeof target === 'function') {
+            return target();
+        } else if (target) {
+            return target;
+        } else {
+            return listUrl;
+        }
+    };
+
+    window.goBack = function(listUrl, defaultFrom) {
+        var url = window.buildBackUrl(listUrl, defaultFrom);
+        window.location.href = url;
+    };
 
     // ========== 全局搜索 ==========
     (function() {

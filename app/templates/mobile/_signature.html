@@ -1,0 +1,238 @@
+{# 移动端手写签名组件 - 通过 include 引入，依赖全局 MobileSignature 对象 #}
+{# 用法：{% include 'mobile/_signature.html' %}
+       MobileSignature.open(title, function(dataUrl){ ... })  #}
+<style>
+.m-sig-mask {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,0.85);
+    display: none;
+    flex-direction: column;
+}
+.m-sig-mask.show { display: flex; }
+.m-sig-header {
+    height: 50px; padding: 0 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    color: #fff; font-size: 16px;
+    background: rgba(0,0,0,0.3);
+}
+.m-sig-header .title { flex: 1; text-align: center; }
+.m-sig-header .close { color: #fff; font-size: 22px; background: none; border: none; padding: 6px; }
+.m-sig-body {
+    flex: 1; position: relative;
+    background: #fff;
+    margin: 16px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.m-sig-body canvas {
+    width: 100%; height: 100%;
+    display: block; touch-action: none;
+    background:
+        linear-gradient(transparent 95%, #e9ecef 95%) 0 0 / 100% 32px,
+        #fff;
+}
+.m-sig-tip {
+    position: absolute; bottom: 12px; left: 0; right: 0;
+    text-align: center; color: #adb5bd; font-size: 12px;
+    pointer-events: none;
+}
+.m-sig-line {
+    position: absolute; left: 5%; right: 5%; bottom: 60px;
+    height: 0; border-bottom: 1px dashed #adb5bd;
+    pointer-events: none;
+}
+.m-sig-footer {
+    height: 80px; padding: 12px 16px;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(0,0,0,0.3);
+}
+.m-sig-footer button {
+    flex: 1; height: 44px; border-radius: 8px;
+    border: none; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+}
+.m-sig-btn-clear { background: rgba(255,255,255,0.2); color: #fff; }
+.m-sig-btn-cancel { background: rgba(255,255,255,0.2); color: #fff; }
+.m-sig-btn-confirm { background: #165DFF; color: #fff; flex: 1.5; }
+.m-sig-btn-confirm:disabled { background: #6c757d; }
+</style>
+
+<div class="m-sig-mask" id="mSigMask">
+    <div class="m-sig-header">
+        <button type="button" class="close" onclick="MobileSignature.close()"><i class="bi bi-x-lg"></i></button>
+        <span class="title" id="mSigTitle">请签字</span>
+        <span style="width:34px;"></span>
+    </div>
+    <div class="m-sig-body">
+        <canvas id="mSigCanvas"></canvas>
+        <div class="m-sig-line"></div>
+        <div class="m-sig-tip">请在上方区域签名</div>
+    </div>
+    <div class="m-sig-footer">
+        <button type="button" class="m-sig-btn-clear" onclick="MobileSignature.clear()">
+            <i class="bi bi-eraser" style="margin-right:4px;"></i>清除
+        </button>
+        <button type="button" class="m-sig-btn-cancel" onclick="MobileSignature.close()">
+            取消
+        </button>
+        <button type="button" class="m-sig-btn-confirm" id="mSigConfirm" onclick="MobileSignature.confirm()" disabled>
+            <i class="bi bi-check-lg" style="margin-right:4px;"></i>确认签字
+        </button>
+    </div>
+</div>
+
+<script>
+window.MobileSignature = (function(){
+    var canvas = null;
+    var ctx = null;
+    var drawing = false;
+    var hasStrokes = false;
+    var lastX = 0, lastY = 0;
+    var callback = null;
+
+    function initCanvas(){
+        canvas = document.getElementById('mSigCanvas');
+        ctx = canvas.getContext('2d');
+        resizeCanvas();
+
+        // 触屏事件
+        canvas.addEventListener('touchstart', onStart, { passive: false });
+        canvas.addEventListener('touchmove', onMove, { passive: false });
+        canvas.addEventListener('touchend', onEnd, { passive: false });
+        // 鼠标事件
+        canvas.addEventListener('mousedown', onStart);
+        canvas.addEventListener('mousemove', onMove);
+        canvas.addEventListener('mouseup', onEnd);
+        canvas.addEventListener('mouseleave', onEnd);
+    }
+
+    function resizeCanvas(){
+        if (!canvas) return;
+        var rect = canvas.getBoundingClientRect();
+        var dpr = window.devicePixelRatio || 1;
+        // 保存当前图像
+        var imgData = null;
+        try { imgData = canvas.toDataURL(); } catch(e){}
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#212529';
+        // 恢复图像
+        if (imgData && hasStrokes) {
+            var img = new Image();
+            img.onload = function(){ ctx.drawImage(img, 0, 0, rect.width, rect.height); };
+            img.src = imgData;
+        }
+    }
+
+    function getPos(e){
+        var rect = canvas.getBoundingClientRect();
+        var x, y;
+        if (e.touches && e.touches.length > 0) {
+            x = e.touches[0].clientX - rect.left;
+            y = e.touches[0].clientY - rect.top;
+        } else {
+            x = e.clientX - rect.left;
+            y = e.clientY - rect.top;
+        }
+        return { x: x, y: y };
+    }
+
+    function onStart(e){
+        e.preventDefault();
+        drawing = true;
+        var p = getPos(e);
+        lastX = p.x; lastY = p.y;
+        // 起点画一个小点
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.25, 0, Math.PI * 2);
+        ctx.fillStyle = '#212529';
+        ctx.fill();
+        hasStrokes = true;
+        document.getElementById('mSigConfirm').disabled = false;
+    }
+
+    function onMove(e){
+        if (!drawing) return;
+        e.preventDefault();
+        var p = getPos(e);
+        // 平滑曲线 - 使用 quadraticCurveTo 中点法
+        var midX = (lastX + p.x) / 2;
+        var midY = (lastY + p.y) / 2;
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.quadraticCurveTo(lastX, lastY, midX, midY);
+        ctx.stroke();
+        lastX = p.x; lastY = p.y;
+    }
+
+    function onEnd(e){
+        if (drawing) {
+            if (e && e.preventDefault) e.preventDefault();
+            drawing = false;
+        }
+    }
+
+    return {
+        open: function(title, cb){
+            callback = cb;
+            document.getElementById('mSigTitle').textContent = title || '请签字';
+            document.getElementById('mSigMask').classList.add('show');
+            if (!canvas) {
+                setTimeout(initCanvas, 50);
+            } else {
+                setTimeout(function(){
+                    resizeCanvas();
+                    this.clear();
+                }.bind(this), 50);
+            }
+            // 禁止背景滚动
+            document.body.style.overflow = 'hidden';
+        },
+        close: function(){
+            document.getElementById('mSigMask').classList.remove('show');
+            document.body.style.overflow = '';
+            callback = null;
+        },
+        clear: function(){
+            if (!canvas || !ctx) return;
+            var rect = canvas.getBoundingClientRect();
+            ctx.clearRect(0, 0, rect.width, rect.height);
+            hasStrokes = false;
+            document.getElementById('mSigConfirm').disabled = true;
+        },
+        confirm: function(){
+            if (!hasStrokes) {
+                M && M.toast && M.toast('请先签名', 'warning');
+                return;
+            }
+            // 生成 PNG，压缩到合理大小
+            var dataUrl = canvas.toDataURL('image/png');
+            // 压缩 - 转 jpeg 减小体积
+            var img = new Image();
+            img.onload = function(){
+                var tmp = document.createElement('canvas');
+                var w = img.width, h = img.height;
+                // 限制最大宽度 800
+                if (w > 800) { h = h * 800 / w; w = 800; }
+                tmp.width = w; tmp.height = h;
+                var tctx = tmp.getContext('2d');
+                tctx.fillStyle = '#fff';
+                tctx.fillRect(0, 0, w, h);
+                tctx.drawImage(img, 0, 0, w, h);
+                var compressed = tmp.toDataURL('image/jpeg', 0.85);
+                var cb = callback;
+                document.getElementById('mSigMask').classList.remove('show');
+                document.body.style.overflow = '';
+                callback = null;
+                hasStrokes = false;
+                if (cb) cb(compressed);
+            };
+            img.src = dataUrl;
+        }
+    };
+})();
+</script>

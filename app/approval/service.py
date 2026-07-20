@@ -6,7 +6,8 @@ from app import db
 from app.models import (ApprovalFlow, ApprovalNode, ApprovalBranch, ApprovalBranchCondition,
                         ApprovalInstance, ApprovalRecord,
                         Contract, StockIn, StockOut, Reconciliation, Payment, User,
-                        PurchaseRequisition, MaterialTransfer, PaymentApplication)
+                        PurchaseRequisition, MaterialTransfer, PaymentApplication,
+                        MaterialScrap)
 from .condition_engine import ConditionEngine
 
 # 业务类型 → 模型 映射
@@ -19,6 +20,7 @@ BIZ_MODELS = {
     'purchase_requisition': PurchaseRequisition,
     'material_transfer': MaterialTransfer,
     'payment_application': PaymentApplication,
+    'scrap': MaterialScrap,
 }
 
 # 业务类型 → 中文名
@@ -31,6 +33,7 @@ BIZ_NAMES = {
     'purchase_requisition': '采购申请',
     'material_transfer': '调拨单',
     'payment_application': '付款申请',
+    'scrap': '物资报废',
 }
 
 # 审批状态 → 中文 + 颜色
@@ -51,18 +54,65 @@ CONDITION_FIELDS = {
     'payment': ['amount'],
     'purchase_requisition': ['total_amount'],
     'payment_application': ['apply_amount', 'supplier'],
+    'scrap': ['total_amount', 'reason'],
 }
 
 
-def get_flow_by_biz_type(biz_type):
-    """获取业务类型对应的启用流程"""
-    return ApprovalFlow.query.filter_by(biz_type=biz_type, enabled=True).first()
+def get_flow_by_biz_type(biz_type, project_id=None):
+    """获取业务类型对应的启用流程（支持项目级匹配）
+    匹配优先级：项目级流程 > 公司级默认流程
+    """
+    from app.models import Project
+    
+    if project_id:
+        project = Project.query.get(project_id)
+        if project and hasattr(project, 'module_approval') and not project.module_approval:
+            return None
+    
+    if project_id:
+        project_flows = ApprovalFlow.query.filter(
+            ApprovalFlow.biz_type == biz_type,
+            ApprovalFlow.enabled == True,
+            ApprovalFlow.scope == 'project'
+        ).all()
+        
+        for flow in project_flows:
+            project_list = flow.get_project_list()
+            if str(project_id) in project_list:
+                return flow
+    
+    company_default = ApprovalFlow.query.filter(
+        ApprovalFlow.biz_type == biz_type,
+        ApprovalFlow.enabled == True,
+        ApprovalFlow.scope == 'company',
+        ApprovalFlow.is_default == True
+    ).first()
+    if company_default:
+        return company_default
+    
+    company_flow = ApprovalFlow.query.filter(
+        ApprovalFlow.biz_type == biz_type,
+        ApprovalFlow.enabled == True,
+        ApprovalFlow.scope == 'company'
+    ).first()
+    return company_flow
 
 
-def is_approval_enabled(biz_type):
-    """判断该业务类型是否启用了审批流程"""
-    flow = get_flow_by_biz_type(biz_type)
+def is_approval_enabled(biz_type, project_id=None):
+    """判断该业务类型是否启用了审批流程（支持项目级匹配）"""
+    flow = get_flow_by_biz_type(biz_type, project_id)
     return flow is not None and (flow.nodes.count() > 0 or (flow.has_branch and flow.branches.count() > 0))
+
+
+def is_project_approval_enabled(project_id):
+    """判断项目是否启用了审批模块"""
+    from app.models import Project
+    project = Project.query.get(project_id)
+    if not project:
+        return True
+    if hasattr(project, 'module_approval'):
+        return project.module_approval
+    return True
 
 
 def get_biz_title(biz_type, biz_id):
@@ -149,14 +199,17 @@ def find_matching_branch(flow, biz_type, biz_id):
     return default_branch
 
 
-def submit_approval(biz_type, biz_id, applicant_id=None, opinion=''):
+def submit_approval(biz_type, biz_id, applicant_id=None, opinion='', project_id=None):
     """提交审批
     返回: (success: bool, message: str, instance: ApprovalInstance|None)
     """
     if applicant_id is None:
         applicant_id = current_user.id
 
-    flow = get_flow_by_biz_type(biz_type)
+    if project_id and not is_project_approval_enabled(project_id):
+        return False, '该项目已关闭审批模块，单据直接生效', None
+
+    flow = get_flow_by_biz_type(biz_type, project_id)
     if not flow:
         return False, '未找到启用的审批流程', None
 
@@ -197,6 +250,7 @@ def submit_approval(biz_type, biz_id, applicant_id=None, opinion=''):
         biz_id=biz_id,
         biz_title=get_biz_title(biz_type, biz_id),
         applicant_id=applicant_id,
+        project_id=project_id,
         submit_time=datetime.utcnow(),
         status='pending',
         current_node_id=first_node.id
@@ -523,6 +577,58 @@ def _on_approval_passed(instance):
         from app.payment_application.routes import _generate_payment
         _generate_payment(obj)
 
+    elif instance.biz_type == 'scrap':
+        # 报废通过：扣减库存（加权平均成本）并生成报废出库单
+        _apply_scrap_inventory(obj)
+
+
+def _apply_scrap_inventory(scrap):
+    """报废通过后扣减库存并生成出库单（使用移动加权平均成本）"""
+    from app.models import (StockOut, StockOutItem, Inventory, User,
+                            InventoryBatch)
+    from app.services.inventory_cost import InventoryCostService
+    from flask_login import current_user
+    from app import db
+    from datetime import date
+
+    total_amount = 0
+    # 1. 扣减库存（按加权平均成本）
+    for item in scrap.items:
+        amount = InventoryCostService.apply_outbound(
+            scrap.project_id, item.material_id, item.quantity)
+        item.unit_price = (amount / item.quantity) if float(item.quantity) > 0 else 0
+        item.amount = amount
+        total_amount += float(amount)
+    scrap.total_amount = total_amount
+
+    # 2. 生成报废出库单
+    from app.utils import _gen_code_with_seq
+    code = _gen_code_with_seq('CK', scrap.project_id, StockOut)
+    stock_out = StockOut(
+        project_id=scrap.project_id,
+        code=code,
+        stock_out_date=scrap.scrap_date or date.today(),
+        stock_out_type='物资报废',
+        usage_unit_id=scrap.usage_unit_id,
+        operator=(current_user.name or current_user.username) if current_user.is_authenticated else 'system',
+        remark=f'报废单号：{scrap.code}（审批通过自动生成）',
+        total_quantity=scrap.total_quantity,
+        total_amount=total_amount,
+        approval_status='passed',
+    )
+    db.session.add(stock_out)
+    db.session.flush()
+    # 3. 出库明细
+    for item in scrap.items:
+        so_item = StockOutItem(
+            stock_out_id=stock_out.id,
+            material_id=item.material_id,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            amount=item.amount,
+        )
+        db.session.add(so_item)
+
 
 def get_my_pending_approvals(user_id):
     """获取待我审批的实例列表"""
@@ -581,6 +687,7 @@ def init_default_flows():
         ('payment_approval', '付款审批流程', 'payment'),
         ('purchase_requisition_approval', '采购申请审批流程', 'purchase_requisition'),
         ('material_transfer_approval', '调拨单审批流程', 'material_transfer'),
+        ('scrap_approval', '物资报废审批流程', 'scrap'),
     ]
 
     for code, name, biz_type in defaults:

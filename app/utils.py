@@ -85,6 +85,58 @@ def gen_reconciliation_code(project_id):
     return _gen_code_with_seq('DZ', project_id, Reconciliation)
 
 
+def gen_dept_code():
+    """生成部门编码: BM{4位流水号}，流水号全局递增"""
+    from app import db
+    from app.models import SysDept
+    from sqlalchemy import func
+
+    with _code_gen_lock:
+        max_code = db.session.query(func.max(SysDept.dept_code)).filter(
+            SysDept.dept_code.like('BM%')
+        ).scalar()
+        if max_code:
+            try:
+                seq = int(max_code[2:]) + 1
+            except ValueError:
+                seq = 1
+        else:
+            seq = 1
+        for attempt in range(_CODE_GEN_MAX_RETRY):
+            candidate = f"BM{seq:04d}"
+            exists = db.session.query(SysDept.dept_code).filter_by(dept_code=candidate).first()
+            if not exists:
+                return candidate
+            seq += 1
+        return f"BM{seq:05d}"
+
+
+def gen_project_code():
+    """生成项目编码: XM{4位流水号}，流水号全局递增"""
+    from app import db
+    from app.models import Project
+    from sqlalchemy import func
+
+    with _code_gen_lock:
+        max_code = db.session.query(func.max(Project.code)).filter(
+            Project.code.like('XM%')
+        ).scalar()
+        if max_code:
+            try:
+                seq = int(max_code[2:]) + 1
+            except ValueError:
+                seq = 1
+        else:
+            seq = 1
+        for attempt in range(_CODE_GEN_MAX_RETRY):
+            candidate = f"XM{seq:04d}"
+            exists = db.session.query(Project.code).filter_by(code=candidate).first()
+            if not exists:
+                return candidate
+            seq += 1
+        return f"XM{seq:05d}"
+
+
 def to_decimal(value, default=0):
     try:
         if value is None or value == '':
@@ -430,7 +482,17 @@ def get_field_label(field_name):
 # ============== 数据权限过滤 ==============
 
 def apply_data_scope(query, model_cls, user=None):
-    """对查询追加数据权限过滤"""
+    """对查询追加数据权限过滤
+
+    按角色数据范围过滤：
+    - all: 全部数据，不追加过滤条件
+    - dept_and_sub: 本部门及下级数据
+    - dept: 本部门数据
+    - self: 仅本人数据
+    - custom: 自定义数据权限（按勾选的部门过滤）
+
+    同时按当前选中项目过滤（session.current_project_id）
+    """
     from flask_login import current_user
     from app.models import SysRole, SysDept, SysRoleDept, User
     from flask import session
@@ -450,50 +512,62 @@ def apply_data_scope(query, model_cls, user=None):
     if data_scope == 'all':
         return query
 
+    # 先按当前项目过滤
     project_id = session.get('current_project_id')
-    if project_id:
+    if project_id and hasattr(model_cls, 'project_id'):
         query = query.filter(model_cls.project_id == project_id)
 
     if data_scope == 'self':
-        if hasattr(model_cls, 'created_by'):
-            query = query.filter(model_cls.created_by == user.id)
+        # 仅本人数据
+        if hasattr(model_cls, 'created_by_id'):
+            query = query.filter(model_cls.created_by_id == user.id)
         elif hasattr(model_cls, 'applicant_id'):
             query = query.filter(model_cls.applicant_id == user.id)
-        elif hasattr(model_cls, 'user_id'):
-            query = query.filter(model_cls.user_id == user.id)
+        elif hasattr(model_cls, 'operator_id'):
+            query = query.filter(model_cls.operator_id == user.id)
+        elif hasattr(model_cls, 'created_by'):
+            # created_by 可能是用户名字符串
+            query = query.filter(model_cls.created_by == user.username)
     elif data_scope == 'dept':
+        # 本部门数据
         if user.dept_id and hasattr(model_cls, 'dept_id'):
             query = query.filter(model_cls.dept_id == user.dept_id)
-        elif user.dept_id and hasattr(model_cls, 'created_by'):
-            sub_query = db.session.query(SysDept).filter(
-                SysDept.id == user.dept_id
-            ).subquery()
-            query = query.join(
-                User, model_cls.created_by == User.id
-            ).filter(User.dept_id == user.dept_id)
     elif data_scope == 'dept_and_sub':
+        # 本部门及下级数据
         if user.dept_id and hasattr(model_cls, 'dept_id'):
             dept_ids = get_sub_dept_ids(user.dept_id)
             dept_ids.append(user.dept_id)
             query = query.filter(model_cls.dept_id.in_(dept_ids))
-        elif user.dept_id and hasattr(model_cls, 'created_by'):
-            dept_ids = get_sub_dept_ids(user.dept_id)
-            dept_ids.append(user.dept_id)
-            query = query.join(
-                User, model_cls.created_by == User.id
-            ).filter(User.dept_id.in_(dept_ids))
     elif data_scope == 'custom':
+        # 自定义数据权限
         if role:
             dept_ids = [rd.dept_id for rd in SysRoleDept.query.filter_by(role_id=role.id).all()]
-            if dept_ids:
-                if hasattr(model_cls, 'dept_id'):
-                    query = query.filter(model_cls.dept_id.in_(dept_ids))
-                elif hasattr(model_cls, 'created_by'):
-                    query = query.join(
-                        User, model_cls.created_by == User.id
-                    ).filter(User.dept_id.in_(dept_ids))
+            if dept_ids and hasattr(model_cls, 'dept_id'):
+                query = query.filter(model_cls.dept_id.in_(dept_ids))
 
     return query
+
+
+def get_current_project_id():
+    """获取当前选中项目ID，无则返回None"""
+    from flask import session
+    return session.get('current_project_id')
+
+
+def get_current_project_or_redirect():
+    """获取当前项目，无则重定向到首页并提示"""
+    from flask import session, flash, redirect, url_for
+    from app.models import Project
+    project_id = session.get('current_project_id')
+    if not project_id:
+        flash('请先选择项目。', 'warning')
+        return None, redirect(url_for('main.index'))
+    project = Project.query.get(project_id)
+    if not project:
+        session.pop('current_project_id', None)
+        flash('项目不存在，请重新选择。', 'warning')
+        return None, redirect(url_for('main.index'))
+    return project, None
 
 
 def get_sub_dept_ids(dept_id):
@@ -559,6 +633,72 @@ def get_config(key, default=None):
     return ConfigCache.get(key, default)
 
 
+def get_project_filter():
+    """获取当前项目范围筛选条件
+
+    返回: (project_id, project_ids, is_all_projects_mode)
+    - project_id: 当前选中的项目ID（None表示汇总模式）
+    - project_ids: 可见项目ID列表（汇总模式使用）
+    - is_all_projects_mode: 是否为汇总模式
+    """
+    from flask import session
+    from flask_login import current_user
+    project_id = session.get('current_project_id')
+    is_all_projects_mode = (project_id is None)
+    if is_all_projects_mode:
+        visible_projects = current_user.get_visible_projects()
+        project_ids = [p.id for p in visible_projects]
+        return None, project_ids, True
+    return project_id, [project_id], False
+
+
+def can_edit_in_current_mode():
+    """判断当前模式下是否允许编辑操作（汇总模式下禁止编辑）"""
+    from flask import session
+    project_id = session.get('current_project_id')
+    return project_id is not None
+
+
+def reject_in_all_projects_mode():
+    """汇总模式下拒绝编辑操作，返回True表示被拒绝（需配合redirect使用）
+
+    使用示例:
+        from app.utils import reject_in_all_projects_mode
+        if reject_in_all_projects_mode():
+            flash('汇总视图下不可操作，请先切换到具体项目', 'warning')
+            return redirect(url_for('stock_in.index'))
+    """
+    from flask import session
+    return session.get('current_project_id') is None
+
+
+def is_module_enabled(module_key):
+    """判断模块是否启用（项目级配置优先于系统级配置）
+
+    Args:
+        module_key: 模块键名，如 'module_turnover', 'module_equipment' 等
+
+    Returns:
+        bool: 模块是否启用
+    """
+    from flask import session
+    from app.models import Project
+    # 先检查项目级配置
+    try:
+        project_id = session.get('current_project_id')
+        if project_id:
+            project = Project.query.get(project_id)
+            if project:
+                return project.is_module_enabled(module_key)
+    except Exception:
+        pass
+    # 降级到系统级配置
+    # 兼容旧的配置键名（带 _enabled 后缀）
+    old_key = f'{module_key}_enabled'
+    value = get_config(module_key, get_config(old_key, 'true'))
+    return str(value).lower() == 'true'
+
+
 def init_system_config():
     """初始化默认系统配置"""
     from app import db
@@ -612,6 +752,8 @@ def init_system_config():
         ('enable_price_check', 'true', '是否启用入库单价异常校验（true/false）'),
         ('price_deviation_threshold', '20', '单价异常偏差阈值（%），超过此值预警'),
         ('price_check_force_block', 'false', '单价异常是否强制拦截（true/false，否则仅警告）'),
+        # 移动端现场定位留痕
+        ('mobile_location_enabled', 'false', '移动端提交单据时是否记录现场定位（true/false，默认关闭)'),
     ]
 
     for key, value, desc in defaults:
@@ -828,6 +970,16 @@ def init_dict_data():
         'price_type': ('单价类型', [
             ('固定单价', '固定单价'), ('浮动单价', '浮动单价')
         ]),
+        # ---- 项目类 ----
+        'project_type': ('项目类型', [
+            ('房建工程', '房建工程'), ('市政工程', '市政工程'), ('公路工程', '公路工程'),
+            ('桥梁工程', '桥梁工程'), ('隧道工程', '隧道工程'), ('水利工程', '水利工程'),
+            ('机电安装', '机电安装'), ('装饰装修', '装饰装修'), ('园林绿化', '园林绿化'),
+            ('其他', '其他')
+        ]),
+        'project_status': ('项目状态', [
+            ('在建', 'active'), ('已竣工', 'completed'), ('停工', 'suspended')
+        ]),
     }
 
     for dict_type, (dict_name, items) in presets.items():
@@ -856,7 +1008,187 @@ def init_dict_data():
     clear_dict_cache()
 
 
-# ============== 大写金额转换 ==============
+# ============== 主数据统一改造：迁移与工具函数 ==============
+
+def init_master_data_unification():
+    """
+    主数据统一改造的初始化迁移（幂等，启动时自动执行）。
+
+    策略（就地升级，不破坏现有数据和外键引用）：
+    1. 将所有现有物资/供应商标记为 source='company'（公司级主库）
+    2. 为每个项目建立 ProjectMaterial/ProjectSupplier 关联（将其原有物资/供应商加入常用）
+    3. 将所有现有分类标记为 source='company'
+
+    说明：
+    - 不真正合并删除重复记录，避免破坏业务单据的外键引用
+    - 后续可通过管理界面手动合并去重
+    - 幂等：重复执行不会产生重复关联
+    """
+    from app import db
+    from app.models import (
+        Project, Material, Supplier, Category,
+        ProjectMaterial, ProjectSupplier
+    )
+
+    # 1. 将所有现有物资标记为公司级主库
+    Material.query.filter(
+        Material.source.is_(None) | (Material.source == 'project')
+    ).update({Material.source: 'company'}, synchronize_session=False)
+
+    # 2. 将所有现有供应商标记为公司级主库
+    Supplier.query.filter(
+        Supplier.source.is_(None) | (Supplier.source == 'project')
+    ).update({Supplier.source: 'company'}, synchronize_session=False)
+
+    # 3. 将所有现有分类标记为公司级
+    Category.query.filter(
+        Category.source.is_(None) | (Category.source == 'project')
+    ).update({Category.source: 'company'}, synchronize_session=False)
+
+    db.session.flush()
+
+    # 4. 为每个项目建立常用物资关联
+    projects = Project.query.all()
+    for project in projects:
+        # 该项目下所有物资加入常用
+        mats = Material.query.filter_by(project_id=project.id).all()
+        for m in mats:
+            exists = ProjectMaterial.query.filter_by(
+                project_id=project.id, material_id=m.id
+            ).first()
+            if not exists:
+                db.session.add(ProjectMaterial(
+                    project_id=project.id,
+                    material_id=m.id,
+                    is_common=True,
+                    sort=0,
+                ))
+
+        # 该项目下所有供应商加入常用
+        sups = Supplier.query.filter_by(project_id=project.id).all()
+        for s in sups:
+            exists = ProjectSupplier.query.filter_by(
+                project_id=project.id, supplier_id=s.id
+            ).first()
+            if not exists:
+                db.session.add(ProjectSupplier(
+                    project_id=project.id,
+                    supplier_id=s.id,
+                    is_common=True,
+                    sort=0,
+                ))
+
+    db.session.commit()
+
+
+def get_project_materials(project_id, common_only=True):
+    """
+    获取项目可用的物资列表。
+
+    :param project_id: 项目ID
+    :param common_only: True=只返回项目常用物资；False=返回公司主库全部
+    :return: Material 查询对象
+    """
+    from app.models import Material, ProjectMaterial
+    if common_only:
+        # 只返回项目常用物资（通过 project_material 关联表）
+        return Material.query.join(
+            ProjectMaterial, ProjectMaterial.material_id == Material.id
+        ).filter(
+            ProjectMaterial.project_id == project_id,
+            Material.status == 'active',
+        ).order_by(ProjectMaterial.sort, Material.code)
+    else:
+        # 返回公司主库全部物资
+        return Material.query.filter(
+            Material.source == 'company',
+            Material.status == 'active',
+        ).order_by(Material.code)
+
+
+def get_project_suppliers(project_id, common_only=True):
+    """
+    获取项目可用的供应商列表。
+
+    :param project_id: 项目ID
+    :param common_only: True=只返回项目常用供应商；False=返回公司主库全部
+    :return: Supplier 查询对象
+    """
+    from app.models import Supplier, ProjectSupplier
+    if common_only:
+        return Supplier.query.join(
+            ProjectSupplier, ProjectSupplier.supplier_id == Supplier.id
+        ).filter(
+            ProjectSupplier.project_id == project_id,
+            Supplier.status == 'qualified',
+        ).order_by(ProjectSupplier.sort, Supplier.name)
+    else:
+        return Supplier.query.filter(
+            Supplier.source == 'company',
+            Supplier.status == 'qualified',
+        ).order_by(Supplier.name)
+
+
+def add_material_to_project(material_id, project_id):
+    """将公司库物资加入项目常用（幂等）"""
+    from app import db
+    from app.models import ProjectMaterial
+    existing = ProjectMaterial.query.filter_by(
+        project_id=project_id, material_id=material_id
+    ).first()
+    if not existing:
+        db.session.add(ProjectMaterial(
+            project_id=project_id,
+            material_id=material_id,
+            is_common=True,
+            sort=0,
+        ))
+        db.session.commit()
+    return True
+
+
+def remove_material_from_project(material_id, project_id):
+    """从项目常用物资移除（不删除主库数据）"""
+    from app import db
+    from app.models import ProjectMaterial
+    link = ProjectMaterial.query.filter_by(
+        project_id=project_id, material_id=material_id
+    ).first()
+    if link:
+        db.session.delete(link)
+        db.session.commit()
+    return True
+
+
+def add_supplier_to_project(supplier_id, project_id):
+    """将公司库供应商加入项目常用（幂等）"""
+    from app import db
+    from app.models import ProjectSupplier
+    existing = ProjectSupplier.query.filter_by(
+        project_id=project_id, supplier_id=supplier_id
+    ).first()
+    if not existing:
+        db.session.add(ProjectSupplier(
+            project_id=project_id,
+            supplier_id=supplier_id,
+            is_common=True,
+            sort=0,
+        ))
+        db.session.commit()
+    return True
+
+
+def remove_supplier_from_project(supplier_id, project_id):
+    """从项目常用供应商移除（不删除主库数据）"""
+    from app import db
+    from app.models import ProjectSupplier
+    link = ProjectSupplier.query.filter_by(
+        project_id=project_id, supplier_id=supplier_id
+    ).first()
+    if link:
+        db.session.delete(link)
+        db.session.commit()
+    return True
 
 def num_to_chinese(n):
     """数字金额转中文大写"""

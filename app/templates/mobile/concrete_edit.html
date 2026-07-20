@@ -1,0 +1,382 @@
+{% extends "mobile/concrete_create.html" %}
+{% block title %}编辑商砼小票{% endblock %}
+{% block nav_title %}编辑商砼小票{% endblock %}
+
+{% block nav_right %}
+<a href="{{ url_for('mobile.concrete_detail', tid=ticket.id) }}" style="color:#165DFF; font-size:14px; margin-right:8px;">详情</a>
+<button type="button" class="m-theme-toggle" id="mThemeToggle" onclick="toggleTheme()" title="切换深色/浅色">
+    <i class="bi bi-moon-stars"></i>
+</button>
+{% endblock %}
+
+{% block content %}
+<!-- 编辑提示 -->
+<div class="m-card" style="padding:10px 16px; background:#fff3cd; color:#664d03; font-size:12px;">
+    <i class="bi bi-info-circle"></i> 当天录入的小票可编辑，提交后将更新记录
+</div>
+
+<form method="POST" id="concreteForm" enctype="multipart/form-data" action="{{ url_for('mobile.concrete_edit', tid=ticket.id) }}">
+    <input type="hidden" name="location_lat" id="locationLat" value="{{ '%.6f'|format(ticket.location_lat|float) if ticket.location_lat else '' }}">
+    <input type="hidden" name="location_lng" id="locationLng" value="{{ '%.6f'|format(ticket.location_lng|float) if ticket.location_lng else '' }}">
+    <input type="hidden" name="location_accuracy" id="locationAccuracy" value="{{ '%.1f'|format(ticket.location_accuracy|float) if ticket.location_accuracy else '' }}">
+
+    <!-- 基本信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-receipt"></i>小票信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">小票号</label>
+            <input type="text" name="ticket_no" class="m-form-control" value="{{ ticket.ticket_no }}">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">供应单位</label>
+            <select name="supplier_id" id="supplierId" class="m-form-select">
+                <option value="">-- 请选择 --</option>
+                {% for s in suppliers %}
+                <option value="{{ s.id }}" data-name="{{ s.name }}" {% if ticket.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="supplier_name" id="supplierName" value="{{ ticket.supplier_name or '' }}">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">砼标号<span class="req">*</span></label>
+            <select name="strength_grade" id="strengthGrade" class="m-form-select" required>
+                <option value="">-- 请选择 --</option>
+                {% for g in strength_grades %}
+                <option value="{{ g }}" {% if ticket.strength_grade == g %}selected{% endif %}>{{ g }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">浇筑部位</label>
+            <input type="text" name="pour_part" id="pourPart" class="m-form-control"
+                   value="{{ ticket.pour_part or '' }}" autocomplete="off">
+            <div id="pourPartSuggest" class="m-suggest-list" style="display:none;"></div>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">关联工号</label>
+            <select name="work_number_id" class="m-form-select">
+                <option value="">-- 无 --</option>
+                {% for wn in work_numbers %}
+                <option value="{{ wn.id }}" {% if ticket.work_number_id == wn.id %}selected{% endif %}>{{ wn.code }}{% if wn.division_name %}（{{ wn.division_name }}）{% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- 车辆信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-truck"></i>车辆信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">运输车号</label>
+            <input type="text" name="vehicle_no" class="m-form-control" value="{{ ticket.vehicle_no or '' }}">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">司机姓名</label>
+            <input type="text" name="driver_name" class="m-form-control" value="{{ ticket.driver_name or '' }}">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">方量（m³）<span class="req">*</span></label>
+            <input type="number" name="volume" class="m-form-control" step="0.01" min="0"
+                   value="{{ '%.2f'|format(ticket.volume|float) if ticket.volume else '' }}" required>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">车次</label>
+            <input type="number" name="vehicle_count" class="m-form-control" step="1" min="1"
+                   value="{{ ticket.vehicle_count or 1 }}">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">坍落度</label>
+            <input type="text" name="slump" class="m-form-control" value="{{ ticket.slump or '' }}">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">进场时间</label>
+            <input type="datetime-local" name="arrival_time" class="m-form-control" value="{{ arrival_time_value }}">
+        </div>
+    </div>
+
+    <!-- 已有照片 -->
+    {% if existing_photos %}
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-images"></i>已上传照片（{{ existing_photos|length }}）</div>
+        <div class="m-photo-grid" id="existingPhotoGallery" style="grid-template-columns:repeat(3,1fr);">
+            {% for att in existing_photos %}
+            <div class="m-photo-item" style="position:relative;width:100%;padding-bottom:100%;">
+                <img src="{{ url_for('static', filename=att.file_path) }}"
+                     data-preview data-group="existing"
+                     data-preview-url="{{ url_for('static', filename=att.file_path) }}"
+                     style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;"
+                     alt="{{ att.original_name }}">
+            </div>
+            {% endfor %}
+        </div>
+        <div style="font-size:12px;color:#adb5bd;margin-top:8px;">点击图片可放大；如需删除请到PC端处理</div>
+    </div>
+    {% endif %}
+
+    <!-- 追加照片 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-camera"></i>追加照片（最多3张）</div>
+        <div class="m-photo-grid" id="photoGrid">
+            <label class="m-photo-add" style="position:relative;">
+                <input type="file" accept="image/*" capture="environment" multiple
+                       style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;"
+                       onchange="handlePhotoSelect(this)">
+            </label>
+        </div>
+        <div style="font-size:12px;color:#adb5bd;margin-top:8px;">点击"+"拍照或从相册选择</div>
+    </div>
+
+    <!-- 定位 -->
+    <div class="m-card" style="padding:10px 16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div>
+                <div style="font-size:13px; color:#212529; font-weight:500;">
+                    <i class="bi bi-geo-alt" style="color:#165DFF;"></i> 现场定位
+                </div>
+                <div id="locationInfo" style="font-size:12px; color:#adb5bd; margin-top:2px;">
+                    {% if ticket.location_lat and ticket.location_lng %}
+                    已定位（精度±{{ '%.1f'|format(ticket.location_accuracy|float) if ticket.location_accuracy else '0' }}米）
+                    {% else %}未获取{% endif %}
+                </div>
+            </div>
+            <button type="button" class="m-btn m-btn-outline-primary" style="font-size:12px; padding:6px 12px;" onclick="captureLocation()">
+                <i class="bi bi-crosshair"></i> 重新定位
+            </button>
+        </div>
+    </div>
+
+    <!-- 备注 -->
+    <div class="m-card">
+        <div class="m-form-group" style="margin-bottom:0;">
+            <label class="m-form-label">备注</label>
+            <textarea name="remark" class="m-form-control" rows="2">{{ ticket.remark or '' }}</textarea>
+        </div>
+    </div>
+</form>
+
+<!-- 提交栏 -->
+<div class="m-submit-bar">
+    <a href="{{ url_for('mobile.concrete_detail', tid=ticket.id) }}" class="m-btn m-btn-outline" style="flex:1; text-align:center;">
+        <i class="bi bi-x-lg"></i> 取消
+    </a>
+    <button type="button" class="m-btn m-btn-primary" style="flex:1;" onclick="submitForm()">
+        <i class="bi bi-check-lg" style="margin-right:6px;"></i> 保存修改
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var photos = [];
+var FORM_KEY = 'concrete_edit_{{ ticket.id }}';
+var continueMode = false;
+
+// 编辑模式无需连续登记开关，直接禁用
+document.addEventListener('DOMContentLoaded', function(){
+    var sw = document.getElementById('continueMode');
+    if (sw) sw.parentElement.parentElement.style.display = 'none';
+});
+
+// ========== 供应单位联动 ==========
+function syncSupplierName(){
+    var sel = document.getElementById('supplierId');
+    var opt = sel.options[sel.selectedIndex];
+    var name = opt ? (opt.getAttribute('data-name') || '') : '';
+    document.getElementById('supplierName').value = name;
+}
+document.getElementById('supplierId').addEventListener('change', syncSupplierName);
+
+// ========== 浇筑部位联想 ==========
+var suggestTimer = null;
+var suggestBox = document.getElementById('pourPartSuggest');
+var pourInput = document.getElementById('pourPart');
+
+pourInput.addEventListener('input', function(){
+    clearTimeout(suggestTimer);
+    var kw = this.value.trim();
+    if (!kw) { suggestBox.style.display = 'none'; return; }
+    suggestTimer = setTimeout(function(){
+        fetch("{{ url_for('mobile.api_concrete_history_pour_part') }}?keyword=" + encodeURIComponent(kw), {
+            credentials: 'same-origin'
+        }).then(function(r){ return r.json(); }).then(function(data){
+            if (!data || data.length === 0) { suggestBox.style.display = 'none'; return; }
+            var html = '';
+            data.forEach(function(item){
+                html += '<div class="m-suggest-item" onclick="selectPourPart(\'' + item.value.replace(/'/g, "\\'") + '\')">' +
+                    escapeHtml(item.label) + '</div>';
+            });
+            suggestBox.innerHTML = html;
+            suggestBox.style.display = 'block';
+        }).catch(function(){ suggestBox.style.display = 'none'; });
+    }, 250);
+});
+
+pourInput.addEventListener('blur', function(){
+    setTimeout(function(){ suggestBox.style.display = 'none'; }, 200);
+});
+
+function selectPourPart(val){
+    pourInput.value = val;
+    suggestBox.style.display = 'none';
+}
+
+function escapeHtml(s){
+    return (s || '').replace(/[&<>"']/g, function(c){
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+
+// ========== 照片选择 ==========
+function handlePhotoSelect(input){
+    var files = input.files;
+    if (!files || files.length === 0) return;
+    var remaining = 3 - photos.length;
+    if (files.length > remaining) {
+        M.toast('最多追加3张照片，仅添加前 ' + remaining + ' 张', 'warning');
+    }
+    for (var i = 0; i < Math.min(files.length, remaining); i++) {
+        compressImage(files[i]);
+    }
+    input.value = '';
+}
+
+function compressImage(file){
+    var reader = new FileReader();
+    reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+            var max = 1280;
+            var w = img.width, h = img.height;
+            if (w > max || h > max) {
+                if (w > h) { h = h * max / w; w = max; }
+                else { w = w * max / h; h = max; }
+            }
+            var canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            photos.push({ dataUrl: dataUrl, name: file.name });
+            renderPhotos();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function renderPhotos(){
+    var grid = document.getElementById('photoGrid');
+    var addBtn = grid.querySelector('.m-photo-add');
+    while (grid.children.length > 1) grid.removeChild(grid.lastChild);
+    photos.forEach(function(p, i){
+        var div = document.createElement('div');
+        div.className = 'm-photo-item';
+        div.style.cssText = 'position:relative;width:100%;padding-bottom:100%;';
+        div.innerHTML = '<img src="' + p.dataUrl + '" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;" onclick="previewPhoto(' + i + ')">' +
+            '<div class="remove" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;" onclick="event.stopPropagation();removePhoto(' + i + ')">×</div>';
+        grid.appendChild(div);
+    });
+    if (photos.length >= 3) addBtn.style.display = 'none';
+    else addBtn.style.display = '';
+}
+
+function removePhoto(i){
+    photos.splice(i, 1);
+    renderPhotos();
+}
+
+function previewPhoto(i){
+    var urls = photos.map(function(p){ return p.dataUrl; });
+    if (window.MobilePreview) MobilePreview.open(urls, i);
+}
+
+// ========== 定位 ==========
+function captureLocation(){
+    if (!navigator.geolocation) {
+        M.toast('当前浏览器不支持定位', 'danger');
+        return;
+    }
+    var info = document.getElementById('locationInfo');
+    info.textContent = '定位中...';
+    info.style.color = '#165DFF';
+    navigator.geolocation.getCurrentPosition(function(pos){
+        document.getElementById('locationLat').value = pos.coords.latitude;
+        document.getElementById('locationLng').value = pos.coords.longitude;
+        document.getElementById('locationAccuracy').value = pos.coords.accuracy || '';
+        info.textContent = '已定位（精度±' + Math.round(pos.coords.accuracy || 0) + '米）';
+        info.style.color = '#198754';
+        M.toast('定位成功', 'success');
+    }, function(err){
+        info.textContent = '定位失败：' + (err.message || '请检查权限');
+        info.style.color = '#dc3545';
+        M.toast('定位失败：' + (err.message || ''), 'danger');
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+}
+
+// 编辑模式直接提交，无连续模式
+function submitForm(){
+    var f = document.getElementById('concreteForm');
+    if (!f.strength_grade.value) {
+        M.toast('请选择砼标号', 'danger');
+        return;
+    }
+    if (!f.volume.value || parseFloat(f.volume.value) <= 0) {
+        M.toast('请填写方量', 'danger');
+        return;
+    }
+    syncSupplierName();
+    var fd = new FormData(f);
+    photos.forEach(function(p){
+        var arr = p.dataUrl.split(',');
+        var mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+        var byteStr = atob(arr[1]);
+        var ab = new ArrayBuffer(byteStr.length);
+        var u8 = new Uint8Array(ab);
+        for (var j = 0; j < byteStr.length; j++) u8[j] = byteStr.charCodeAt(j);
+        var blob = new Blob([ab], { type: mime });
+        fd.append('photos[]', blob, p.name);
+    });
+    M.loading(true);
+    fetch(f.action, {
+        method: 'POST', body: fd, credentials: 'same-origin'
+    }).then(function(r){
+        M.loading(false);
+        if (r.redirected) window.location.href = r.url;
+        else window.location.href = "{{ url_for('mobile.concrete_detail', tid=ticket.id) }}";
+    }).catch(function(err){
+        M.loading(false);
+        M.toast('提交失败：' + err, 'danger');
+    });
+}
+
+// 绑定已有照片画廊
+if (window.MobilePreview) {
+    MobilePreview.bindGallery('#existingPhotoGallery');
+}
+
+syncSupplierName();
+renderPhotos();
+</script>
+{% endblock %}
+
+<style>
+.m-switch { display:none !important; }
+.m-suggest-list {
+    position: relative; margin-top: 4px;
+    background: #fff; border: 1px solid #e9ecef;
+    border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    overflow: hidden;
+}
+.m-suggest-item {
+    padding: 8px 12px; font-size: 13px; color: #212529;
+    border-bottom: 1px solid #f1f3f5; cursor: pointer;
+}
+.m-suggest-item:last-child { border-bottom: none; }
+.m-suggest-item:hover, .m-suggest-item:active { background: #f1f8ff; }
+.m-info-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 0; border-bottom:1px solid #f1f3f5; font-size:14px;
+}
+.m-info-row:last-child { border-bottom:none; }
+.m-info-row span:first-child { color:#6c757d; }
+.m-info-row span:last-child { color:#212529; font-weight:500; text-align:right; max-width:60%; word-break:break-all; }
+</style>

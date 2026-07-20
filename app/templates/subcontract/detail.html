@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}扣款明细 - 分包扣款{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('subcontract.index') }}">分包扣款</a></li>
+            <li class="breadcrumb-item active" aria-current="page">扣款明细</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm">
     <div class="card-header bg-white d-flex flex-column flex-md-row justify-content-md-between align-items-start align-items-md-center gap-2">
@@ -11,9 +22,9 @@
             <a href="{{ url_for('subcontract.export', id=deduction.id) }}" class="btn btn-sm btn-success">
                 <i class="bi bi-file-earmark-excel me-1"></i>导出扣款单
             </a>
-            <a href="{{ url_for('subcontract.index') }}" class="btn btn-sm btn-outline-secondary">
+            <button onclick="goBack('{{ url_for('subcontract.index') }}', 'subcontract_list')" class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i>返回台账
-            </a>
+            </button>
         </div>
     </div>
     <div class="card-body">

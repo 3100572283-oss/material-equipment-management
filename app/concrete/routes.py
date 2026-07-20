@@ -11,10 +11,20 @@ from app import db
 from app.models import (ConcreteTicket, Project, Supplier, WorkNumber,
                        StockIn, StockInItem, Material, Inventory)
 from app.decorators import log_audit
-from app.utils import to_decimal, gen_stock_in_code
+from app.utils import to_decimal, gen_stock_in_code, apply_data_scope
 
 
 STRENGTH_GRADES = ['C15', 'C20', 'C25', 'C30', 'C35', 'C40', 'C45', 'C50']
+
+
+def _gen_ticket_no(project_id):
+    """生成小票号：CT-{project_id}-{YYYYMMDD}-{seq:03d}"""
+    today = datetime.now().strftime('%Y%m%d')
+    prefix = f'CT-{project_id}-{today}-'
+    existing = ConcreteTicket.query.filter(
+        ConcreteTicket.ticket_no.like(f'{prefix}%')
+    ).count()
+    return f'{prefix}{existing + 1:03d}'
 
 
 def _save_photo(file):
@@ -31,14 +41,49 @@ def _save_photo(file):
     return f'uploads/{filename}'
 
 
+@bp.route('/api/gen_ticket_no')
+@login_required
+def api_gen_ticket_no():
+    """自动生成小票号（前端AJAX调用）"""
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'success': False, 'message': '请先选择项目'}), 400
+    return jsonify({'success': True, 'ticket_no': _gen_ticket_no(project_id)})
+
+
+@bp.route('/api/mark_reconciled', methods=['POST'])
+@login_required
+def api_mark_reconciled():
+    """标记小票为已对账（批量）"""
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'success': False, 'message': '请先选择项目'}), 400
+    ids = request.form.getlist('ids[]') or request.json.get('ids', []) if request.is_json else request.form.getlist('ids[]')
+    if not ids:
+        return jsonify({'success': False, 'message': '未选择小票'}), 400
+    updated = 0
+    for tid in ids:
+        try:
+            t = ConcreteTicket.query.filter_by(id=int(tid), project_id=project_id).first()
+            if t and not t.is_reconciled:
+                t.is_reconciled = True
+                updated += 1
+        except Exception:
+            continue
+    db.session.commit()
+    return jsonify({'success': True, 'updated': updated})
+
+
 @bp.route('/')
 @login_required
 def index():
     """商砼小票列表页"""
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     supplier_id = request.args.get('supplier_id', '', type=str)
@@ -48,7 +93,10 @@ def index():
     end_date = request.args.get('end_date', '', type=str)
     is_reconciled = request.args.get('is_reconciled', '', type=str)
 
-    query = ConcreteTicket.query.filter_by(project_id=project_id)
+    query = ConcreteTicket.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, ConcreteTicket)
     if supplier_id:
         query = query.filter(ConcreteTicket.supplier_id == int(supplier_id))
     if strength_grade:
@@ -93,8 +141,8 @@ def create():
     if request.method == 'POST':
         ticket_no = request.form.get('ticket_no', '').strip()
         if not ticket_no:
-            flash('小票号不能为空。', 'danger')
-            return redirect(url_for('concrete.create'))
+            # 自动生成
+            ticket_no = _gen_ticket_no(project_id)
 
         supplier_id = request.form.get('supplier_id', type=int) or None
         supplier_name = request.form.get('supplier_name', '').strip() or None
@@ -103,6 +151,8 @@ def create():
         work_number_id = request.form.get('work_number_id', type=int) or None
         vehicle_count = request.form.get('vehicle_count', type=int) or 1
         volume = request.form.get('volume', type=float) or 0
+        vehicle_no = request.form.get('vehicle_no', '').strip() or None
+        driver_name = request.form.get('driver_name', '').strip() or None
         slump = request.form.get('slump', '').strip() or None
         temperature = request.form.get('temperature', '').strip() or None
         remark = request.form.get('remark', '').strip() or None
@@ -131,6 +181,8 @@ def create():
             vehicle_count=vehicle_count,
             volume=to_decimal(volume),
             arrival_time=arrival_time,
+            vehicle_no=vehicle_no,
+            driver_name=driver_name,
             slump=slump,
             temperature=temperature,
             photo_path=photo_path,
@@ -145,9 +197,11 @@ def create():
 
     suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
     work_numbers = WorkNumber.query.filter_by(project_id=project_id).order_by(WorkNumber.code).all()
+    default_ticket_no = _gen_ticket_no(project_id)
     return render_template('concrete/create.html', suppliers=suppliers,
                            work_numbers=work_numbers, strength_grades=STRENGTH_GRADES,
-                           now=datetime.now().strftime('%Y-%m-%dT%H:%M'))
+                           now=datetime.now().strftime('%Y-%m-%dT%H:%M'),
+                           default_ticket_no=default_ticket_no)
 
 
 @bp.route('/<int:id>/edit', methods=['GET', 'POST'])

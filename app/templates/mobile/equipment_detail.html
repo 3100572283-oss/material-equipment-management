@@ -1,0 +1,197 @@
+{% extends "mobile/base.html" %}
+{% block title %}设备详情{% endblock %}
+{% block nav_title %}设备详情{% endblock %}
+
+{% block content %}
+<!-- 基本信息 -->
+<div class="m-card">
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:18px; font-weight:600;">{{ eq.name }}</div>
+            <div style="font-size:13px; color:#6c757d; margin-top:4px;">{{ eq.code }}</div>
+        </div>
+        <span class="status-tag
+            {% if eq.status == 'in_use' %}passed
+            {% elif eq.status == 'idle' %}pending
+            {% elif eq.status == 'repairing' %}rejected
+            {% elif eq.status == 'exited' %}draft
+            {% endif %}">
+            {% for item in status_items %}
+            {% if item.value == eq.status %}{{ item.label }}{% endif %}
+            {% endfor %}
+        </span>
+    </div>
+</div>
+
+<!-- 详细信息 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-info-circle"></i>基本信息</div>
+    <div class="m-info-row"><span>规格型号</span><span>{{ eq.specification or '-' }}</span></div>
+    <div class="m-info-row"><span>生产厂家</span><span>{{ eq.manufacturer or '-' }}</span></div>
+    <div class="m-info-row"><span>设备类别</span><span>{{ eq.category or '-' }}</span></div>
+    <div class="m-info-row"><span>设备来源</span><span>{{ eq.source_label }}</span></div>
+    <div class="m-info-row"><span>使用部门</span><span>{{ eq.department or '-' }}</span></div>
+    <div class="m-info-row"><span>负责人</span><span>{{ eq.responsible or '-' }}</span></div>
+    <div class="m-info-row"><span>存放位置</span><span>{{ eq.location or '-' }}</span></div>
+    {% if eq.remark %}
+    <div class="m-info-row"><span>备注</span><span>{{ eq.remark }}</span></div>
+    {% endif %}
+</div>
+
+<!-- 来源特定信息 -->
+{% if eq.source_type == 'self' %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-cash-coin"></i>自有设备信息</div>
+    <div class="m-info-row"><span>购置日期</span><span>{{ eq.purchase_date.strftime('%Y-%m-%d') if eq.purchase_date else '-' }}</span></div>
+    <div class="m-info-row"><span>原值</span><span>¥{{ '%.2f'|format(eq.original_value|float) }}</span></div>
+    <div class="m-info-row"><span>使用年限</span><span>{{ eq.use_years or 0 }} 年</span></div>
+    <div class="m-info-row"><span>月折旧</span><span>¥{{ '%.2f'|format(eq.monthly_depreciation) }}</span></div>
+    <div class="m-info-row"><span>累计折旧</span><span>¥{{ '%.2f'|format(eq.accumulated_depreciation) }}</span></div>
+    <div class="m-info-row"><span>净值</span><span>¥{{ '%.2f'|format(eq.net_value) }}</span></div>
+</div>
+{% elif eq.source_type == 'rent' %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-building"></i>租赁信息</div>
+    <div class="m-info-row"><span>供应商</span><span>{{ eq.supplier.name if eq.supplier else '-' }}</span></div>
+    <div class="m-info-row"><span>租赁方式</span><span>{{ eq.rent_type or '-' }}</span></div>
+    <div class="m-info-row"><span>租赁单价</span><span>¥{{ '%.2f'|format(eq.rent_unit_price|float) }}</span></div>
+    <div class="m-info-row"><span>进场日期</span><span>{{ eq.entry_date.strftime('%Y-%m-%d') if eq.entry_date else '-' }}</span></div>
+    <div class="m-info-row"><span>预计退场</span><span>{{ eq.expected_exit_date.strftime('%Y-%m-%d') if eq.expected_exit_date else '-' }}</span></div>
+    {% if eq.exit_date %}
+    <div class="m-info-row"><span>实际退场</span><span>{{ eq.exit_date.strftime('%Y-%m-%d') }}</span></div>
+    {% endif %}
+    <div class="m-info-row"><span>进出场费</span><span>¥{{ '%.2f'|format(eq.entry_exit_fee|float) }}</span></div>
+    <div class="m-info-row"><span>押金</span><span>¥{{ '%.2f'|format(eq.deposit|float) }}</span></div>
+</div>
+{% elif eq.source_type == 'labor' %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-people"></i>劳务队信息</div>
+    <div class="m-info-row"><span>所属劳务队</span><span>{{ eq.labor_team or '-' }}</span></div>
+    <div class="m-info-row"><span>进场日期</span><span>{{ eq.entry_date.strftime('%Y-%m-%d') if eq.entry_date else '-' }}</span></div>
+</div>
+{% endif %}
+
+<!-- 维修保养记录 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-tools"></i>维保记录（{{ maintenances|length }}）</div>
+    {% if maintenances %}
+    {% for m in maintenances %}
+    <div class="m-timeline-item">
+        <div class="time">{{ m.maintain_date.strftime('%Y-%m-%d') }}</div>
+        <div class="title">
+            {% if m.maintain_type == '维修' %}<span class="status-tag rejected">维修</span>
+            {% elif m.maintain_type == '保养' %}<span class="status-tag passed">保养</span>
+            {% else %}<span class="status-tag pending">{{ m.maintain_type }}</span>{% endif %}
+            {{ m.operator or '-' }}
+            {% if m.cost and m.cost|float > 0 %} · ¥{{ '%.2f'|format(m.cost|float) }}{% endif %}
+        </div>
+        {% if m.content %}<div class="desc">{{ m.content }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty-mini">暂无维保记录</div>
+    {% endif %}
+</div>
+
+<!-- 巡检记录 -->
+{% if inspections %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-clipboard-check"></i>巡检记录（{{ inspections|length }}）</div>
+    {% for r in inspections %}
+    <div class="m-timeline-item">
+        <div class="time">{{ r.inspect_date.strftime('%Y-%m-%d') }}</div>
+        <div class="title">
+            {% if r.overall_status == 'normal' %}<span class="status-tag passed">正常</span>
+            {% else %}<span class="status-tag rejected">异常</span>{% endif %}
+            {{ r.inspector_name or '-' }}
+            {% if r.meter_reading %} · 读数：{{ r.meter_reading }}{% endif %}
+        </div>
+        {% if r.issue_desc %}<div class="desc" style="color:#c92a2a;">{{ r.issue_desc }}</div>{% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- 状态变更日志 -->
+{% if status_logs %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-clock-history"></i>状态变更日志</div>
+    {% for log in status_logs %}
+    <div class="m-timeline-item">
+        <div class="time">{{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '-' }}</div>
+        <div class="title">
+            {{ log.old_status or '无' }} → {{ log.new_status }}
+            {% if log.operator_name %} · {{ log.operator_name }}{% endif %}
+        </div>
+        {% if log.remark %}<div class="desc">{{ log.remark }}</div>{% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- 二维码 -->
+<div class="m-card" style="text-align:center;">
+    <a href="{{ url_for('mobile.equipment_qrcode', eid=eq.id) }}" class="m-btn m-btn-outline-primary" style="display:inline-block;">
+        <i class="bi bi-qr-code"></i> 查看设备二维码
+    </a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 状态快速变更
+function quickChangeStatus(){
+    var html = '<div style="padding:8px;">';
+    html += '<select id="newStatus" class="m-form-select" style="margin-bottom:10px;">';
+    {% for item in status_items %}
+    html += '<option value="{{ item.value }}" {% if item.value == eq.status %}disabled{% endif %}>{{ item.label }}</option>';
+    {% endfor %}
+    html += '</select>';
+    html += '<button class="m-btn m-btn-primary" style="width:100%;" onclick="doChangeStatus()">确认变更</button>';
+    html += '</div>';
+    // 简单弹窗
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.innerHTML = '<div style="background:#fff;border-radius:8px;padding:16px;max-width:300px;width:100%;"><div style="font-weight:600;margin-bottom:10px;">设备状态变更</div>' + html + '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="margin-top:8px;width:100%;padding:8px;border:none;background:#f1f3f5;border-radius:4px;">取消</button></div>';
+    document.body.appendChild(overlay);
+}
+
+function doChangeStatus(){
+    var newStatus = document.getElementById('newStatus').value;
+    var fd = new FormData();
+    fd.append('new_status', newStatus);
+    fetch("{{ url_for('mobile.equipment_change_status', eid=eq.id) }}", {
+        method: 'POST', body: fd, credentials: 'same-origin'
+    }).then(function(r){
+        if (r.redirected) window.location.href = r.url;
+        else window.location.reload();
+    });
+}
+</script>
+{% endblock %}
+
+{% block nav_right %}
+<button type="button" class="m-theme-toggle" id="mThemeToggle" onclick="toggleTheme()" title="切换深色/浅色">
+    <i class="bi bi-moon-stars"></i>
+</button>
+{% if eq.status != 'exited' %}
+<a href="{{ url_for('mobile.equipment_maintenance', eid=eq.id) }}" style="color:#165DFF; margin-right:8px; font-size:14px;">
+    <i class="bi bi-tools"></i>
+</a>
+{% endif %}
+{% endblock %}
+
+<style>
+.m-info-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 0; border-bottom:1px solid #f1f3f5; font-size:14px;
+}
+.m-info-row:last-child { border-bottom:none; }
+.m-info-row span:first-child { color:#6c757d; }
+.m-info-row span:last-child { color:#212529; font-weight:500; text-align:right; max-width:60%; word-break:break-all; }
+.m-timeline-item { padding:8px 0; border-left:2px solid #e9ecef; padding-left:12px; margin-left:4px; }
+.m-timeline-item .time { font-size:12px; color:#6c757d; }
+.m-timeline-item .title { font-size:14px; font-weight:500; margin:2px 0; }
+.m-timeline-item .desc { font-size:13px; color:#495057; margin-top:2px; }
+.m-empty-mini { text-align:center; padding:20px; color:#adb5bd; font-size:13px; }
+</style>

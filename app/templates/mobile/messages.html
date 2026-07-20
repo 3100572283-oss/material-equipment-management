@@ -1,0 +1,161 @@
+{% extends "mobile/base.html" %}
+{% block title %}站内消息{% endblock %}
+{% block nav_title %}站内消息{% endblock %}
+
+{% block content %}
+<!-- 顶部统计栏 -->
+<div class="m-card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+            <div style="font-size:13px; color:#6c757d;">未读消息</div>
+            <div style="font-size:24px; font-weight:700; color:#dc3545;">{{ unread_count }}</div>
+        </div>
+        <button type="button" class="m-btn m-btn-outline-primary m-btn-sm" onclick="markAllRead()" {% if unread_count == 0 %}disabled{% endif %}>
+            <i class="bi bi-check2-all"></i> 全部已读
+        </button>
+    </div>
+</div>
+
+<!-- 消息列表 -->
+<div id="msgList">
+    {% if messages %}
+    {% for m in messages %}
+    <div class="m-msg-card {% if not m.is_read %}unread{% endif %}" data-id="{{ m.id }}" onclick="openMessage({{ m.id }})">
+        <div class="m-msg-header">
+            <span class="m-msg-type type-{{ m.msg_type or 'info' }}">
+                {% if m.msg_type == 'approval' %}<i class="bi bi-clipboard-check"></i> 审批
+                {% elif m.msg_type == 'stock' %}<i class="bi bi-box-seam"></i> 库存
+                {% elif m.msg_type == 'notice' %}<i class="bi bi-megaphone"></i> 公告
+                {% else %}<i class="bi bi-info-circle"></i> 提醒{% endif %}
+            </span>
+            <span class="m-msg-time">{{ m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '' }}</span>
+        </div>
+        <div class="m-msg-title">
+            {% if not m.is_read %}<span class="m-msg-dot"></span>{% endif %}
+            {{ m.title }}
+        </div>
+        {% if m.content %}
+        <div class="m-msg-content">{{ m.content }}</div>
+        {% endif %}
+        {% if m.url %}
+        <div class="m-msg-action"><i class="bi bi-chevron-right"></i> 点击查看详情</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-bell-slash"></i>
+        <div>暂无消息</div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.m-msg-card {
+    background:#fff; margin:8px 12px; padding:12px;
+    border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.06);
+    cursor:pointer; position:relative;
+}
+.m-msg-card.unread {
+    border-left:3px solid #165DFF;
+    background:#f8faff;
+}
+.m-msg-header {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:6px;
+}
+.m-msg-type {
+    font-size:11px; padding:2px 6px; border-radius:4px;
+    background:#f1f3f5; color:#6c757d;
+}
+.m-msg-type.type-approval { background:#fff3cd; color:#664d03; }
+.m-msg-type.type-stock { background:#d1e7dd; color:#0f5132; }
+.m-msg-type.type-notice { background:#cff4fc; color:#055160; }
+.m-msg-time { font-size:11px; color:#adb5bd; }
+.m-msg-title {
+    font-size:15px; font-weight:600; color:#212529;
+    margin-bottom:4px; display:flex; align-items:center;
+}
+.m-msg-dot {
+    display:inline-block; width:8px; height:8px;
+    background:#dc3545; border-radius:50%;
+    margin-right:6px; flex-shrink:0;
+}
+.m-msg-content {
+    font-size:13px; color:#495057;
+    line-height:1.5; margin-bottom:6px;
+    word-break:break-word;
+}
+.m-msg-action {
+    font-size:12px; color:#165DFF;
+    display:flex; align-items:center;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openMessage(id){
+    // 标记已读
+    fetch('/mobile/messages/'+id+'/read', {
+        method: 'POST',
+        credentials: 'same-origin'
+    }).then(function(r){ return r.json(); }).then(function(data){
+        if (data.success) {
+            var card = document.querySelector('.m-msg-card[data-id="'+id+'"]');
+            if (card) {
+                card.classList.remove('unread');
+                var dot = card.querySelector('.m-msg-dot');
+                if (dot) dot.remove();
+            }
+        }
+    }).catch(function(){});
+
+    // 跳转到详情
+    var card = document.querySelector('.m-msg-card[data-id="'+id+'"]');
+    if (card) {
+        var url = card.getAttribute('data-url');
+        if (!url) {
+            // 从页面数据查找对应消息的url
+            {% for m in messages %}
+            if (id === {{ m.id }}) {
+                url = {{ (m.url or '')|tojson }};
+            }
+            {% endfor %}
+        }
+        if (url) {
+            window.location.href = url;
+        }
+    }
+}
+
+function markAllRead(){
+    if (!confirm('确认将所有消息标记为已读？')) return;
+    fetch('/mobile/messages/read_all', {
+        method: 'POST',
+        credentials: 'same-origin'
+    }).then(function(r){ return r.json(); }).then(function(data){
+        if (data.success) {
+            M.toast('已全部标记为已读', 'success');
+            setTimeout(function(){ location.reload(); }, 800);
+        } else {
+            M.toast('操作失败', 'danger');
+        }
+    }).catch(function(err){
+        M.toast('操作失败：' + err, 'danger');
+    });
+}
+
+// 下拉刷新
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){
+                window.location.reload();
+                done();
+            }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}

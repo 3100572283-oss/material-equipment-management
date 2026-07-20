@@ -54,9 +54,9 @@
                 <textarea class="form-control" name="content" rows="8"
                           placeholder="请输入公告内容...">{{ announcement.content if announcement else '' }}</textarea>
             </div>
-            <div class="d-flex gap-2">
+            <div class="form-actions">
+                <a href="{{ url_for('admin.announcements') }}" class="btn btn-secondary" role="button">取消</a>
                 <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>保存</button>
-                <a href="{{ url_for('admin.announcements') }}" class="btn btn-secondary">取消</a>
             </div>
         </form>
     </div>

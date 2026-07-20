@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}公司物资主库 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="mb-0"><i class="bi bi-box-seam me-2"></i>公司物资主库</h5>
+            <small class="text-muted">公司级统一维护的物资基础数据，所有项目共用</small>
+        </div>
+        <div>
+            <a href="{{ url_for('master.material_create') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i>新增物资
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('master.material_index') }}" id="searchForm">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" name="keyword"
+                       placeholder="搜索物资名称/编码" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" id="filterCatL1">
+                    <option value="">一级分类</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" id="filterCatL2" disabled>
+                    <option value="">二级分类</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" id="filterCatL3" disabled name="category_id">
+                    <option value="">三级分类</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    <option value="active" {% if status == 'active' %}selected{% endif %}>启用</option>
+                    <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>停用</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('master.material_index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>物资编码</th>
+                        <th>物资名称</th>
+                        <th>规格型号</th>
+                        <th>物资分类</th>
+                        <th>单位</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in pagination.items %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ m.code or '-' }}</span></td>
+                        <td>{{ m.name }}</td>
+                        <td>{{ m.specification or '-' }}</td>
+                        <td>
+                            {% if m.category %}
+                                <span class="badge bg-light text-dark">{{ m.category.category_code or '-' }}</span>
+                                {{ m.category.name }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ m.unit }}</td>
+                        <td>
+                            {% if m.status == 'active' %}
+                                <span class="badge bg-success">启用</span>
+                            {% else %}
+                                <span class="badge bg-secondary">停用</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('master.material_edit', id=m.id) }}" class="btn btn-sm btn-outline-primary" title="编辑">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('master.material_toggle_status', id=m.id) }}" class="d-inline"
+                                  onsubmit="return confirm('确定{% if m.status == 'active' %}停用{% else %}启用{% endif %}该物资？');">
+                                <button type="submit" class="btn btn-sm btn-outline-warning"
+                                        title="{% if m.status == 'active' %}停用{% else %}启用{% endif %}">
+                                    <i class="bi bi-{% if m.status == 'active' %}pause-circle{% else %}play-circle{% endif %}"></i>
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('master.material_delete', id=m.id) }}" class="d-inline"
+                                  onsubmit="return confirm('确定删除该物资？删除后不可恢复。');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_pagination.html' %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    // 公司级分类三级联动筛选
+    var API_BASE = '{{ url_for("master.category_index") }}'.replace(/\/$/, '');
+    var filterL1 = document.getElementById('filterCatL1');
+    var filterL2 = document.getElementById('filterCatL2');
+    var filterL3 = document.getElementById('filterCatL3');
+    var initialCategoryId = {{ category_id or 'null' }};
+
+    function fillSelect(selectEl, items, placeholder) {
+        selectEl.innerHTML = '';
+        var opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = placeholder || '-- 请选择 --';
+        selectEl.appendChild(opt);
+        items.forEach(function (item) {
+            var o = document.createElement('option');
+            o.value = item.id;
+            o.textContent = (item.category_code || '') + ' / ' + item.name;
+            selectEl.appendChild(o);
+        });
+    }
+
+    function loadChildren(parentId, selectEl, placeholder) {
+        return fetch(API_BASE + '/api/children/' + parentId)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                fillSelect(selectEl, data, placeholder);
+                return data;
+            });
+    }
+
+    filterL1.addEventListener('change', function () {
+        var pid = this.value;
+        filterL3.innerHTML = '<option value="">三级分类</option>';
+        filterL3.disabled = true;
+        if (!pid) {
+            filterL2.innerHTML = '<option value="">二级分类</option>';
+            filterL2.disabled = true;
+            return;
+        }
+        filterL2.disabled = false;
+        loadChildren(pid, filterL2, '二级分类');
+    });
+
+    filterL2.addEventListener('change', function () {
+        var pid = this.value;
+        if (!pid) {
+            filterL3.innerHTML = '<option value="">三级分类</option>';
+            filterL3.disabled = true;
+            return;
+        }
+        filterL3.disabled = false;
+        loadChildren(pid, filterL3, '三级分类');
+    });
+
+    // 初始化：加载一级分类
+    loadChildren(0, filterL1, '一级分类').then(function () {
+        if (!initialCategoryId) return;
+        fetch(API_BASE + '/api/tree')
+            .then(function (res) { return res.json(); })
+            .then(function (tree) {
+                var chain = findChain(tree, initialCategoryId);
+                if (!chain) return;
+                filterL1.value = chain.l1;
+                filterL1.dispatchEvent(new Event('change'));
+                loadChildren(chain.l1, filterL2, '二级分类').then(function () {
+                    filterL2.value = chain.l2;
+                    filterL2.dispatchEvent(new Event('change'));
+                    loadChildren(chain.l2, filterL3, '三级分类').then(function () {
+                        filterL3.value = chain.l3;
+                    });
+                });
+            });
+    });
+
+    function findChain(tree, targetId) {
+        for (var i = 0; i < tree.length; i++) {
+            var l1 = tree[i];
+            for (var j = 0; j < (l1.children || []).length; j++) {
+                var l2 = l1.children[j];
+                for (var k = 0; k < (l2.children || []).length; k++) {
+                    var l3 = l2.children[k];
+                    if (l3.id == targetId) {
+                        return { l1: l1.id, l2: l2.id, l3: l3.id };
+                    }
+                }
+            }
+        }
+        return null;
+    }
+})();
+</script>
+{% endblock %}

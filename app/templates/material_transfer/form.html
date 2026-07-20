@@ -109,11 +109,9 @@
                 </div>
             </div>
 
-            <hr class="my-4">
-
-            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i>{% if transfer %}保存修改{% else %}创建调拨单{% endif %}</button>
+            <div class="form-actions">
                 <a href="{{ url_for('material_transfer.index') }}" class="btn btn-secondary">返回</a>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i>{% if transfer %}保存修改{% else %}创建调拨单{% endif %}</button>
             </div>
         </form>
     </div>

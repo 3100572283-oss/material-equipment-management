@@ -1,0 +1,53 @@
+{
+    "name": "物资设备管理系统",
+    "short_name": "物资管理",
+    "description": "建筑工地物资设备移动端管理系统 - 入库出库、库存查询、盘点审批",
+    "start_url": "/mobile/",
+    "scope": "/mobile/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#ffffff",
+    "theme_color": "#165DFF",
+    "lang": "zh-CN",
+    "icons": [
+        {
+            "src": "/static/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/static/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/static/icons/icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "categories": ["business", "productivity", "utilities"],
+    "shortcuts": [
+        {
+            "name": "入库登记",
+            "short_name": "入库",
+            "url": "/mobile/stock-in/new",
+            "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]
+        },
+        {
+            "name": "出库登记",
+            "short_name": "出库",
+            "url": "/mobile/stock-out/new",
+            "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]
+        },
+        {
+            "name": "库存查询",
+            "short_name": "查询",
+            "url": "/mobile/inventory",
+            "icons": [{"src": "/static/icons/icon-192.png", "sizes": "192x192"}]
+        }
+    ]
+}

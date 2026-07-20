@@ -1,0 +1,201 @@
+{% extends "mobile/base.html" %}
+{% block title %}我的{% endblock %}
+{% block nav_title %}我的{% endblock %}
+{% block active_tab %}profile{% endblock %}
+
+{% block content %}
+<!-- 用户信息卡片 -->
+<div class="m-user-card">
+    <div class="avatar">
+        <i class="bi bi-person-circle"></i>
+    </div>
+    <div class="info">
+        <div class="name">{{ current_user.name or current_user.username }}</div>
+        <div class="role">{{ current_user.role_obj.role_name if current_user.role_obj else '普通用户' }}</div>
+        <div class="meta">
+            <i class="bi bi-person-badge"></i>
+            {{ current_user.username }}
+        </div>
+    </div>
+</div>
+
+<!-- 项目信息卡片 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-building"></i>项目信息</div>
+    <div class="m-info-row">
+        <div class="label">当前项目</div>
+        <div class="value">{% if project %}{{ project.name }}{% else %}未选择{% endif %}</div>
+    </div>
+    {% if current_user.dept %}
+    <div class="m-info-row">
+        <div class="label">所属部门</div>
+        <div class="value">{{ current_user.dept.dept_name }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 工作台 -->
+<div class="m-list-group">
+    <div class="m-list-header">工作台</div>
+    <a href="{{ url_for('mobile.approvals') }}" class="m-list-item">
+        <div class="icon orange"><i class="bi bi-clipboard-check"></i></div>
+        <div class="text">待我审批</div>
+        {% if pending_approval_count > 0 %}<span class="m-badge">{{ pending_approval_count }}</span>{% endif %}
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="{{ url_for('mobile.messages') }}" class="m-list-item">
+        <div class="icon blue"><i class="bi bi-bell"></i></div>
+        <div class="text">站内消息</div>
+        {% if unread_msg_count > 0 %}<span class="m-badge">{{ unread_msg_count }}</span>{% endif %}
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="{{ url_for('mobile.records', type='in') }}" class="m-list-item">
+        <div class="icon green"><i class="bi bi-clipboard-check"></i></div>
+        <div class="text">待质检入库</div>
+        {% if pending_qc > 0 %}<span class="m-badge">{{ pending_qc }}</span>{% endif %}
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+</div>
+
+<!-- 业务功能 -->
+<div class="m-list-group">
+    <div class="m-list-header">业务功能</div>
+    <a href="{{ url_for('mobile.records', type='in') }}" class="m-list-item">
+        <div class="icon green"><i class="bi bi-box-arrow-in-down"></i></div>
+        <div class="text">我提交的入库</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="{{ url_for('mobile.records', type='out') }}" class="m-list-item">
+        <div class="icon orange"><i class="bi bi-box-arrow-up"></i></div>
+        <div class="text">我提交的出库</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="{{ url_for('mobile.stock_check_list') }}" class="m-list-item">
+        <div class="icon purple"><i class="bi bi-clipboard-data"></i></div>
+        <div class="text">盘点单</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+</div>
+
+<!-- 离线与工具 -->
+<div class="m-list-group">
+    <div class="m-list-header">离线与工具</div>
+    <a href="{{ url_for('mobile.offline_data_new') }}" class="m-list-item">
+        <div class="icon gray"><i class="bi bi-cloud-arrow-down"></i></div>
+        <div class="text">离线数据</div>
+        <span id="offlineBadge" class="m-badge" style="display:none;">0</span>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="{{ url_for('mobile.steel_calc') }}" class="m-list-item">
+        <div class="icon gray"><i class="bi bi-calculator"></i></div>
+        <div class="text">钢材换算工具</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+</div>
+
+<!-- 项目切换 -->
+{% if visible_projects and visible_projects|length > 1 %}
+<div class="m-list-group">
+    <div class="m-list-header">项目切换</div>
+    {% for p in visible_projects %}
+    <a href="{{ url_for('mobile.switch_project', pid=p.id) }}" class="m-list-item">
+        <div class="icon {% if project and p.id == project.id %}active{% else %}purple{% endif %}"><i class="bi bi-building"></i></div>
+        <div class="text">
+            {{ p.name }}
+            {% if project and p.id == project.id %}
+            <span class="m-status-tag passed" style="margin-left:6px;">当前</span>
+            {% endif %}
+        </div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- 系统设置 -->
+<div class="m-list-group">
+    <a href="javascript:cycleTheme()" class="m-list-item">
+        <div class="icon gray"><i class="bi bi-moon-stars" id="themeIcon"></i></div>
+        <div class="text">外观主题</div>
+        <div class="value" id="themeValue" style="font-size:13px; color:#6c757d; margin-right:8px;">跟随系统</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="{{ url_for('mobile.change_password') }}" class="m-list-item">
+        <div class="icon gray"><i class="bi bi-key"></i></div>
+        <div class="text">修改密码</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="javascript:showAbout()" class="m-list-item">
+        <div class="icon gray"><i class="bi bi-info-circle"></i></div>
+        <div class="text">关于系统</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="javascript:confirmLogout()" class="m-list-item">
+        <div class="icon red"><i class="bi bi-box-arrow-right"></i></div>
+        <div class="text">退出登录</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ========== 主题切换（在 profile 页同步显示状态） ==========
+function cycleTheme(){
+    var cur = localStorage.getItem('m_theme_mode') || 'auto';
+    var next = cur === 'auto' ? 'dark' : (cur === 'dark' ? 'light' : 'auto');
+    localStorage.setItem('m_theme_mode', next);
+    if (window.applyTheme) window.applyTheme(next);
+    updateThemeDisplay();
+    var label = next === 'auto' ? '跟随系统' : (next === 'dark' ? '深色模式' : '浅色模式');
+    M.toast('已切换：' + label, 'info');
+}
+
+function updateThemeDisplay(){
+    var mode = localStorage.getItem('m_theme_mode') || 'auto';
+    var label = mode === 'auto' ? '跟随系统' : (mode === 'dark' ? '深色' : '浅色');
+    var val = document.getElementById('themeValue');
+    if (val) val.textContent = label;
+    var icon = document.getElementById('themeIcon');
+    if (icon) {
+        var isDark = document.documentElement.classList.contains('dark');
+        icon.className = isDark ? 'bi bi-sun' : 'bi bi-moon-stars';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', updateThemeDisplay);
+
+// 加载离线待同步数量
+function loadOfflineCount(){
+    if (!window.MobileOffline) return;
+    Promise.all([
+        MobileOffline.count(MobileOffline.STORE_STOCK_IN, 'pending'),
+        MobileOffline.count(MobileOffline.STORE_STOCK_OUT, 'pending')
+    ]).then(function(arr){
+        var total = (arr[0] || 0) + (arr[1] || 0);
+        var badge = document.getElementById('offlineBadge');
+        if (badge) {
+            if (total > 0) {
+                badge.textContent = total;
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    }).catch(function(){});
+}
+
+function confirmLogout() {
+    M.confirm('确认退出登录？', function() {
+        window.location.href = "{{ url_for('mobile.logout') }}";
+    });
+}
+
+function showAbout() {
+    M.confirm('物资设备管理系统 v1.0\n\n移动端入口 v2.0（第二期）\n功能：扫码录入 / 离线录入 / 语音录入 / 盘点 / 审批 / 站内消息 / 钢材换算 / 签字\n\n本系统使用 Flask + SQLite 构建，所有数据与PC端实时同步。',
+        function() {});
+}
+
+document.addEventListener('DOMContentLoaded', loadOfflineCount);
+</script>
+{% endblock %}

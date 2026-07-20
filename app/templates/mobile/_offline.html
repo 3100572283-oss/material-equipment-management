@@ -1,0 +1,213 @@
+{# 移动端离线存储组件 - IndexedDB 封装 #}
+{# 提供：MobileOffline DB 工具 + 在线/离线状态栏 #}
+{# 用法：{% include 'mobile/_offline.html' %} #}
+<style>
+.m-net-status {
+    position: sticky; top: 44px; z-index: 100;
+    padding: 6px 16px;
+    font-size: 12px; text-align: center;
+    transition: all 0.3s;
+}
+.m-net-status.offline {
+    background: #fff3cd; color: #664d03;
+    border-bottom: 1px solid #ffecb5;
+}
+.m-net-status.online {
+    background: #d1e7dd; color: #0f5132;
+    border-bottom: 1px solid #badbcc;
+    display: none;
+}
+.m-net-status .icon { margin-right: 4px; }
+</style>
+
+<div class="m-net-status offline" id="mNetStatusOffline">
+    <i class="bi bi-wifi-off icon"></i>
+    <span>离线模式 · 数据将保存在本地，恢复网络后可同步</span>
+</div>
+<div class="m-net-status online" id="mNetStatusOnline">
+    <i class="bi bi-wifi icon"></i>
+    <span>网络已恢复</span>
+</div>
+
+<script>
+window.MobileOffline = (function(){
+    var DB_NAME = 'material_mgmt_offline';
+    var DB_VERSION = 1;
+    var STORE_STOCK_IN = 'stock_in';
+    var STORE_STOCK_OUT = 'stock_out';
+    var db = null;
+
+    function openDB(){
+        return new Promise(function(resolve, reject){
+            if (db) return resolve(db);
+            if (!window.indexedDB) {
+                reject(new Error('浏览器不支持 IndexedDB'));
+                return;
+            }
+            var req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onupgradeneeded = function(e){
+                var d = e.target.result;
+                if (!d.objectStoreNames.contains(STORE_STOCK_IN)) {
+                    var s1 = d.createObjectStore(STORE_STOCK_IN, { keyPath: 'uuid' });
+                    s1.createIndex('status', 'status', { unique: false });
+                    s1.createIndex('created_at', 'created_at', { unique: false });
+                }
+                if (!d.objectStoreNames.contains(STORE_STOCK_OUT)) {
+                    var s2 = d.createObjectStore(STORE_STOCK_OUT, { keyPath: 'uuid' });
+                    s2.createIndex('status', 'status', { unique: false });
+                    s2.createIndex('created_at', 'created_at', { unique: false });
+                }
+            };
+            req.onsuccess = function(e){ db = e.target.result; resolve(db); };
+            req.onerror = function(e){ reject(e.target.error); };
+        });
+    }
+
+    function genUuid(){
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+            var r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+    }
+
+    function save(storeName, data){
+        return openDB().then(function(d){
+            return new Promise(function(resolve, reject){
+                if (!data.uuid) data.uuid = genUuid();
+                if (!data.created_at) data.created_at = Date.now();
+                if (!data.status) data.status = 'pending';  // pending / syncing / synced / failed
+                var tx = d.transaction([storeName], 'readwrite');
+                var store = tx.objectStore(storeName);
+                store.put(data);
+                tx.oncomplete = function(){ resolve(data); };
+                tx.onerror = function(e){ reject(e.target.error); };
+            });
+        });
+    }
+
+    function list(storeName, status){
+        return openDB().then(function(d){
+            return new Promise(function(resolve, reject){
+                var tx = d.transaction([storeName], 'readonly');
+                var store = tx.objectStore(storeName);
+                var req;
+                if (status) {
+                    var idx = store.index('status');
+                    req = idx.getAll(status);
+                } else {
+                    req = store.getAll();
+                }
+                req.onsuccess = function(){ resolve(req.result || []); };
+                req.onerror = function(e){ reject(e.target.error); };
+            });
+        });
+    }
+
+    function remove(storeName, uuid){
+        return openDB().then(function(d){
+            return new Promise(function(resolve, reject){
+                var tx = d.transaction([storeName], 'readwrite');
+                tx.objectStore(storeName).delete(uuid);
+                tx.oncomplete = function(){ resolve(true); };
+                tx.onerror = function(e){ reject(e.target.error); };
+            });
+        });
+    }
+
+    function updateStatus(storeName, uuid, status){
+        return openDB().then(function(d){
+            return new Promise(function(resolve, reject){
+                var tx = d.transaction([storeName], 'readwrite');
+                var store = tx.objectStore(storeName);
+                var getReq = store.get(uuid);
+                getReq.onsuccess = function(){
+                    var data = getReq.result;
+                    if (!data) return resolve(false);
+                    data.status = status;
+                    data.updated_at = Date.now();
+                    store.put(data);
+                };
+                tx.oncomplete = function(){ resolve(true); };
+                tx.onerror = function(e){ reject(e.target.error); };
+            });
+        });
+    }
+
+    function count(storeName, status){
+        return openDB().then(function(d){
+            return new Promise(function(resolve, reject){
+                var tx = d.transaction([storeName], 'readonly');
+                var store = tx.objectStore(storeName);
+                var idx = store.index('status');
+                var req = status ? idx.count(status) : store.count();
+                req.onsuccess = function(){ resolve(req.result || 0); };
+                req.onerror = function(e){ reject(e.target.error); };
+            });
+        });
+    }
+
+    function clearOld(days){
+        // 清理 N 天前已同步的数据
+        var cutoff = Date.now() - days * 86400 * 1000;
+        return Promise.all([
+            clearBefore(STORE_STOCK_IN, cutoff),
+            clearBefore(STORE_STOCK_OUT, cutoff)
+        ]);
+    }
+
+    function clearBefore(storeName, cutoff){
+        return openDB().then(function(d){
+            return new Promise(function(resolve){
+                var tx = d.transaction([storeName], 'readwrite');
+                var store = tx.objectStore(storeName);
+                var idx = store.index('status');
+                var req = idx.getAll('synced');
+                req.onsuccess = function(){
+                    var items = req.result || [];
+                    items.forEach(function(it){
+                        if (it.created_at < cutoff) store.delete(it.uuid);
+                    });
+                };
+                tx.oncomplete = function(){ resolve(true); };
+                tx.onerror = function(){ resolve(false); };
+            });
+        });
+    }
+
+    return {
+        STORE_STOCK_IN: STORE_STOCK_IN,
+        STORE_STOCK_OUT: STORE_STOCK_OUT,
+        save: save,
+        list: list,
+        remove: remove,
+        updateStatus: updateStatus,
+        count: count,
+        clearOld: clearOld,
+        isOnline: function(){ return navigator.onLine; }
+    };
+})();
+
+// ========== 网络状态监听 ==========
+function updateNetStatus(){
+    var offEl = document.getElementById('mNetStatusOffline');
+    var onEl = document.getElementById('mNetStatusOnline');
+    if (!offEl || !onEl) return;
+    if (navigator.onLine) {
+        offEl.style.display = 'none';
+        onEl.style.display = 'block';
+        setTimeout(function(){ onEl.style.display = 'none'; }, 3000);
+    } else {
+        offEl.style.display = 'block';
+        onEl.style.display = 'none';
+    }
+}
+window.addEventListener('online', function(){
+    updateNetStatus();
+    if (window.M && M.toast) M.toast('网络已恢复，可同步离线数据', 'success');
+});
+window.addEventListener('offline', function(){
+    updateNetStatus();
+    if (window.M && M.toast) M.toast('已切换到离线模式', 'warning');
+});
+document.addEventListener('DOMContentLoaded', updateNetStatus);
+</script>

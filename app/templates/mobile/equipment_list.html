@@ -1,0 +1,137 @@
+{% extends "mobile/base.html" %}
+{% block title %}设备台账{% endblock %}
+{% block nav_title %}设备台账{% endblock %}
+
+{% block content %}
+<!-- 搜索框 -->
+<div class="m-card" style="padding:12px 16px;">
+    <form method="GET" action="{{ url_for('mobile.equipment_list') }}" style="display:flex; gap:8px;">
+        <input type="text" name="keyword" value="{{ keyword }}"
+               class="m-form-control" placeholder="设备名称/编号"
+               style="flex:1;" autofocus>
+        <button type="button" class="m-btn m-btn-outline" style="width:44px; padding:0;font-size:18px;"
+                onclick="scanSearch()">
+            <i class="bi bi-qr-code-scan"></i>
+        </button>
+        <button type="submit" class="m-btn m-btn-primary" style="width:60px; padding:0;">
+            <i class="bi bi-search"></i>
+        </button>
+    </form>
+</div>
+
+<!-- 统计 -->
+<div class="m-card" style="padding:10px 16px;">
+    <div style="display:flex; gap:6px; flex-wrap:wrap; font-size:12px;">
+        <span class="m-status-tag" style="background:#e7f5ff;color:#1971c2;">共 {{ stats.total }}</span>
+        <span class="m-status-tag" style="background:#d3f9d8;color:#2b8a3e;">在用 {{ stats.in_use }}</span>
+        <span class="m-status-tag" style="background:#fff3bf;color:#f08c00;">闲置 {{ stats.idle }}</span>
+        <span class="m-status-tag" style="background:#ffe0e0;color:#c92a2a;">维修 {{ stats.repairing }}</span>
+        <span class="m-status-tag" style="background:#f1f3f5;color:#495057;">退场 {{ stats.exited }}</span>
+    </div>
+</div>
+
+<!-- 状态筛选 -->
+<div class="m-card" style="padding:8px 12px;">
+    <div style="display:flex; gap:6px; overflow-x:auto; white-space:nowrap;">
+        <a href="{{ url_for('mobile.equipment_list') }}{% if keyword %}?keyword={{ keyword }}{% endif %}"
+           class="m-chip {% if not status %}active{% endif %}">全部</a>
+        {% for item in status_items %}
+        <a href="{{ url_for('mobile.equipment_list') }}?status={{ item.value }}{% if keyword %}&keyword={{ keyword }}{% endif %}"
+           class="m-chip {% if status == item.value %}active{% endif %}">{{ item.label }}</a>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- 列表 -->
+<div id="listContainer">
+    {% if items %}
+    <div class="m-list-summary">共 {{ items|length }} 条</div>
+    {% for e in items %}
+    <div class="m-record-card" onclick="location.href='{{ url_for('mobile.equipment_detail', eid=e.id) }}'" style="cursor:pointer;">
+        <div class="header">
+            <span class="code">{{ e.code }}</span>
+            <span class="date">{{ e.created_at.strftime('%Y-%m-%d') if e.created_at else '-' }}</span>
+        </div>
+        <div class="party">
+            <i class="bi bi-truck"></i>
+            {{ e.name }}
+            {% if e.specification %}<span style="color:#6c757d;font-size:12px;"> · {{ e.specification }}</span>{% endif %}
+        </div>
+        <div class="items-summary">
+            <div class="total">
+                {% if e.source_type == 'self' %}自有设备
+                {% elif e.source_type == 'rent' %}租赁设备{% if e.supplier %}（{{ e.supplier.name }}）{% endif %}
+                {% elif e.source_type == 'labor' %}劳务队自带{% if e.labor_team %}（{{ e.labor_team }}）{% endif %}
+                {% endif %}
+                {% if e.location %} · 位置：{{ e.location }}{% endif %}
+            </div>
+        </div>
+        <div class="footer">
+            <span class="status-tag
+                {% if e.status == 'in_use' %}passed
+                {% elif e.status == 'idle' %}pending
+                {% elif e.status == 'repairing' %}rejected
+                {% elif e.status == 'exited' %}draft
+                {% endif %}">
+                {% for item in status_items %}
+                {% if item.value == e.status %}{{ item.label }}{% endif %}
+                {% endfor %}
+            </span>
+            {% if e.entry_date %}
+            <span class="qc-tag pending">进场：{{ e.entry_date.strftime('%Y-%m-%d') }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-truck"></i>
+        <div>{% if keyword %}未找到匹配的设备{% else %}当前项目暂无设备{% endif %}</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 新增按钮 -->
+<a href="{{ url_for('mobile.equipment_create') }}" class="m-fab-btn">
+    <i class="bi bi-plus-lg"></i>
+</a>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function scanSearch(){
+    MobileScanner.open(function(code){
+        window.location.href = "{{ url_for('mobile.scan_redirect') }}?code=" + encodeURIComponent(code);
+    });
+}
+
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){ window.location.reload(); done(); }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}
+
+<style>
+.m-chip {
+    display:inline-block;
+    padding:4px 12px;
+    border-radius:14px;
+    background:#f1f3f5;
+    color:#495057;
+    font-size:12px;
+    flex:0 0 auto;
+}
+.m-chip.active { background:#165DFF; color:#fff; }
+.m-fab-btn {
+    position:fixed; right:18px; bottom:70px;
+    width:52px; height:52px; border-radius:50%;
+    background:#165DFF; color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:24px; box-shadow:0 4px 12px rgba(22,93,255,0.4);
+    z-index:99;
+}
+</style>

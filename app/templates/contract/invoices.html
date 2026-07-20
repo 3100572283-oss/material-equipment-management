@@ -7,7 +7,7 @@
         <div>
             <a href="{{ url_for('contract.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>合同台账</a>
             {% if current_user.can_edit() %}
-            <a href="{{ url_for('contract.create_invoice') }}" class="btn btn-primary btn-sm ms-2"><i class="bi bi-plus-lg me-1"></i>新增发票</a>
+            <a href="{{ url_for('contract.create_invoice') }}" class="btn btn-primary ms-2"><i class="bi bi-plus-lg me-1"></i>新增发票</a>
             {% endif %}
         </div>
     </div>
@@ -56,7 +56,7 @@
                         <td>{{ inv.invoice_code or '-' }}</td>
                         <td>{{ inv.invoice_number or '-' }}</td>
                         <td>{{ inv.invoice_date or '-' }}</td>
-                        <td>{% if inv.contract %}<a href="{{ url_for('contract.detail', id=inv.contract_id) }}">{{ inv.contract.code }}</a>{% else %}-{% endif %}</td>
+                        <td>{% if inv.contract %}<a href="{{ url_for('contract.detail', id=inv.contract_id) }}?from=invoice_list&from_id={{ inv.id }}">{{ inv.contract.code }}</a>{% else %}-{% endif %}</td>
                         <td>{{ inv.supplier.name if inv.supplier else '-' }}</td>
                         <td class="text-end fw-bold">{{ '%.2f'|format(inv.amount_with_tax or 0) }}</td>
                         <td class="text-end">{{ '%.2f'|format(inv.amount_without_tax or 0) }}</td>

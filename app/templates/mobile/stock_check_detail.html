@@ -1,0 +1,324 @@
+{% extends "mobile/base.html" %}
+{% block title %}盘点详情{% endblock %}
+{% block nav_title %}盘点详情{% endblock %}
+
+{% block content %}
+<!-- 盘点单基本信息 -->
+<div class="m-card">
+    <div class="m-card-title">
+        <i class="bi bi-clipboard-check"></i>{{ check.check_no }}
+    </div>
+    <div class="m-info-row">
+        <div class="label">盘点日期</div>
+        <div class="value">{{ check.check_date }}</div>
+    </div>
+    <div class="m-info-row">
+        <div class="label">盘点类型</div>
+        <div class="value">{% if check.check_type == 'full' %}全盘{% else %}分类盘点{% endif %}</div>
+    </div>
+    {% if check.checker %}
+    <div class="m-info-row">
+        <div class="label">盘点人</div>
+        <div class="value">{{ check.checker }}</div>
+    </div>
+    {% endif %}
+    {% if check.remark %}
+    <div class="m-info-row">
+        <div class="label">备注</div>
+        <div class="value">{{ check.remark }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 盘点进度 -->
+<div class="m-card">
+    <div class="m-info-row" style="border-bottom:none; padding-bottom:6px;">
+        <div class="label">盘点进度</div>
+        <div class="value"><span id="filledCount">0</span> / <span id="totalCount">{{ items|length }}</span> 种</div>
+    </div>
+    <div style="background:#f1f3f5; border-radius:4px; height:8px; overflow:hidden;">
+        <div id="progressBar" style="background:#165DFF; height:100%; width:0%; transition:width 0.3s;"></div>
+    </div>
+    <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="m-btn m-btn-outline-primary m-btn-sm" onclick="scanToLocate()">
+            <i class="bi bi-qr-code-scan"></i> 扫码定位
+        </button>
+        <button type="button" class="m-btn m-btn-success m-btn-sm" onclick="saveAll()" {% if check.status == 'confirmed' %}disabled{% endif %}>
+            <i class="bi bi-save"></i> 保存
+        </button>
+        {% if check.status != 'confirmed' %}
+        <button type="button" class="m-btn m-btn-warning m-btn-sm" onclick="confirmCheck()">
+            <i class="bi bi-check2-circle"></i> 确认盘点
+        </button>
+        {% endif %}
+    </div>
+    {% if check.status == 'confirmed' %}
+    <div style="margin-top:8px; color:#198754; font-size:13px;">
+        <i class="bi bi-check-circle-fill"></i> 盘点已完成，库存已调整
+    </div>
+    {% endif %}
+</div>
+
+<!-- 物资明细列表 -->
+<div id="itemList">
+    {% for it in items %}
+    <div class="m-check-item" data-item-id="{{ it.id }}" data-material-code="{{ it.material.code if it.material else '' }}" data-material-name="{{ it.material_name|lower }}">
+        <div class="m-check-header">
+            <span class="m-check-name">{{ it.material_name }}</span>
+            <span class="m-check-code">{{ it.material.code if it.material else '-' }}</span>
+        </div>
+        <div class="m-check-meta">
+            <span>{{ it.specification or '-' }}</span>
+            <span class="sep">·</span>
+            <span>{{ it.unit or '-' }}</span>
+        </div>
+        <div class="m-check-row">
+            <div class="m-check-label">账面：</div>
+            <div class="m-check-book">{{ '%.3f'|format(it.book_qty|float) }}</div>
+        </div>
+        <div class="m-check-row">
+            <div class="m-check-label">实盘：</div>
+            <input type="number" step="0.001" min="0" class="m-form-control m-check-actual"
+                   value="{% if it.actual_qty is not none %}{{ it.actual_qty }}{% endif %}"
+                   placeholder="输入实盘数量"
+                   data-item-id="{{ it.id }}"
+                   oninput="onActualInput(this, {{ it.id }})"
+                   {% if check.status == 'confirmed' %}disabled{% endif %}>
+        </div>
+        <div class="m-check-row">
+            <div class="m-check-label">差异：</div>
+            <div class="m-check-diff" id="diff_{{ it.id }}">-</div>
+        </div>
+        <div class="m-check-reason" id="reason_row_{{ it.id }}" style="display:none;">
+            <input type="text" class="m-form-control" placeholder="差异原因（可选）"
+                   value="{{ it.diff_reason or '' }}"
+                   data-item-id="{{ it.id }}"
+                   oninput="onReasonInput(this, {{ it.id }})"
+                   {% if check.status == 'confirmed' %}disabled{% endif %}>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+.m-check-item {
+    background:#fff; margin:8px 12px; padding:12px;
+    border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.06);
+}
+.m-check-header {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:4px;
+}
+.m-check-name { font-size:15px; font-weight:600; color:#212529; flex:1; }
+.m-check-code { font-size:12px; color:#6c757d; }
+.m-check-meta {
+    font-size:12px; color:#6c757d; margin-bottom:8px;
+}
+.m-check-meta .sep { margin:0 4px; }
+.m-check-row {
+    display:flex; align-items:center; margin-top:6px;
+}
+.m-check-label { width:60px; font-size:13px; color:#6c757d; }
+.m-check-book { font-size:14px; color:#495057; font-weight:600; }
+.m-check-actual {
+    flex:1; height:38px; padding:0 10px;
+    font-size:15px; font-weight:600;
+}
+.m-check-diff { font-size:15px; font-weight:700; }
+.m-check-diff.pos { color:#198754; }
+.m-check-diff.neg { color:#dc3545; }
+.m-check-diff.zero { color:#6c757d; }
+.m-check-reason { margin-top:6px; }
+.m-check-item.scanned {
+    border:2px solid #165DFF;
+    background:#f0f5ff;
+    animation: flash 0.6s ease-out;
+}
+@keyframes flash {
+    0% { background:#165DFF; }
+    100% { background:#f0f5ff; }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var checkId = {{ check.id }};
+var isConfirmed = {{ 'true' if check.status == 'confirmed' else 'false' }};
+var actualMap = {};  // item_id -> actual_qty
+var reasonMap = {};  // item_id -> diff_reason
+
+// 初始化数据
+{% for it in items %}
+actualMap[{{ it.id }}] = {% if it.actual_qty is not none %}{{ it.actual_qty }}{% else %}null{% endif %};
+reasonMap[{{ it.id }}] = {{ (it.diff_reason or '')|tojson }};
+{% endfor %}
+
+function calcDiff(itemId){
+    var actual = actualMap[itemId];
+    var bookEl = document.querySelector('.m-check-item[data-item-id="'+itemId+'"] .m-check-book');
+    if (!bookEl) return;
+    var book = parseFloat(bookEl.textContent) || 0;
+    var diffEl = document.getElementById('diff_'+itemId);
+    var reasonRow = document.getElementById('reason_row_'+itemId);
+    if (actual === null || actual === '' || isNaN(actual)) {
+        diffEl.textContent = '-';
+        diffEl.className = 'm-check-diff';
+        if (reasonRow) reasonRow.style.display = 'none';
+        return;
+    }
+    var diff = (parseFloat(actual) - book);
+    diffEl.textContent = (diff >= 0 ? '+' : '') + diff.toFixed(3);
+    diffEl.className = 'm-check-diff ' + (diff > 0 ? 'pos' : (diff < 0 ? 'neg' : 'zero'));
+    if (reasonRow) reasonRow.style.display = (Math.abs(diff) > 0.001) ? 'block' : 'none';
+}
+
+function onActualInput(input, itemId){
+    var val = input.value.trim();
+    actualMap[itemId] = (val === '' || isNaN(parseFloat(val))) ? null : parseFloat(val);
+    calcDiff(itemId);
+    updateProgress();
+}
+
+function onReasonInput(input, itemId){
+    reasonMap[itemId] = input.value;
+}
+
+function updateProgress(){
+    var total = {{ items|length }};
+    var filled = 0;
+    for (var k in actualMap) {
+        if (actualMap[k] !== null && actualMap[k] !== '' && !isNaN(actualMap[k])) filled++;
+    }
+    document.getElementById('filledCount').textContent = filled;
+    var pct = total > 0 ? (filled / total * 100) : 0;
+    document.getElementById('progressBar').style.width = pct + '%';
+}
+
+// 初始化所有差异和进度
+{% for it in items %}
+calcDiff({{ it.id }});
+{% endfor %}
+updateProgress();
+
+// 扫码定位
+function scanToLocate(){
+    MobileScanner.open(function(code){
+        var target = null;
+        // 按编码或名称匹配
+        var items = document.querySelectorAll('.m-check-item');
+        for (var i=0; i<items.length; i++) {
+            var mCode = items[i].getAttribute('data-material-code') || '';
+            var mName = items[i].getAttribute('data-material-name') || '';
+            if (mCode === code || mCode.indexOf(code) >= 0 || code.indexOf(mCode) >= 0 ||
+                (mName && code.toLowerCase().indexOf(mName) >= 0)) {
+                target = items[i];
+                break;
+            }
+        }
+        if (target) {
+            target.scrollIntoView({behavior:'smooth', block:'center'});
+            target.classList.add('scanned');
+            setTimeout(function(){ target.classList.remove('scanned'); }, 1500);
+            var actualInput = target.querySelector('.m-check-actual');
+            if (actualInput && !isConfirmed) {
+                actualInput.focus();
+                M.toast('已定位，请输入实盘数量', 'success');
+            }
+            if (navigator.vibrate) navigator.vibrate(150);
+        } else {
+            M.toast('未找到对应物资，请检查编码：' + code, 'warning');
+        }
+    });
+}
+
+// 保存所有
+function saveAll(){
+    if (isConfirmed) { M.toast('盘点已完成，不能修改', 'warning'); return; }
+    var formData = new FormData();
+    var count = 0;
+    {% for it in items %}
+    formData.append('item_id[]', {{ it.id }});
+    formData.append('actual_qty[]', actualMap[{{ it.id }}] === null ? '' : actualMap[{{ it.id }}]);
+    formData.append('diff_reason[]', reasonMap[{{ it.id }}] || '');
+    count++;
+    {% endfor %}
+
+    M.loading(true);
+    fetch('{{ url_for("mobile.stock_check_save", check_id=check.id) }}', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+    }).then(function(r){ return r.json(); }).then(function(data){
+        M.loading(false);
+        if (data.success) {
+            M.toast('保存成功（'+data.saved+'条）', 'success');
+            if (data.all_filled) {
+                M.confirm('所有物资已盘完，是否确认盘点？\n确认后将自动调整库存。', function(){
+                    confirmCheck();
+                });
+            }
+        } else {
+            M.toast('保存失败：' + (data.msg || '未知错误'), 'danger');
+        }
+    }).catch(function(err){
+        M.loading(false);
+        M.toast('保存失败：' + err, 'danger');
+    });
+}
+
+// 确认盘点
+function confirmCheck(){
+    if (isConfirmed) { M.toast('盘点已完成', 'warning'); return; }
+    var filled = parseInt(document.getElementById('filledCount').textContent) || 0;
+    var total = {{ items|length }};
+    if (filled < total) {
+        M.confirm('还有 '+(total-filled)+' 种物资未盘完，确认继续吗？\n未盘物资将按账面数量处理。', function(){
+            doConfirm();
+        });
+    } else {
+        doConfirm();
+    }
+}
+
+function doConfirm(){
+    // 先保存再确认
+    saveAllAsync().then(function(saved){
+        M.loading(true);
+        return fetch('{{ url_for("mobile.stock_check_confirm", check_id=check.id) }}', {
+            method: 'POST',
+            credentials: 'same-origin'
+        }).then(function(r){ return r.json(); });
+    }).then(function(data){
+        M.loading(false);
+        if (data.success) {
+            M.toast('盘点已完成，库存已调整', 'success');
+            setTimeout(function(){ location.reload(); }, 1000);
+        } else {
+            M.toast('确认失败：' + (data.msg || '未知错误'), 'danger');
+        }
+    }).catch(function(err){
+        M.loading(false);
+        M.toast('操作失败：' + err, 'danger');
+    });
+}
+
+function saveAllAsync(){
+    return new Promise(function(resolve, reject){
+        var formData = new FormData();
+        {% for it in items %}
+        formData.append('item_id[]', {{ it.id }});
+        formData.append('actual_qty[]', actualMap[{{ it.id }}] === null ? '' : actualMap[{{ it.id }}]);
+        formData.append('diff_reason[]', reasonMap[{{ it.id }}] || '');
+        {% endfor %}
+        fetch('{{ url_for("mobile.stock_check_save", check_id=check.id) }}', {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        }).then(function(r){ return r.json(); }).then(function(data){
+            if (data.success) resolve(data); else reject(data.msg || '保存失败');
+        }).catch(reject);
+    });
+}
+</script>
+{% endblock %}

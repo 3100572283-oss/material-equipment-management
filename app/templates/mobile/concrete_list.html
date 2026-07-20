@@ -1,0 +1,176 @@
+{% extends "mobile/base.html" %}
+{% block title %}商砼小票{% endblock %}
+{% block nav_title %}商砼小票{% endblock %}
+
+{% block content %}
+<!-- 查询分类切换 -->
+<div class="m-card" style="padding:8px 12px;">
+    <div style="display:flex; gap:6px; overflow-x:auto; white-space:nowrap;">
+        <a href="{{ url_for('mobile.inventory') }}" class="m-chip">
+            <i class="bi bi-box"></i> 物资库存
+        </a>
+        <a href="{{ url_for('mobile.equipment_list') }}" class="m-chip">
+            <i class="bi bi-truck"></i> 设备台账
+        </a>
+        <a href="{{ url_for('mobile.turnover_list') }}" class="m-chip">
+            <i class="bi bi-box-seam"></i> 周转材台账
+        </a>
+        <a href="{{ url_for('mobile.inspection_records') }}" class="m-chip">
+            <i class="bi bi-clipboard-check"></i> 巡检记录
+        </a>
+        <a href="{{ url_for('mobile.concrete_list') }}" class="m-chip active">
+            <i class="bi bi-receipt"></i> 商砼记录
+        </a>
+    </div>
+</div>
+
+<!-- 今日统计 -->
+<div class="m-card" style="padding:12px 16px;">
+    <div class="m-card-title" style="margin-bottom:8px;">
+        <i class="bi bi-graph-up"></i>今日概览
+    </div>
+    <div class="m-stat-row">
+        <div class="m-stat-card in">
+            <div class="label">今日车次</div>
+            <div class="value">{{ today_count }} 车</div>
+            <div class="sub">{{ today_count }} 笔登记</div>
+        </div>
+        <div class="m-stat-card out">
+            <div class="label">今日方量</div>
+            <div class="value">{{ '%.2f'|format(today_volume) }}</div>
+            <div class="sub">单位 m³</div>
+        </div>
+    </div>
+</div>
+
+<!-- 筛选表单 -->
+<div class="m-card" style="padding:12px 16px;">
+    <form method="GET" action="{{ url_for('mobile.concrete_list') }}" id="filterForm">
+        <div class="m-form-group" style="margin-bottom:8px;">
+            <label class="m-form-label">日期范围</label>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <input type="date" name="start_date" value="{{ start_date }}" class="m-form-control" style="flex:1;">
+                <span style="color:#adb5bd;">~</span>
+                <input type="date" name="end_date" value="{{ end_date }}" class="m-form-control" style="flex:1;">
+            </div>
+        </div>
+        <div class="m-form-group" style="margin-bottom:8px;">
+            <label class="m-form-label">砼标号</label>
+            <select name="strength_grade" class="m-form-select" onchange="document.getElementById('filterForm').submit()">
+                <option value="">全部</option>
+                {% for g in strength_grades %}
+                <option value="{{ g }}" {% if strength_grade == g %}selected{% endif %}>{{ g }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="m-form-group" style="margin-bottom:0;">
+            <label class="m-form-label">对账状态</label>
+            <div style="display:flex; gap:6px;">
+                <a href="javascript:applyReconciled('')" class="m-chip {% if not is_reconciled %}active{% endif %}">全部</a>
+                <a href="javascript:applyReconciled('0')" class="m-chip {% if is_reconciled == '0' %}active{% endif %}">待对账</a>
+                <a href="javascript:applyReconciled('1')" class="m-chip {% if is_reconciled == '1' %}active{% endif %}">已对账</a>
+            </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+            <button type="submit" class="m-btn m-btn-primary" style="flex:1;">
+                <i class="bi bi-search"></i> 查询
+            </button>
+            <a href="{{ url_for('mobile.concrete_list') }}" class="m-btn m-btn-outline" style="flex:0 0 auto;">
+                <i class="bi bi-arrow-clockwise"></i>
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- 列表 -->
+<div id="listContainer">
+    {% if tickets %}
+    <div class="m-list-summary">
+        共 {{ tickets|length }} 条
+        {% if start_date or end_date %}（{{ start_date or '起' }} ~ {{ end_date or '今' }}）{% endif %}
+    </div>
+
+    {% for t in tickets %}
+    <div class="m-record-card" onclick="location.href='{{ url_for('mobile.concrete_detail', tid=t.id) }}'" style="cursor:pointer;">
+        <div class="header">
+            <span class="code">{{ t.ticket_no }}</span>
+            <span class="date">{{ t.arrival_time.strftime('%m-%d %H:%M') if t.arrival_time else '-' }}</span>
+        </div>
+        <div class="party">
+            <i class="bi bi-receipt"></i>
+            {% if t.strength_grade %}<strong>{{ t.strength_grade }}</strong>{% else %}-{% endif %}
+            {% if t.vehicle_no %} · 车号 {{ t.vehicle_no }}{% endif %}
+            {% if t.supplier_name or t.supplier %} · {{ t.supplier_name or t.supplier.name }}{% endif %}
+        </div>
+        <div class="items-summary">
+            <div class="total">
+                方量 <strong>{{ '%.2f'|format(t.volume|float) }}</strong> m³
+                {% if t.vehicle_count %} · {{ t.vehicle_count }} 车{% endif %}
+                {% if t.pour_part %} · 浇筑：{{ t.pour_part }}{% endif %}
+            </div>
+        </div>
+        <div class="footer">
+            {% if t.is_transferred %}
+            <span class="m-status-tag passed">已转入库</span>
+            {% elif t.is_reconciled %}
+            <span class="m-status-tag passed">已对账</span>
+            {% else %}
+            <span class="m-status-tag pending">待对账</span>
+            {% endif %}
+            {% if t.driver_name %}
+            <span class="qc-tag pending">司机 {{ t.driver_name }}</span>
+            {% endif %}
+            {% if t.work_number %}
+            <span class="qc-tag passed">{{ t.work_number.code }}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-receipt"></i>
+        <div>暂无商砼小票</div>
+        <div style="font-size:12px; color:#adb5bd; margin-top:6px;">点击右下角"+"开始登记</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 新增按钮 -->
+<a href="{{ url_for('mobile.concrete_create') }}" class="m-fab-btn">
+    <i class="bi bi-plus-lg"></i>
+</a>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function applyReconciled(val){
+    var f = document.getElementById('filterForm');
+    var url = "{{ url_for('mobile.concrete_list') }}";
+    var params = [];
+    if (f.start_date.value) params.push('start_date=' + f.start_date.value);
+    if (f.end_date.value) params.push('end_date=' + f.end_date.value);
+    if (f.strength_grade.value) params.push('strength_grade=' + f.strength_grade.value);
+    if (val) params.push('is_reconciled=' + val);
+    window.location.href = url + (params.length ? '?' + params.join('&') : '');
+}
+
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){ window.location.reload(); done(); }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}
+
+<style>
+.m-fab-btn {
+    position:fixed; right:18px; bottom:70px;
+    width:52px; height:52px; border-radius:50%;
+    background:linear-gradient(135deg,#4dabf7,#1c7ed6); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:24px; box-shadow:0 4px 12px rgba(29,126,214,0.4);
+    z-index:99; text-decoration:none;
+}
+</style>

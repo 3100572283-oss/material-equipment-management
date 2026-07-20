@@ -7,6 +7,11 @@
     </div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('ai.config') }}" class="row g-4">
+            <!-- 基础配置 -->
+            <div class="col-12">
+                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-gear me-2"></i>基础配置</h6>
+            </div>
+            
             <div class="col-md-6">
                 <label class="form-label">是否启用AI助手</label>
                 <div class="d-flex gap-3">
@@ -28,6 +33,11 @@
                 <div class="text-muted small mt-2">在火山引擎控制台获取API Key</div>
             </div>
 
+            <!-- 文本模型配置 -->
+            <div class="col-12 mt-4">
+                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-chat-dots me-2"></i>文本模型配置</h6>
+            </div>
+
             <div class="col-md-6">
                 <label class="form-label">模型名称</label>
                 <select class="form-select" name="ai_model">
@@ -35,7 +45,7 @@
                     <option value="doubao-pro-128k" {% if config.model == 'doubao-pro-128k' %}selected{% endif %}>doubao-pro-128k（长文本）</option>
                     <option value="doubao-lite-4k" {% if config.model == 'doubao-lite-4k' %}selected{% endif %}>doubao-lite-4k（轻量）</option>
                 </select>
-                <div class="text-muted small mt-2">选择使用的豆包模型</div>
+                <div class="text-muted small mt-2">选择使用的豆包文本模型</div>
             </div>
 
             <div class="col-md-6">
@@ -50,6 +60,48 @@
                 <div class="text-muted small mt-2">控制单次对话的响应长度，默认2000</div>
             </div>
 
+            <!-- 视觉模型配置 -->
+            <div class="col-12 mt-4">
+                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-eye me-2"></i>视觉识别配置</h6>
+            </div>
+            
+            <div class="col-md-6">
+                <label class="form-label">是否启用视觉识别</label>
+                <div class="d-flex gap-3">
+                    <div class="form-check">
+                        <input type="radio" class="form-check-input" name="ai_vision_enabled" id="ai_vision_enabled_yes" value="true" {% if config.vision_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="ai_vision_enabled_yes">是</label>
+                    </div>
+                    <div class="form-check">
+                        <input type="radio" class="form-check-input" name="ai_vision_enabled" id="ai_vision_enabled_no" value="false" {% if not config.vision_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="ai_vision_enabled_no">否</label>
+                    </div>
+                </div>
+                <div class="text-muted small mt-2">开启后支持票据拍照识别自动录入</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">视觉模型名称</label>
+                <select class="form-select" name="ai_vision_model">
+                    <option value="doubao-vision-pro-32k" {% if config.vision_model == 'doubao-vision-pro-32k' %}selected{% endif %}>doubao-vision-pro-32k（推荐）</option>
+                    <option value="doubao-vision-lite-32k" {% if config.vision_model == 'doubao-vision-lite-32k' %}selected{% endif %}>doubao-vision-lite-32k（轻量）</option>
+                </select>
+                <div class="text-muted small mt-2">选择使用的豆包视觉模型</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">视觉API接口地址</label>
+                <input type="text" class="form-control" name="ai_vision_base_url" value="{{ config.vision_base_url }}" placeholder="https://ark.cn-beijing.volces.com/api/v3/chat/completions">
+                <div class="text-muted small mt-2">一般与文本模型使用相同地址</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">视觉识别最大Token数</label>
+                <input type="number" class="form-control" name="ai_vision_max_tokens" value="{{ config.vision_max_tokens }}" min="500" max="8192">
+                <div class="text-muted small mt-2">控制视觉识别输出长度，默认2000</div>
+            </div>
+
+            <!-- 说明 -->
             <div class="col-12">
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle me-2"></i>
@@ -58,6 +110,7 @@
                         <li>需要自行在火山引擎开通豆包大模型服务并获取API Key</li>
                         <li>API调用费用由用户的火山引擎账号承担</li>
                         <li>首次使用需填写API Key并启用</li>
+                        <li>视觉识别支持：营业执照识别、发票识别、收料小票识别、通用文字提取</li>
                     </ul>
                 </div>
             </div>

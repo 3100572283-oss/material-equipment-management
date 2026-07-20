@@ -6,43 +6,188 @@
     <title>登录 - 物资设备管理系统</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    <script>
+        // 提前加载主题，防止页面闪烁
+        (function() {
+            var theme = localStorage.getItem('theme') || 'auto';
+            var isDark = theme === 'dark' ||
+                (theme === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            if (isDark) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
     <style>
+        * { box-sizing: border-box; }
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
         body {
-            background: linear-gradient(135deg, #165DFF 0%, #0a3d99 100%);
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4ecf7 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+        .login-wrapper {
+            width: 100%;
+            max-width: 410px;
+            padding: 20px;
         }
         .login-card {
             width: 100%;
-            max-width: 400px;
             border: none;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            border-radius: 8px;
+            box-shadow: 0 4px 24px rgba(22, 93, 255, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+            background: #ffffff;
+        }
+        .login-card-body {
+            padding: 40px 32px;
         }
         .login-logo {
-            width: 64px;
-            height: 64px;
-            background: #165DFF;
-            border-radius: 12px;
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, #165DFF 0%, #0a3d99 100%);
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 32px;
+            font-size: 28px;
             margin: 0 auto 16px;
+            box-shadow: 0 4px 12px rgba(22, 93, 255, 0.2);
+        }
+        .login-title {
+            font-size: 20px;
+            font-weight: 600;
+            text-align: center;
+            color: #1d2129;
+            margin-bottom: 4px;
+        }
+        .login-subtitle {
+            font-size: 13px;
+            color: #86909c;
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .form-label {
+            font-size: 13px;
+            color: #4e5969;
+            margin-bottom: 6px;
+        }
+        .input-group-text {
+            background: #f7f8fa;
+            border: 1px solid #e5e6eb;
+            border-right: none;
+            color: #86909c;
+        }
+        .form-control {
+            height: 40px;
+            border: 1px solid #e5e6eb;
+            border-left: none;
+            font-size: 14px;
+            padding: 0 12px;
+        }
+        .form-control:focus {
+            border-color: #165DFF;
+            box-shadow: none;
+        }
+        .form-control::placeholder {
+            color: #c9cdd4;
+        }
+        .btn-primary {
+            height: 40px;
+            background: #165DFF;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 4px;
+        }
+        .btn-primary:hover {
+            background: #4080ff;
+        }
+        .form-check-input:checked {
+            background-color: #165DFF;
+            border-color: #165DFF;
+        }
+        .form-check-label {
+            font-size: 13px;
+            color: #4e5969;
+        }
+        .login-footer {
+            position: absolute;
+            bottom: 16px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: #86909c;
+        }
+        .alert {
+            font-size: 13px;
+            padding: 8px 12px;
+            margin-bottom: 16px;
+        }
+
+        /* ========== 深色模式适配 ========== */
+        [data-theme="dark"] body {
+            background: linear-gradient(135deg, #121212 0%, #1a1a1a 100%);
+        }
+        [data-theme="dark"] .login-card {
+            background: #1e1e1e;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+        }
+        [data-theme="dark"] .login-title {
+            color: #e0e0e0;
+        }
+        [data-theme="dark"] .login-subtitle {
+            color: #808080;
+        }
+        [data-theme="dark"] .form-label {
+            color: #b8b8b8;
+        }
+        [data-theme="dark"] .input-group-text {
+            background: #252525;
+            border-color: #333333;
+            color: #808080;
+        }
+        [data-theme="dark"] .form-control {
+            background: #252525;
+            border-color: #333333;
+            color: #e0e0e0;
+        }
+        [data-theme="dark"] .form-control::placeholder {
+            color: #666666;
+        }
+        [data-theme="dark"] .form-control:focus {
+            border-color: #3a8ee6;
+            box-shadow: none;
+        }
+        [data-theme="dark"] .form-check-label {
+            color: #b8b8b8;
+        }
+        [data-theme="dark"] .login-footer {
+            color: #808080;
+        }
+        [data-theme="dark"] .btn-close {
+            filter: invert(1) grayscale(100%) brightness(200%);
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="card login-card p-4">
-            <div class="card-body">
+    <div class="login-wrapper">
+        <div class="card login-card">
+            <div class="card-body login-card-body">
                 <div class="login-logo">
                     <i class="bi bi-box-seam-fill"></i>
                 </div>
-                <h4 class="text-center mb-4 fw-bold">物资设备管理系统</h4>
+                <h1 class="login-title">物资设备管理系统</h1>
+                <p class="login-subtitle">企业级物资设备数字化管理平台</p>
 
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
@@ -58,14 +203,14 @@
                 <form method="POST" action="{{ url_for('auth.login') }}">
                     <div class="mb-3">
                         <label for="username" class="form-label">用户名</label>
-                        <div class="input-group input-group-lg">
+                        <div class="input-group">
                             <span class="input-group-text"><i class="bi bi-person"></i></span>
                             <input type="text" class="form-control" id="username" name="username" placeholder="请输入用户名" required autofocus>
                         </div>
                     </div>
                     <div class="mb-3">
                         <label for="password" class="form-label">密码</label>
-                        <div class="input-group input-group-lg">
+                        <div class="input-group">
                             <span class="input-group-text"><i class="bi bi-lock"></i></span>
                             <input type="password" class="form-control" id="password" name="password" placeholder="请输入密码" required>
                         </div>
@@ -74,18 +219,17 @@
                         <input type="checkbox" class="form-check-input" id="remember" name="remember">
                         <label class="form-check-label" for="remember">记住我</label>
                     </div>
-                    <button type="submit" class="btn btn-lg btn-primary w-100 fw-bold">登 录</button>
+                    <button type="submit" class="btn btn-primary w-100">登 录</button>
                 </form>
-
-                <div class="mt-4 text-center text-muted small">
-                    <p class="mb-1">默认账号：</p>
-                    <p class="mb-0">admin / Admin@2024</p>
-                    <p class="mb-0">editor / Editor@2024</p>
-                    <p class="mb-0">viewer / Viewer@2024</p>
-                </div>
             </div>
         </div>
     </div>
+    <div class="login-footer">
+        &copy; <span id="currentYear">2024</span> 物资设备管理系统 · 版权所有
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+    </script>
 </body>
 </html>

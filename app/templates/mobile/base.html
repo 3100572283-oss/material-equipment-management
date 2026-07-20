@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="物资管理">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="theme-color" content="#165DFF">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="{{ url_for('mobile.manifest_json') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+    <title>{% block title %}物资设备管理{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css') }}">
+    {% block extra_css %}{% endblock %}
+    <script>
+    // 注入全局上下文（供 mobile_utils.js 使用）
+    window.CURRENT_USER = {
+        id: {{ current_user.id if current_user.is_authenticated else 'null' }},
+        name: "{{ current_user.name or current_user.username if current_user.is_authenticated else '' }}",
+        username: "{{ current_user.username if current_user.is_authenticated else '' }}"
+    };
+    window.MOBILE_LOCATION_ENABLED = {{ 'true' if get_config('mobile_location_enabled', 'false') == 'true' else 'false' }};
+    </script>
+    <script src="{{ url_for('static', filename='js/mobile_utils.js') }}?v=20260719"></script>
+    <script>
+    // 提前应用深色模式（避免闪屏）
+    // 与PC端共用同一个键名 'theme'，支持 'light' / 'dark' / 'auto'
+    (function(){
+        var mode = localStorage.getItem('theme') || 'auto';
+        var isDark = false;
+        if (mode === 'dark') isDark = true;
+        else if (mode === 'light') isDark = false;
+        else isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (isDark) document.documentElement.classList.add('dark');
+        // 监听系统主题变化（仅在 auto 模式下）
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e){
+                if ((localStorage.getItem('theme') || 'auto') === 'auto') {
+                    document.documentElement.classList.toggle('dark', e.matches);
+                    updateThemeIcon();
+                }
+            });
+        }
+        function updateThemeIcon(){
+            var btn = document.getElementById('mThemeToggle');
+            if (btn) {
+                var mode = localStorage.getItem('theme') || 'auto';
+                if (mode === 'auto') {
+                    var isDark = document.documentElement.classList.contains('dark');
+                    btn.innerHTML = '<i class="bi bi-circle-half"></i>';
+                    btn.setAttribute('title', '跟随系统（当前：' + (isDark ? '深色' : '浅色') + '）');
+                } else {
+                    var isDark = document.documentElement.classList.contains('dark');
+                    btn.innerHTML = isDark ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
+                    btn.setAttribute('title', isDark ? '切换到浅色' : '切换到深色');
+                }
+            }
+        }
+        window.updateThemeIcon = updateThemeIcon;
+        document.addEventListener('DOMContentLoaded', updateThemeIcon);
+    })();
+    </script>
+</head>
+<body>
+    {% block body %}
+    <!-- 顶部导航栏 -->
+    <div class="m-navbar">
+        {% block nav_left %}
+        {% if request.endpoint != 'mobile.portal_home' %}
+        <a href="javascript:history.back()" class="m-back"><i class="bi bi-arrow-left"></i></a>
+        {% endif %}
+        {% endblock %}
+        <span class="m-title">{% block nav_title %}物资管理{% endblock %}</span>
+        <span class="m-right">
+            {% block nav_right %}
+            <button type="button" class="m-theme-toggle" id="mThemeToggle" onclick="toggleTheme()" title="切换深色/浅色">
+                <i class="bi bi-moon-stars"></i>
+            </button>
+            {% endblock %}
+        </span>
+    </div>
+
+    <!-- 闪现消息 -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div style="padding: 12px 16px 0;">
+            {% for category, message in messages %}
+            <div class="m-flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- 内容区 -->
+    <div class="m-content {% if hide_tab %}no-tab{% endif %}">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- 底部Tab栏 -->
+    {% if not hide_tab %}
+    <div class="m-tabbar">
+        <a href="{{ url_for('mobile.portal_home') }}" class="m-tab {% if active_tab == 'home' %}active{% endif %}">
+            <i class="bi bi-house"></i>
+            <span>首页</span>
+        </a>
+        <a href="{{ url_for('mobile.entry_center') }}" class="m-tab {% if active_tab == 'record' %}active{% endif %}">
+            <i class="bi bi-pencil-square"></i>
+            <span>录入</span>
+        </a>
+        <a href="{{ url_for('mobile.inventory') }}" class="m-tab {% if active_tab == 'query' %}active{% endif %}">
+            <i class="bi bi-search"></i>
+            <span>查询</span>
+        </a>
+        <a href="{{ url_for('mobile.profile') }}" class="m-tab {% if active_tab == 'profile' %}active{% endif %}">
+            <i class="bi bi-person"></i>
+            <span>我的</span>
+        </a>
+    </div>
+    {% endif %}
+    {% endblock %}
+
+    <!-- Toast -->
+    <div class="m-toast" id="mToast"></div>
+    <!-- Loading -->
+    <div class="m-loading-mask" id="mLoadingMask">
+        <div class="spinner"></div>
+    </div>
+
+    {% if not hide_scanner %}
+    {% include 'mobile/_scanner.html' %}
+    {% endif %}
+
+    {% if not hide_offline %}
+    {% include 'mobile/_offline.html' %}
+    {% endif %}
+
+    {% if not hide_signature %}
+    {% include 'mobile/_signature.html' %}
+    {% endif %}
+
+    {% if not hide_preview %}
+    {% include 'mobile/_image_preview.html' %}
+    {% endif %}
+
+    {% if not hide_pull_refresh %}
+    {% include 'mobile/_pull_refresh.html' %}
+    {% endif %}
+
+    <script>
+    // ========== 通用工具 ==========
+    window.M = {
+        toast: function(msg, type) {
+            var el = document.getElementById('mToast');
+            el.textContent = msg;
+            el.className = 'm-toast show' + (type ? ' ' + type : '');
+            setTimeout(function() { el.className = 'm-toast'; }, 2000);
+        },
+        loading: function(show) {
+            var el = document.getElementById('mLoadingMask');
+            if (el) el.classList.toggle('show', !!show);
+        },
+        confirm: function(msg, onYes, onNo) {
+            if (window.confirm(msg)) {
+                if (onYes) onYes();
+            } else {
+                if (onNo) onNo();
+            }
+        }
+    };
+
+    // ========== 自动隐藏 flash 消息 ==========
+    setTimeout(function() {
+        var flashes = document.querySelectorAll('.m-flash');
+        flashes.forEach(function(f) {
+            f.style.transition = 'opacity 0.5s';
+            f.style.opacity = '0';
+            setTimeout(function() { f.remove(); }, 500);
+        });
+    }, 3000);
+
+    // ========== 阻止双击缩放 ==========
+    var lastTouch = 0;
+    document.addEventListener('touchend', function(e) {
+        var now = Date.now();
+        if (now - lastTouch <= 300) {
+            e.preventDefault();
+        }
+        lastTouch = now;
+    }, { passive: false });
+
+    // ========== 深色模式切换（三期） ==========
+    // 模式循环：auto → dark → light → auto
+    function toggleTheme(){
+        var cur = localStorage.getItem('theme') || 'auto';
+        var next = cur === 'auto' ? 'dark' : (cur === 'dark' ? 'light' : 'auto');
+        localStorage.setItem('theme', next);
+        applyTheme(next);
+        var label = next === 'auto' ? '跟随系统' : (next === 'dark' ? '深色模式' : '浅色模式');
+        M.toast(label, 'info');
+    }
+    function applyTheme(mode){
+        var isDark = false;
+        if (mode === 'dark') isDark = true;
+        else if (mode === 'light') isDark = false;
+        else isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.classList.toggle('dark', isDark);
+        if (window.updateThemeIcon) window.updateThemeIcon();
+    }
+
+    // ========== Service Worker 注册（PWA） ==========
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('{{ url_for("mobile.service_worker") }}', {
+                scope: '/mobile/'
+            }).then(function(reg) {
+                console.log('SW 注册成功，scope:', reg.scope);
+            }).catch(function(err) {
+                console.warn('SW 注册失败:', err);
+            });
+        });
+    }
+
+    // ========== 添加到主屏幕提示（PWA install prompt） ==========
+    var _deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', function(e) {
+        // 阻止 Chrome 67 之前自动显示的提示
+        e.preventDefault();
+        _deferredPrompt = e;
+        // 检查是否已经提示过（24 小时内不再提示）
+        var last = localStorage.getItem('pwa_install_prompt_last');
+        var now = Date.now();
+        if (!last || (now - parseInt(last)) > 24 * 60 * 60 * 1000) {
+            showInstallPrompt();
+            localStorage.setItem('pwa_install_prompt_last', now.toString());
+        }
+    });
+
+    function showInstallPrompt() {
+        if (!_deferredPrompt) return;
+        // 创建提示条
+        var bar = document.createElement('div');
+        bar.id = 'mInstallBar';
+        bar.style.cssText = 'position:fixed;bottom:60px;left:10px;right:10px;background:#165DFF;color:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);display:flex;align-items:center;gap:10px;z-index:999;font-size:14px;';
+        bar.innerHTML = '<i class="bi bi-box-arrow-down" style="font-size:18px;"></i>' +
+            '<div style="flex:1;">添加到手机桌面，像APP一样使用</div>' +
+            '<button id="mInstallBtn" style="background:#fff;color:#165DFF;border:none;padding:6px 14px;border-radius:4px;font-size:13px;">添加</button>' +
+            '<button id="mInstallClose" style="background:none;color:#fff;border:none;font-size:18px;padding:0 4px;">×</button>';
+        document.body.appendChild(bar);
+        document.getElementById('mInstallBtn').addEventListener('click', function() {
+            _deferredPrompt.prompt();
+            _deferredPrompt.userChoice.then(function(choice) {
+                if (choice.outcome === 'accepted') {
+                    M.toast('已添加到主屏幕', 'success');
+                }
+                _deferredPrompt = null;
+                bar.remove();
+            });
+        });
+        document.getElementById('mInstallClose').addEventListener('click', function() {
+            bar.remove();
+        });
+        // 30 秒后自动消失
+        setTimeout(function() {
+            if (document.getElementById('mInstallBar')) bar.remove();
+        }, 30000);
+    }
+
+    // 检测是否已作为 PWA 运行
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+        console.log('当前以 PWA 模式运行');
+    }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

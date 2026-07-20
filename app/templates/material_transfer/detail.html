@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}调拨单详情 - {{ transfer.transfer_no }}{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('material_transfer.index') }}">物资调拨</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ transfer.transfer_no }}</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -38,7 +49,7 @@
             </form>
             {% endif %}
             {% endif %}
-            <a href="{{ url_for('material_transfer.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+            <button onclick="goBack('{{ url_for('material_transfer.index') }}', 'transfer_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
         </div>
     </div>
     <div class="card-body">

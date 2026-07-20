@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{% if plan %}编辑巡检计划{% else %}新增巡检计划{% endif %} - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">
+            <i class="bi bi-clipboard-check me-2"></i>
+            {% if plan %}编辑巡检计划{% else %}新增巡检计划{% endif %}
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{% if plan %}{{ url_for('equipment.inspection_edit', plan_id=plan.id) }}{% else %}{{ url_for('equipment.inspection_create') }}{% endif %}">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">计划名称 <span class="text-danger">*</span></label>
+                    <input type="text" name="plan_name" class="form-control" required
+                           value="{{ plan.plan_name if plan else '' }}" placeholder="如：挖掘机月度巡检">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">计划类型</label>
+                    <select name="plan_type" class="form-select">
+                        <option value="regular" {% if plan and plan.plan_type == 'regular' %}selected{% endif %}>定期</option>
+                        <option value="temporary" {% if plan and plan.plan_type == 'temporary' %}selected{% endif %}>临时</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">巡检周期</label>
+                    <select name="cycle" class="form-select">
+                        <option value="daily" {% if plan and plan.cycle == 'daily' %}selected{% endif %}>每日</option>
+                        <option value="weekly" {% if plan and plan.cycle == 'weekly' %}selected{% endif %}>每周</option>
+                        <option value="monthly" {% if plan and plan.cycle == 'monthly' %}selected{% endif %}>每月</option>
+                        <option value="quarterly" {% if plan and plan.cycle == 'quarterly' %}selected{% endif %}>每季</option>
+                        <option value="yearly" {% if plan and plan.cycle == 'yearly' %}selected{% endif %}>每年</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">设备类别（可选）</label>
+                    <input type="text" name="equipment_category" class="form-control"
+                           value="{{ plan.equipment_category if plan else '' }}" placeholder="如：挖掘机，留空表示全部">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">负责人</label>
+                    <input type="text" name="responsible_name" class="form-control"
+                           value="{{ plan.responsible_name if plan else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">开始日期</label>
+                    <input type="date" name="start_date" class="form-control"
+                           value="{{ plan.start_date.strftime('%Y-%m-%d') if plan and plan.start_date else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">结束日期</label>
+                    <input type="date" name="end_date" class="form-control"
+                           value="{{ plan.end_date.strftime('%Y-%m-%d') if plan and plan.end_date else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">下次巡检日期</label>
+                    <input type="date" name="next_inspect_date" class="form-control"
+                           value="{{ plan.next_inspect_date.strftime('%Y-%m-%d') if plan and plan.next_inspect_date else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">状态</label>
+                    <select name="status" class="form-select" disabled>
+                        <option value="active" {% if not plan or plan.status == 'active' %}selected{% endif %}>启用</option>
+                        <option value="inactive" {% if plan and plan.status == 'inactive' %}selected{% endif %}>停用</option>
+                    </select>
+                    <small class="text-muted">状态变更请到详情页</small>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">巡检项</label>
+                    <textarea name="inspect_items" class="form-control" rows="6" placeholder="支持 JSON 数组或逗号分隔的文本">{{ plan.inspect_items if plan else default_items }}</textarea>
+                    <small class="text-muted">例如：外观检查, 运行情况, 油位/液位, 仪表读数, 紧固件, 清洁度</small>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">备注</label>
+                    <textarea name="remark" class="form-control" rows="2">{{ plan.remark if plan else '' }}</textarea>
+                </div>
+            </div>
+            <div class="form-actions">
+                <a href="{{ url_for('equipment.inspection_list') }}" class="btn btn-secondary">取消</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i>{% if plan %}保存{% else %}创建{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

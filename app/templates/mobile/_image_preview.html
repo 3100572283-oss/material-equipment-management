@@ -1,0 +1,350 @@
+{# 移动端图片预览组件 - 通过 include 引入 #}
+{# 用法：
+   1. 单张预览：MobilePreview.open(dataUrl)
+   2. 多张预览：MobilePreview.open([url1, url2, ...], 0)  # 第二个参数是起始索引
+   3. 在 img 上加 data-preview 属性自动收集：MobilePreview.bindGallery(containerSelector)
+#}
+<style>
+.m-preview-mask {
+    position: fixed; inset: 0; z-index: 9998;
+    background: rgba(0,0,0,0.95);
+    display: none;
+    flex-direction: column;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.m-preview-mask.show { display: flex; }
+.m-preview-header {
+    height: 50px; padding: 0 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    color: #fff; font-size: 14px;
+    background: rgba(0,0,0,0.4);
+    flex-shrink: 0;
+}
+.m-preview-header .counter { flex: 1; text-align: center; }
+.m-preview-header .close-btn {
+    color: #fff; font-size: 22px; background: none; border: none; padding: 6px;
+}
+.m-preview-body {
+    flex: 1; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+}
+.m-preview-img-wrap {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.3s ease;
+}
+.m-preview-img-wrap.dragging { transition: none; }
+.m-preview-img {
+    max-width: 100%; max-height: 100%;
+    transform-origin: center center;
+    transition: transform 0.15s ease;
+    will-change: transform;
+    -webkit-user-drag: none;
+    user-select: none;
+}
+.m-preview-img.no-transition { transition: none; }
+.m-preview-footer {
+    height: 60px; padding: 0 16px;
+    display: flex; align-items: center; justify-content: center; gap: 30px;
+    background: rgba(0,0,0,0.4);
+    flex-shrink: 0;
+}
+.m-preview-footer button {
+    background: none; border: none; color: #fff;
+    font-size: 22px; padding: 8px 12px;
+    display: flex; align-items: center; justify-content: center;
+}
+.m-preview-footer button:disabled { opacity: 0.3; }
+.m-preview-tip {
+    position: absolute; bottom: 70px; left: 0; right: 0;
+    text-align: center; color: rgba(255,255,255,0.6); font-size: 12px;
+    pointer-events: none;
+}
+</style>
+
+<div class="m-preview-mask" id="mPreviewMask">
+    <div class="m-preview-header">
+        <button type="button" class="close-btn" onclick="MobilePreview.close()"><i class="bi bi-x-lg"></i></button>
+        <span class="counter" id="mPreviewCounter">1 / 1</span>
+        <span style="width:34px;"></span>
+    </div>
+    <div class="m-preview-body" id="mPreviewBody">
+        <div class="m-preview-img-wrap" id="mPreviewWrap">
+            <img class="m-preview-img" id="mPreviewImg" src="" alt="预览">
+        </div>
+        <div class="m-preview-tip" id="mPreviewTip">双指缩放 · 双击复位 · 左右滑动切换</div>
+    </div>
+    <div class="m-preview-footer">
+        <button type="button" id="mPreviewPrev" onclick="MobilePreview.prev()"><i class="bi bi-chevron-left"></i></button>
+        <button type="button" id="mPreviewReset" onclick="MobilePreview.reset()"><i class="bi bi-arrows-fullscreen"></i></button>
+        <button type="button" id="mPreviewNext" onclick="MobilePreview.next()"><i class="bi bi-chevron-right"></i></button>
+    </div>
+</div>
+
+<script>
+window.MobilePreview = (function(){
+    var mask = null, body = null, wrap = null, img = null, counter = null;
+    var prevBtn = null, nextBtn = null, resetBtn = null, tip = null;
+    var list = [];
+    var index = 0;
+
+    // 缩放状态
+    var scale = 1, baseScale = 1;
+    var translateX = 0, translateY = 0;
+    var rotation = 0;
+
+    // 手势状态
+    var touchMode = ''; // 'pan' | 'pinch' | 'swipe'
+    var startX = 0, startY = 0, lastX = 0, lastY = 0;
+    var startTranslateX = 0, startTranslateY = 0;
+    var pinchStartDist = 0, pinchStartScale = 1;
+    var lastTapTime = 0;
+    var wrapStartX = 0;
+
+    function init(){
+        mask = document.getElementById('mPreviewMask');
+        body = document.getElementById('mPreviewBody');
+        wrap = document.getElementById('mPreviewWrap');
+        img = document.getElementById('mPreviewImg');
+        counter = document.getElementById('mPreviewCounter');
+        prevBtn = document.getElementById('mPreviewPrev');
+        nextBtn = document.getElementById('mPreviewNext');
+        resetBtn = document.getElementById('mPreviewReset');
+        tip = document.getElementById('mPreviewTip');
+
+        // 触屏事件
+        body.addEventListener('touchstart', onTouchStart, { passive: false });
+        body.addEventListener('touchmove', onTouchMove, { passive: false });
+        body.addEventListener('touchend', onTouchEnd, { passive: false });
+        body.addEventListener('touchcancel', onTouchEnd, { passive: false });
+        // 鼠标事件（用于PC测试）
+        body.addEventListener('mousedown', onMouseDown);
+        body.addEventListener('wheel', onWheel, { passive: false });
+        // 双击
+        body.addEventListener('dblclick', function(){
+            if (scale !== 1) reset();
+            else { scale = 2.5; applyTransform(); }
+        });
+        // 点击空白关闭
+        body.addEventListener('click', function(e){
+            if (e.target === body) close();
+        });
+    }
+
+    function getTouchDist(t1, t2){
+        var dx = t1.clientX - t2.clientX;
+        var dy = t1.clientY - t2.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function onTouchStart(e){
+        e.preventDefault();
+        if (e.touches.length === 1) {
+            var t = e.touches[0];
+            startX = lastX = t.clientX;
+            startY = lastY = t.clientY;
+            startTranslateX = translateX;
+            startTranslateY = translateY;
+            wrapStartX = wrap.offsetLeft;
+            // 判断是 pan（缩放状态下）还是 swipe
+            touchMode = (scale > 1.05) ? 'pan' : 'swipe';
+            wrap.classList.add('dragging');
+            img.classList.add('no-transition');
+            // 检测双击
+            var now = Date.now();
+            if (now - lastTapTime < 300) {
+                if (scale !== 1) reset();
+                else { scale = 2.5; applyTransform(); }
+            }
+            lastTapTime = now;
+        } else if (e.touches.length === 2) {
+            touchMode = 'pinch';
+            pinchStartDist = getTouchDist(e.touches[0], e.touches[1]);
+            pinchStartScale = scale;
+        }
+    }
+
+    function onTouchMove(e){
+        e.preventDefault();
+        if (touchMode === 'pan' && e.touches.length === 1) {
+            var t = e.touches[0];
+            translateX = startTranslateX + (t.clientX - startX);
+            translateY = startTranslateY + (t.clientY - startY);
+            applyTransform();
+        } else if (touchMode === 'pinch' && e.touches.length === 2) {
+            var dist = getTouchDist(e.touches[0], e.touches[1]);
+            if (pinchStartDist > 0) {
+                scale = pinchStartScale * (dist / pinchStartDist);
+                scale = Math.max(0.5, Math.min(5, scale));
+                applyTransform();
+            }
+        } else if (touchMode === 'swipe' && e.touches.length === 1) {
+            var t = e.touches[0];
+            var dx = t.clientX - startX;
+            translateX = dx;
+            translateY = 0;
+            applyTransform();
+        }
+    }
+
+    function onTouchEnd(e){
+        if (touchMode === 'swipe') {
+            var dx = (e.changedTouches[0] || {clientX: startX}).clientX - startX;
+            var threshold = 60;
+            if (Math.abs(dx) > threshold && scale <= 1.05) {
+                if (dx > 0) prev();
+                else next();
+            } else {
+                translateX = 0; translateY = 0;
+                applyTransform();
+            }
+        }
+        wrap.classList.remove('dragging');
+        img.classList.remove('no-transition');
+        if (e.touches.length === 0) touchMode = '';
+    }
+
+    var mouseDown = false;
+    function onMouseDown(e){
+        mouseDown = true;
+        startX = lastX = e.clientX;
+        startY = lastY = e.clientY;
+        startTranslateX = translateX;
+        startTranslateY = translateY;
+        touchMode = (scale > 1.05) ? 'pan' : '';
+        wrap.classList.add('dragging');
+        img.classList.add('no-transition');
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    }
+    function onMouseMove(e){
+        if (!mouseDown) return;
+        if (touchMode === 'pan') {
+            translateX = startTranslateX + (e.clientX - startX);
+            translateY = startTranslateY + (e.clientY - startY);
+            applyTransform();
+        }
+    }
+    function onMouseUp(){
+        mouseDown = false;
+        touchMode = '';
+        wrap.classList.remove('dragging');
+        img.classList.remove('no-transition');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    }
+    function onWheel(e){
+        e.preventDefault();
+        var delta = e.deltaY > 0 ? -0.15 : 0.15;
+        scale = Math.max(0.5, Math.min(5, scale + delta));
+        applyTransform();
+    }
+
+    function applyTransform(){
+        if (!img) return;
+        img.style.transform = 'translate(' + translateX + 'px,' + translateY + 'px) scale(' + scale + ')';
+    }
+
+    function show(){
+        if (!mask) init();
+        mask.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function render(){
+        if (list.length === 0) return;
+        var url = list[index];
+        img.onload = function(){
+            // 重置状态
+            scale = 1; translateX = 0; translateY = 0;
+            applyTransform();
+        };
+        img.src = url;
+        counter.textContent = (index + 1) + ' / ' + list.length;
+        prevBtn.disabled = (list.length <= 1);
+        nextBtn.disabled = (list.length <= 1);
+        resetBtn.disabled = (scale === 1);
+    }
+
+    function open(src, startIndex){
+        if (Array.isArray(src)) {
+            list = src;
+            index = startIndex || 0;
+        } else {
+            list = [src];
+            index = 0;
+        }
+        show();
+        render();
+    }
+
+    function close(){
+        if (!mask) return;
+        mask.classList.remove('show');
+        document.body.style.overflow = '';
+        // 重置状态
+        scale = 1; translateX = 0; translateY = 0;
+        applyTransform();
+    }
+
+    function next(){
+        if (list.length <= 1) return;
+        index = (index + 1) % list.length;
+        // 切换时重置缩放
+        scale = 1; translateX = 0; translateY = 0;
+        applyTransform();
+        render();
+    }
+
+    function prev(){
+        if (list.length <= 1) return;
+        index = (index - 1 + list.length) % list.length;
+        scale = 1; translateX = 0; translateY = 0;
+        applyTransform();
+        render();
+    }
+
+    function reset(){
+        scale = 1; translateX = 0; translateY = 0;
+        applyTransform();
+    }
+
+    /**
+     * 自动绑定图片画廊：在指定容器内查找带 data-preview 属性的 img
+     * 点击这些 img 时自动收集同组（data-group）图片并预览
+     */
+    function bindGallery(containerSelector){
+        var container = document.querySelector(containerSelector);
+        if (!container) return;
+        container.addEventListener('click', function(e){
+            var target = e.target;
+            if (target.tagName === 'IMG' && target.hasAttribute('data-preview')) {
+                e.preventDefault();
+                e.stopPropagation();
+                var group = target.getAttribute('data-group') || 'default';
+                var imgs = container.querySelectorAll('img[data-preview][data-group="' + group + '"]');
+                var urls = [];
+                var startIdx = 0;
+                for (var i = 0; i < imgs.length; i++) {
+                    var url = imgs[i].getAttribute('data-preview-url') || imgs[i].src;
+                    urls.push(url);
+                    if (imgs[i] === target) startIdx = i;
+                }
+                if (urls.length === 0) urls = [target.src];
+                open(urls, startIdx);
+            }
+        });
+    }
+
+    return {
+        open: open,
+        close: close,
+        next: next,
+        prev: prev,
+        reset: reset,
+        bindGallery: bindGallery
+    };
+})();
+</script>

@@ -1,0 +1,243 @@
+{# 移动端通用扫码组件 - 通过 include 引入，依赖全局 MobileScanner 对象 #}
+{# 用法：{% include 'mobile/_scanner.html' %}
+       MobileScanner.open(onScanSuccess)  #}
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+.m-scanner-mask {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,0.9);
+    display: none;
+    flex-direction: column;
+}
+.m-scanner-mask.show { display: flex; }
+.m-scanner-header {
+    height: 50px; padding: 0 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    color: #fff; font-size: 16px;
+}
+.m-scanner-header .title { flex: 1; text-align: center; }
+.m-scanner-header .close { color: #fff; font-size: 22px; background: none; border: none; padding: 6px; }
+.m-scanner-body {
+    flex: 1; position: relative; overflow: hidden;
+}
+.m-scanner-body #mQrRegion {
+    width: 100% !important; height: 100% !important;
+    border: none !important;
+}
+.m-scanner-frame {
+    position: absolute; top: 50%; left: 50%;
+    width: 70vw; height: 70vw; max-width: 280px; max-height: 280px;
+    transform: translate(-50%, -50%);
+    border: 2px solid rgba(22,93,255,0.8);
+    border-radius: 8px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.4);
+    pointer-events: none;
+}
+.m-scanner-line {
+    position: absolute; left: 4%; right: 4%; top: 0;
+    height: 2px; background: #165DFF;
+    box-shadow: 0 0 8px #165DFF;
+    animation: m-scan-line 2s linear infinite;
+}
+@keyframes m-scan-line {
+    0% { top: 5%; }
+    50% { top: 95%; }
+    100% { top: 5%; }
+}
+.m-scanner-tip {
+    position: absolute; bottom: 80px; left: 0; right: 0;
+    text-align: center; color: #fff; font-size: 13px;
+    opacity: 0.8;
+}
+.m-scanner-footer {
+    height: 80px; padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-around;
+    background: rgba(0,0,0,0.5);
+}
+.m-scanner-btn {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    border: none; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; cursor: pointer;
+}
+.m-scanner-btn:active { background: rgba(255,255,255,0.3); }
+.m-scanner-btn.active { background: #165DFF; }
+.m-scanner-manual {
+    position: absolute; left: 16px; right: 16px; top: 50%;
+    transform: translateY(-50%);
+    background: #fff; border-radius: 12px; padding: 16px;
+    display: none;
+}
+.m-scanner-manual.show { display: block; }
+.m-scanner-manual input {
+    width: 100%; height: 44px; padding: 0 12px;
+    border: 1px solid #d1d5db; border-radius: 8px;
+    font-size: 15px; margin-bottom: 10px;
+}
+.m-scanner-manual button {
+    width: 100%; height: 44px; border-radius: 8px;
+    border: none; background: #165DFF; color: #fff;
+    font-size: 15px;
+}
+</style>
+<div class="m-scanner-mask" id="mScannerMask">
+    <div class="m-scanner-header">
+        <button type="button" class="close" onclick="MobileScanner.close()"><i class="bi bi-x-lg"></i></button>
+        <span class="title">扫一扫</span>
+        <span style="width:34px;"></span>
+    </div>
+    <div class="m-scanner-body">
+        <div id="mQrRegion"></div>
+        <div class="m-scanner-frame"><div class="m-scanner-line"></div></div>
+        <div class="m-scanner-tip">将二维码/条码对准框内即可自动扫描</div>
+        <div class="m-scanner-manual" id="mScannerManual">
+            <input type="text" id="mScannerManualInput" placeholder="手动输入编码" onkeydown="if(event.key==='Enter'){MobileScanner.confirmManual();}">
+            <button type="button" onclick="MobileScanner.confirmManual()">确认</button>
+        </div>
+    </div>
+    <div class="m-scanner-footer">
+        <button type="button" class="m-scanner-btn" id="mScannerTorch" onclick="MobileScanner.toggleTorch()" title="闪光灯">
+            <i class="bi bi-lightning"></i>
+        </button>
+        <button type="button" class="m-scanner-btn" onclick="MobileScanner.openAlbum()" title="相册">
+            <i class="bi bi-image"></i>
+        </button>
+        <button type="button" class="m-scanner-btn" onclick="MobileScanner.toggleManual()" title="手动输入">
+            <i class="bi bi-keyboard"></i>
+        </button>
+    </div>
+    <input type="file" id="mScannerAlbumInput" accept="image/*" style="display:none;" onchange="MobileScanner.onAlbumPicked(this)">
+</div>
+<script>
+window.MobileScanner = (function(){
+    var html5Qr = null;
+    var onSuccess = null;
+    var torchOn = false;
+    var running = false;
+
+    function startCamera(){
+        if (running) return Promise.resolve();
+        if (typeof Html5Qrcode === 'undefined') {
+            M && M.toast && M.toast('扫码库未加载，请检查网络', 'danger');
+            return Promise.reject(new Error('html5-qrcode not loaded'));
+        }
+        html5Qr = new Html5Qrcode('mQrRegion');
+        var config = {
+            fps: 10,
+            qrbox: function(w,h){
+                var min = Math.min(w,h) * 0.7;
+                return { width: min, height: min };
+            },
+            aspectRatio: window.innerHeight / window.innerWidth
+        };
+        return html5Qr.start(
+            { facingMode: 'environment' },
+            config,
+            onDetected,
+            function(err){ /* 忽略每帧错误 */ }
+        ).then(function(){ running = true; });
+    }
+
+    function stopCamera(){
+        if (!html5Qr || !running) return Promise.resolve();
+        running = false;
+        return html5Qr.stop().then(function(){
+            return html5Qr.clear();
+        }).catch(function(){});
+    }
+
+    function onDetected(decodedText){
+        // 震动 + 提示音
+        if (navigator.vibrate) navigator.vibrate(150);
+        try {
+            var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            var osc = audioCtx.createOscillator();
+            var gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.value = 880; gain.gain.value = 0.1;
+            osc.start(); setTimeout(function(){ osc.stop(); }, 120);
+        } catch(e){}
+        // 关闭并回调
+        var cb = onSuccess;
+        stopCamera().then(function(){
+            document.getElementById('mScannerMask').classList.remove('show');
+            document.getElementById('mScannerManual').classList.remove('show');
+            if (cb) cb(decodedText);
+        });
+    }
+
+    return {
+        open: function(callback){
+            onSuccess = callback;
+            document.getElementById('mScannerMask').classList.add('show');
+            document.getElementById('mScannerManual').classList.remove('show');
+            torchOn = false;
+            document.getElementById('mScannerTorch').classList.remove('active');
+            startCamera().catch(function(err){
+                M && M.toast && M.toast('无法访问摄像头：' + (err.message || err), 'danger');
+                document.getElementById('mScannerMask').classList.remove('show');
+            });
+        },
+        close: function(){
+            stopCamera().then(function(){
+                document.getElementById('mScannerMask').classList.remove('show');
+                document.getElementById('mScannerManual').classList.remove('show');
+            });
+        },
+        toggleTorch: function(){
+            if (!html5Qr) return;
+            try {
+                var next = !torchOn;
+                html5Qr.applyVideoConstraints({
+                    advanced: [{ torch: next }]
+                }).then(function(){
+                    torchOn = next;
+                    document.getElementById('mScannerTorch').classList.toggle('active', torchOn);
+                }).catch(function(){
+                    M && M.toast && M.toast('设备不支持闪光灯', 'warning');
+                });
+            } catch(e){}
+        },
+        openAlbum: function(){
+            document.getElementById('mScannerAlbumInput').click();
+        },
+        onAlbumPicked: function(input){
+            var file = input.files && input.files[0];
+            if (!file) return;
+            input.value = '';
+            if (typeof Html5Qrcode === 'undefined') {
+                M && M.toast && M.toast('扫码库未加载', 'danger');
+                return;
+            }
+            var qr = new Html5Qrcode('mQrRegion-temp-' + Date.now());
+            qr.scanFile(file, true).then(function(text){
+                onDetected(text);
+            }).catch(function(){
+                M && M.toast && M.toast('未识别到条码，请重试', 'warning');
+            }).then(function(){
+                try { qr.clear(); } catch(e){}
+            });
+        },
+        toggleManual: function(){
+            document.getElementById('mScannerManual').classList.toggle('show');
+            if (document.getElementById('mScannerManual').classList.contains('show')) {
+                document.getElementById('mScannerManualInput').focus();
+            }
+        },
+        confirmManual: function(){
+            var code = document.getElementById('mScannerManualInput').value.trim();
+            if (!code) {
+                M && M.toast && M.toast('请输入编码', 'warning');
+                return;
+            }
+            document.getElementById('mScannerManualInput').value = '';
+            stopCamera().then(function(){
+                document.getElementById('mScannerMask').classList.remove('show');
+                document.getElementById('mScannerManual').classList.remove('show');
+                if (onSuccess) onSuccess(code);
+            });
+        }
+    };
+})();
+</script>

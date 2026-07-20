@@ -6,9 +6,14 @@ from flask_login import login_required
 from werkzeug.utils import secure_filename
 from app.material import bp
 from app import db
-from app.models import Material, Category
+from app.models import Material, Category, ProjectMaterial
 from app.decorators import editor_required, log_audit
-from app.utils import log_operation
+from app.utils import (
+    log_operation,
+    get_project_materials,
+    add_material_to_project,
+    remove_material_from_project,
+)
 import openpyxl
 from openpyxl.styles import Font
 import qrcode
@@ -56,18 +61,27 @@ def index():
     keyword = request.args.get('keyword', '', type=str)
     category_id = request.args.get('category_id', 0, type=int)
 
-    query = Material.query.filter_by(project_id=project_id)
+    # 通过 ProjectMaterial 关联表获取项目常用物资（包含公司主库 + 项目级临时物资）
+    query = get_project_materials(project_id, common_only=True)
     if keyword:
         query = query.filter(Material.name.contains(keyword) | Material.code.contains(keyword))
     if category_id:
-        query = query.filter_by(category_id=category_id)
+        query = query.filter(Material.category_id == category_id)
 
     pagination = query.order_by(Material.code.asc()).paginate(
         page=page, per_page=10, error_out=False
     )
+    # 标记每条物资是否已加入项目常用（用于模板控制"移除常用"按钮）
+    linked_ids = set(
+        pm.material_id for pm in ProjectMaterial.query.filter_by(project_id=project_id).all()
+    )
+    for m in pagination.items:
+        m._is_project_common = m.id in linked_ids
+
     categories = Category.query.filter_by(project_id=project_id).order_by(Category.sort_order.asc()).all()
     return render_template('material/index.html', pagination=pagination, keyword=keyword,
-                           category_id=category_id, categories=categories)
+                           category_id=category_id, categories=categories,
+                           linked_material_ids=sorted(linked_ids))
 
 
 @bp.route('/create', methods=['GET', 'POST'])
@@ -103,10 +117,15 @@ def create():
             specification=request.form.get('specification', '').strip(),
             category_id=category_id,
             unit=request.form.get('unit', '').strip(),
-            remark=request.form.get('remark', '').strip()
+            remark=request.form.get('remark', '').strip(),
+            # 主数据统一改造：项目级新增物资标记为 project，仅本项目可见
+            source='project',
+            status='active',
         )
         db.session.add(material)
         db.session.commit()
+        # 项目级物资创建后自动加入项目常用表
+        add_material_to_project(material.id, project_id)
         flash(f'材料创建成功，编码：{code}', 'success')
         return redirect(url_for('material.index'))
 
@@ -162,6 +181,122 @@ def delete(id):
     db.session.commit()
     flash('材料删除成功。', 'success')
     return redirect(url_for('material.index'))
+
+
+@bp.route('/<int:material_id>/remove_from_project', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='material', operation='移除常用')
+def remove_from_project(material_id):
+    """从项目常用物资移除（仅删除 ProjectMaterial 关联，不影响主库数据）"""
+    project_id = session.get('current_project_id')
+    if not project_id:
+        flash('请先选择项目。', 'warning')
+        return redirect(url_for('material.index'))
+
+    material = Material.query.get(material_id)
+    if not material:
+        flash('物资不存在。', 'danger')
+        return redirect(url_for('material.index'))
+
+    # 项目级物资（source='project'）不允许仅移除常用，否则会变成游离数据
+    if material.source == 'project':
+        flash('项目级临时物资无法仅移除常用，请直接删除。', 'warning')
+        return redirect(url_for('material.index'))
+
+    remove_material_from_project(material_id, project_id)
+    flash(f'已将物资「{material.name}」从本项目常用移除。', 'success')
+    return redirect(url_for('material.index'))
+
+
+@bp.route('/api/add_to_project', methods=['POST'])
+@login_required
+@editor_required
+def api_add_to_project():
+    """批量将公司库物资加入项目常用（AJAX 接口）
+
+    请求 JSON: {"material_ids": [1, 2, 3]}
+    返回 JSON: {"success": true, "added_count": N}
+    """
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'success': False, 'message': '请先选择项目'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    material_ids = payload.get('material_ids', []) or []
+    if not isinstance(material_ids, list) or not material_ids:
+        return jsonify({'success': False, 'message': 'material_ids 不能为空'}), 400
+
+    added = 0
+    for mid in material_ids:
+        try:
+            mid_int = int(mid)
+        except (TypeError, ValueError):
+            continue
+        # 仅允许添加公司级物资
+        m = Material.query.get(mid_int)
+        if not m or m.source != 'company':
+            continue
+        add_material_to_project(mid_int, project_id)
+        added += 1
+
+    return jsonify({'success': True, 'added_count': added})
+
+
+@bp.route('/api/project_materials')
+@login_required
+def api_project_materials():
+    """API：返回当前项目常用物资列表（JSON）
+
+    供业务单据（入库/出库/合同等）的统一物资选择弹窗使用。
+    支持关键字搜索、分类过滤、分页。
+
+    返回 JSON:
+        {items: [{id, code, name, specification, unit, category_id, category_name}], total, page, pages}
+    """
+    from sqlalchemy import or_
+
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'items': [], 'total': 0, 'page': 1, 'pages': 0})
+
+    q = request.args.get('q', '', type=str)
+    category_id = request.args.get('category_id', 0, type=int)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    # 限制最大返回数量，避免一次性拉取过多
+    per_page = min(max(per_page, 1), 100)
+
+    query = get_project_materials(project_id, common_only=True)
+    if q:
+        query = query.filter(
+            or_(Material.name.contains(q), Material.code.contains(q))
+        )
+    if category_id:
+        query = query.filter(Material.category_id == category_id)
+
+    pagination = query.order_by(Material.code.asc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    items = []
+    for m in pagination.items:
+        items.append({
+            'id': m.id,
+            'code': m.code or '',
+            'name': m.name,
+            'specification': m.specification or '',
+            'unit': m.unit or '',
+            'category_id': m.category_id,
+            'category_name': m.category.name if m.category else '',
+        })
+
+    return jsonify({
+        'items': items,
+        'total': pagination.total,
+        'page': pagination.page,
+        'pages': pagination.pages,
+    })
 
 
 @bp.route('/download_template')
@@ -267,9 +402,24 @@ def import_excel():
                 specification=spec,
                 category_id=category.id,
                 unit=unit,
-                remark=remark
+                remark=remark,
+                # 主数据统一改造：项目级导入物资标记为 project，自动加入项目常用
+                source='project',
+                status='active',
             )
             db.session.add(material)
+            db.session.flush()  # 取 material.id
+            # 加入项目常用表（与新增逻辑保持一致）
+            existing_link = ProjectMaterial.query.filter_by(
+                project_id=project_id, material_id=material.id
+            ).first()
+            if not existing_link:
+                db.session.add(ProjectMaterial(
+                    project_id=project_id,
+                    material_id=material.id,
+                    is_common=True,
+                    sort=0,
+                ))
             success_count += 1
 
         if success_count > 0:
@@ -364,7 +514,10 @@ def qr_batch():
 @bp.route('/api/scan_lookup')
 @login_required
 def scan_lookup():
-    """根据物资编码查询当前项目下的材料信息。"""
+    """根据物资编码查询当前项目常用材料信息。
+
+    主数据统一改造后，扫码查询限定在项目常用物资范围内（与表单选择器一致）。
+    """
     project_id = session.get('current_project_id')
     if not project_id:
         return jsonify({'error': '请先选择项目。'}), 400
@@ -373,9 +526,11 @@ def scan_lookup():
     if not code:
         return jsonify({'error': 'code 参数不能为空。'}), 400
 
-    material = Material.query.filter_by(project_id=project_id, code=code).first()
+    material = get_project_materials(project_id, common_only=True).filter(
+        Material.code == code
+    ).first()
     if not material:
-        return jsonify({'error': '未找到该物资编码对应的材料。'}), 404
+        return jsonify({'error': '未找到该物资编码对应的材料（请先将其加入本项目常用物资）。'}), 404
 
     return jsonify({
         'id': material.id,

@@ -10,7 +10,7 @@ from app import db
 from app.models import (PaymentApplication, Payment, Reconciliation, Supplier,
                        Contract, User)
 from app.decorators import editor_required, log_audit
-from app.utils import to_decimal
+from app.utils import to_decimal, apply_data_scope
 
 ALLOWED_ATTACHMENT = {'pdf', 'png', 'jpg', 'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx'}
 
@@ -66,9 +66,11 @@ STATUS_MAP = {
 @login_required
 def index():
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     tab = request.args.get('tab', 'mine', type=str)
     page = request.args.get('page', 1, type=int)
@@ -76,7 +78,10 @@ def index():
     supplier_id = request.args.get('supplier_id', 0, type=int)
     keyword = request.args.get('keyword', '', type=str)
 
-    query = PaymentApplication.query.filter_by(project_id=project_id)
+    query = PaymentApplication.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, PaymentApplication)
 
     if tab == 'mine':
         query = query.filter_by(applicant_id=current_user.id)
@@ -249,7 +254,8 @@ def submit_approval(id):
 
     opinion = request.form.get('opinion', '').strip()
     success, msg, _ = submit_approval('payment_application', application.id,
-                                      applicant_id=current_user.id, opinion=opinion)
+                                      applicant_id=current_user.id, opinion=opinion,
+                                      project_id=application.project_id)
     if success:
         application.status = 'pending'
         db.session.commit()

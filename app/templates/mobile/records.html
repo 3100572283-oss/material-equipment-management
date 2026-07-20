@@ -1,0 +1,136 @@
+{% extends "mobile/base.html" %}
+{% block title %}我的记录{% endblock %}
+{% block nav_title %}我的记录{% endblock %}
+
+{% block content %}
+<!-- Tab 切换 -->
+<div class="m-tab-switch">
+    <a href="{{ url_for('mobile.records', type='in', date=date_filter, status=status_filter) }}"
+       class="{% if record_type == 'in' %}active{% endif %}">入库记录</a>
+    <a href="{{ url_for('mobile.records', type='out', date=date_filter, status=status_filter) }}"
+       class="{% if record_type == 'out' %}active{% endif %}">出库记录</a>
+</div>
+
+<!-- 筛选条 -->
+<div class="m-card" style="padding:10px 16px;">
+    <div class="m-filter-row">
+        <div class="m-filter-label">时间：</div>
+        <div class="m-chips">
+            <a href="{{ url_for('mobile.records', type=record_type, date='today', status=status_filter) }}"
+               class="m-chip {% if date_filter == 'today' %}active{% endif %}">今天</a>
+            <a href="{{ url_for('mobile.records', type=record_type, date='week', status=status_filter) }}"
+               class="m-chip {% if date_filter == 'week' %}active{% endif %}">本周</a>
+            <a href="{{ url_for('mobile.records', type=record_type, date='month', status=status_filter) }}"
+               class="m-chip {% if date_filter == 'month' %}active{% endif %}">本月</a>
+            <a href="{{ url_for('mobile.records', type=record_type, date='all', status=status_filter) }}"
+               class="m-chip {% if date_filter == 'all' %}active{% endif %}">全部</a>
+        </div>
+    </div>
+    <div class="m-filter-row" style="margin-top:8px;">
+        <div class="m-filter-label">状态：</div>
+        <div class="m-chips">
+            <a href="{{ url_for('mobile.records', type=record_type, date=date_filter, status='') }}"
+               class="m-chip {% if not status_filter %}active{% endif %}">全部</a>
+            <a href="{{ url_for('mobile.records', type=record_type, date=date_filter, status='draft') }}"
+               class="m-chip {% if status_filter == 'draft' %}active{% endif %}">草稿</a>
+            <a href="{{ url_for('mobile.records', type=record_type, date=date_filter, status='pending') }}"
+               class="m-chip {% if status_filter == 'pending' %}active{% endif %}">待审</a>
+            <a href="{{ url_for('mobile.records', type=record_type, date=date_filter, status='passed') }}"
+               class="m-chip {% if status_filter == 'passed' %}active{% endif %}">已通过</a>
+            <a href="{{ url_for('mobile.records', type=record_type, date=date_filter, status='rejected') }}"
+               class="m-chip {% if status_filter == 'rejected' %}active{% endif %}">已驳回</a>
+        </div>
+    </div>
+</div>
+
+<!-- 记录列表 -->
+<div id="recordsList">
+    {% if records %}
+    <div class="m-list-summary">
+        共 {{ records|length }} 条记录
+    </div>
+
+    {% for r in records %}
+    <div class="m-record-card">
+        <div class="header">
+            <span class="code">{{ r.code }}</span>
+            <span class="date">{% if record_type == 'in' %}{{ r.stock_in_date }}{% else %}{{ r.stock_out_date }}{% endif %}</span>
+        </div>
+        <div class="party">
+            {% if record_type == 'in' %}
+                <i class="bi bi-truck"></i>
+                {{ r.supplier.name if r.supplier else '-' }}
+            {% else %}
+                <i class="bi bi-people"></i>
+                {{ r.usage_unit.name if r.usage_unit else '-' }}
+                {% if r.team %} · {{ r.team.team_name }}{% endif %}
+            {% endif %}
+        </div>
+        <div class="items-summary">
+            {% set item_list = r.items.all() %}
+            {% if item_list %}
+            {% set item_count = item_list|length %}
+            {% set total_qty = r.total_quantity or 0 %}
+            {% set first_unit = '' %}
+            {% if item_list[0].material and item_list[0].material.unit %}
+            {% set first_unit = item_list[0].material.unit %}
+            {% endif %}
+            {% for it in item_list[:3] %}
+            <span class="item-tag">{{ it.material.name if it.material else '-' }} × {{ it.quantity }}</span>
+            {% endfor %}
+            {% if item_count > 3 %}
+            <span class="more">+{{ item_count - 3 }} 项</span>
+            {% endif %}
+            <div class="total">合计：{{ '%.3f'|format(total_qty|float) }} {{ first_unit }}</div>
+            {% else %}
+            <div class="empty">无明细</div>
+            {% endif %}
+        </div>
+        <div class="footer">
+            <span class="status-tag
+                {% if r.approval_status == 'passed' %}passed
+                {% elif r.approval_status == 'pending' %}pending
+                {% elif r.approval_status == 'draft' %}draft
+                {% elif r.approval_status == 'rejected' %}rejected
+                {% endif %}">
+                {% if r.approval_status == 'passed' %}已通过
+                {% elif r.approval_status == 'pending' %}待审
+                {% elif r.approval_status == 'draft' %}草稿
+                {% elif r.approval_status == 'rejected' %}已驳回
+                {% else %}{{ r.approval_status }}{% endif %}
+            </span>
+            {% if record_type == 'in' and r.quality_status %}
+            <span class="qc-tag {% if r.quality_status == 'pending' %}pending{% elif r.quality_status == 'qualified' %}passed{% elif r.quality_status == 'unqualified' %}rejected{% endif %}">
+                {% if r.quality_status == 'pending' %}待质检
+                {% elif r.quality_status == 'qualified' %}已质检合格
+                {% elif r.quality_status == 'unqualified' %}质检不合格
+                {% endif %}
+            </span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-inbox"></i>
+        <div>暂无{% if record_type == 'in' %}入库{% else %}出库{% endif %}记录</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 下拉刷新
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){
+                window.location.reload();
+                done();
+            }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}

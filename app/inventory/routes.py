@@ -2,28 +2,31 @@ import csv
 import io
 from datetime import datetime, date
 from flask import render_template, request, redirect, url_for, flash, send_file
-from flask_login import login_required
+from flask_login import login_required, current_user
 from sqlalchemy import or_, func, literal
 
 from app.inventory import bp
 from app import db
 from app.models import Inventory, Material, Category, StockIn, StockInItem, StockOut, StockOutItem
+from app.utils import apply_data_scope
 
 @bp.route('/')
 @login_required
 def index():
     from flask import session
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     keyword = request.args.get('keyword', '', type=str)
     category_l1 = request.args.get('category_l1', 0, type=int)
     category_l2 = request.args.get('category_l2', 0, type=int)
     category_l3 = request.args.get('category_l3', 0, type=int)
 
-    subq = db.session.query(
+    subq_query = db.session.query(
         Material.id,
         func.coalesce(func.sum(StockInItem.quantity), 0).label('total_in'),
         func.coalesce(func.sum(StockOutItem.quantity), 0).label('total_out')
@@ -31,7 +34,10 @@ def index():
         StockIn, StockIn.id == StockInItem.stock_in_id
     ).outerjoin(StockOutItem, StockOutItem.material_id == Material.id).outerjoin(
         StockOut, StockOut.id == StockOutItem.stock_out_id
-    ).filter(Material.project_id == project_id).group_by(Material.id).subquery()
+    )
+    if project_id:
+        subq_query = subq_query.filter(Material.project_id == project_id)
+    subq = subq_query.group_by(Material.id).subquery()
 
     query = db.session.query(
         Material,
@@ -42,7 +48,10 @@ def index():
         func.coalesce(Inventory.actual_amount, 0).label('actual_amount')
     ).outerjoin(Category, Category.id == Material.category_id).outerjoin(
         Inventory, Inventory.material_id == Material.id
-    ).filter(Material.project_id == project_id)
+    )
+    if project_id:
+        query = query.filter(Material.project_id == project_id)
+    query = apply_data_scope(query, Material)
 
     if keyword:
         query = query.filter(or_(Material.name.contains(keyword), Material.code.contains(keyword)))

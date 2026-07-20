@@ -1,0 +1,312 @@
+{% extends "mobile/base.html" %}
+{% block title %}审批详情{% endblock %}
+{% block nav_title %}审批详情{% endblock %}
+
+{% block content %}
+<!-- 单据基本信息 -->
+<div class="m-card">
+    <div class="m-card-title">
+        <i class="bi bi-file-earmark-text"></i>
+        {% if instance.biz_type == 'stockin' %}入库单
+        {% elif instance.biz_type == 'stockout' %}出库单
+        {% elif instance.biz_type == 'contract' %}合同
+        {% elif instance.biz_type == 'payment' %}付款单
+        {% elif instance.biz_type == 'purchase_requisition' %}采购申请
+        {% elif instance.biz_type == 'material_transfer' %}调拨单
+        {% elif instance.biz_type == 'reconcile' %}对账单
+        {% else %}{{ instance.biz_type }}{% endif %}
+    </div>
+    <div class="m-info-row">
+        <div class="label">单据标题</div>
+        <div class="value">{{ instance.biz_title or ('#' ~ instance.biz_id) }}</div>
+    </div>
+    <div class="m-info-row">
+        <div class="label">申请人</div>
+        <div class="value">{{ instance.applicant.name if instance.applicant else instance.applicant.username if instance.applicant else '-' }}</div>
+    </div>
+    <div class="m-info-row">
+        <div class="label">提交时间</div>
+        <div class="value">{{ instance.submit_time.strftime('%Y-%m-%d %H:%M') if instance.submit_time else '-' }}</div>
+    </div>
+    <div class="m-info-row">
+        <div class="label">当前状态</div>
+        <div class="value">
+            <span class="m-status-tag
+                {% if instance.status == 'passed' %}passed
+                {% elif instance.status == 'pending' or instance.status == 'approving' %}pending
+                {% elif instance.status == 'rejected' %}rejected
+                {% elif instance.status == 'draft' %}draft
+                {% elif instance.status == 'withdrawn' %}rejected
+                {% endif %}">
+                {% if instance.status == 'passed' %}已通过
+                {% elif instance.status == 'pending' %}待审批
+                {% elif instance.status == 'approving' %}审批中
+                {% elif instance.status == 'rejected' %}已驳回
+                {% elif instance.status == 'draft' %}草稿
+                {% elif instance.status == 'withdrawn' %}已撤回
+                {% else %}{{ instance.status }}{% endif %}
+            </span>
+        </div>
+    </div>
+    {% if instance.current_node %}
+    <div class="m-info-row">
+        <div class="label">当前节点</div>
+        <div class="value">{{ instance.current_node.node_name }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 单据详情（如果有） -->
+{% if biz_obj %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-info-circle"></i>单据详情</div>
+    {% if biz_obj.code %}
+    <div class="m-info-row">
+        <div class="label">单据编号</div>
+        <div class="value">{{ biz_obj.code }}</div>
+    </div>
+    {% endif %}
+    {% if biz_obj.remark %}
+    <div class="m-info-row">
+        <div class="label">备注</div>
+        <div class="value">{{ biz_obj.remark }}</div>
+    </div>
+    {% endif %}
+    {% if biz_obj.total_amount is not none %}
+    <div class="m-info-row">
+        <div class="label">金额</div>
+        <div class="value" style="color:#dc3545; font-weight:700;">
+            ¥{{ '%.2f'|format(biz_obj.total_amount|float) }}
+        </div>
+    </div>
+    {% endif %}
+    {% if biz_obj.total_quantity is not none %}
+    <div class="m-info-row">
+        <div class="label">数量</div>
+        <div class="value">{{ '%.3f'|format(biz_obj.total_quantity|float) }}</div>
+    </div>
+    {% endif %}
+    <!-- 单据明细 -->
+    {% if biz_items %}
+    <div style="margin-top:8px;">
+        <div style="font-size:13px; color:#6c757d; margin-bottom:6px;">明细（{{ biz_items|length }} 条）：</div>
+        {% for it in biz_items[:5] %}
+        <div style="padding:6px 0; border-bottom:1px dashed #e9ecef; font-size:13px;">
+            <div>{{ it.material.name if it.material else '-' }}</div>
+            <div style="color:#6c757d; font-size:12px;">
+                数量：{{ it.quantity }} {% if it.material %}{{ it.material.unit }}{% endif %}
+                {% if it.amount %} · 金额：¥{{ '%.2f'|format(it.amount|float) }}{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% if biz_items|length > 5 %}
+        <div style="text-align:center; padding:6px; color:#6c757d; font-size:12px;">
+            ... 共 {{ biz_items|length }} 条明细
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- 审批记录 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-clock-history"></i>审批记录</div>
+    {% if records %}
+    <div class="m-timeline">
+        {% for r in records %}
+        <div class="m-timeline-item">
+            <div class="m-timeline-dot
+                {% if r.action == 'approve' %}pos
+                {% elif r.action == 'reject' %}neg
+                {% else %}gray{% endif %}">
+                <i class="bi {% if r.action == 'approve' %}bi-check{% elif r.action == 'reject' %}bi-x{% else %}bi-dot{% endif %}"></i>
+            </div>
+            <div class="m-timeline-content">
+                <div class="m-timeline-title">
+                    {{ r.node.node_name if r.node else '审批节点' }}
+                    <span class="m-status-tag
+                        {% if r.action == 'approve' %}passed
+                        {% elif r.action == 'reject' %}rejected
+                        {% elif r.action == 'withdraw' %}rejected
+                        {% elif r.action == 'skip' %}draft
+                        {% endif %}" style="margin-left:6px;">
+                        {% if r.action == 'approve' %}同意
+                        {% elif r.action == 'reject' %}驳回
+                        {% elif r.action == 'withdraw' %}撤回
+                        {% elif r.action == 'skip' %}跳过
+                        {% else %}{{ r.action }}{% endif %}
+                    </span>
+                </div>
+                <div class="m-timeline-meta">
+                    {{ r.approver.name if r.approver else r.approver.username if r.approver else '-' }}
+                    · {{ r.approve_time.strftime('%Y-%m-%d %H:%M') if r.approve_time else '-' }}
+                </div>
+                {% if r.opinion %}
+                <div class="m-timeline-opinion">{{ r.opinion }}</div>
+                {% endif %}
+                {% if r.action == 'reject' and instance.reject_reason %}
+                <div class="m-timeline-opinion" style="color:#dc3545;">驳回原因：{{ instance.reject_reason }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-clock"></i>
+        <div>暂无审批记录</div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.m-timeline { padding:8px 0; }
+.m-timeline-item {
+    display:flex; align-items:flex-start;
+    padding-bottom:16px; position:relative;
+}
+.m-timeline-item:not(:last-child)::before {
+    content:''; position:absolute;
+    left:11px; top:24px; bottom:-4px;
+    width:2px; background:#e9ecef;
+}
+.m-timeline-dot {
+    width:24px; height:24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    margin-right:12px; flex-shrink:0; z-index:1;
+    background:#f1f3f5; color:#6c757d;
+    font-size:14px;
+}
+.m-timeline-dot.pos { background:#d1e7dd; color:#198754; }
+.m-timeline-dot.neg { background:#f8d7da; color:#dc3545; }
+.m-timeline-content { flex:1; min-width:0; }
+.m-timeline-title { font-size:14px; font-weight:600; color:#212529; }
+.m-timeline-meta { font-size:12px; color:#6c757d; margin-top:2px; }
+.m-timeline-opinion {
+    margin-top:4px; padding:6px 8px;
+    background:#f8f9fa; border-radius:4px;
+    font-size:13px; color:#495057;
+}
+</style>
+
+<!-- 底部审批操作（仅待审批中显示） -->
+{% if instance.status in ['pending', 'approving'] %}
+<div class="m-approve-bar">
+    <button type="button" class="m-btn m-btn-success m-btn-lg" style="flex:1;" onclick="approveSubmit()">
+        <i class="bi bi-check-lg"></i> 同意
+    </button>
+    <button type="button" class="m-btn m-btn-danger m-btn-lg" style="flex:1;" onclick="rejectSubmit()">
+        <i class="bi bi-x-lg"></i> 驳回
+    </button>
+</div>
+<style>
+.m-approve-bar {
+    position:fixed; bottom:0; left:0; right:0;
+    display:flex; gap:8px; padding:8px 12px;
+    background:#fff; border-top:1px solid #e9ecef;
+    box-shadow:0 -2px 8px rgba(0,0,0,0.04);
+    z-index:100;
+}
+body { padding-bottom:80px; }
+</style>
+{% endif %}
+
+<!-- 驳回原因弹窗 -->
+<div class="m-modal-mask" id="rejectModal" style="display:none;">
+    <div class="m-modal">
+        <div class="m-modal-title">填写驳回原因</div>
+        <textarea id="rejectReason" class="m-form-control" rows="3" placeholder="请输入驳回原因（必填）" style="margin:10px 0;"></textarea>
+        <div style="display:flex; gap:8px;">
+            <button type="button" class="m-btn m-btn-outline m-btn-block" onclick="closeRejectModal()">取消</button>
+            <button type="button" class="m-btn m-btn-danger m-btn-block" onclick="confirmReject()">确认驳回</button>
+        </div>
+    </div>
+</div>
+
+<!-- 同意确认弹窗 -->
+<div class="m-modal-mask" id="approveModal" style="display:none;">
+    <div class="m-modal">
+        <div class="m-modal-title">审批意见（可选）</div>
+        <textarea id="approveOpinion" class="m-form-control" rows="3" placeholder="同意" style="margin:10px 0;"></textarea>
+        <div style="display:flex; gap:8px;">
+            <button type="button" class="m-btn m-btn-outline m-btn-block" onclick="closeApproveModal()">取消</button>
+            <button type="button" class="m-btn m-btn-success m-btn-block" onclick="confirmApprove()">确认同意</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.m-modal-mask {
+    position:fixed; inset:0; z-index:9999;
+    background:rgba(0,0,0,0.5);
+    display:flex; align-items:center; justify-content:center;
+}
+.m-modal {
+    background:#fff; width:88%; max-width:360px;
+    padding:16px; border-radius:12px;
+}
+.m-modal-title { font-size:16px; font-weight:600; }
+.m-modal textarea { resize:vertical; min-height:80px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function approveSubmit(){
+    document.getElementById('approveModal').style.display = 'flex';
+    document.getElementById('approveOpinion').focus();
+}
+function closeApproveModal(){
+    document.getElementById('approveModal').style.display = 'none';
+}
+function confirmApprove(){
+    var opinion = document.getElementById('approveOpinion').value.trim();
+    var formData = new FormData();
+    formData.append('opinion', opinion);
+    M.loading(true);
+    fetch('{{ url_for("mobile.approval_approve", instance_id=instance.id) }}', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+    }).then(function(r){
+        M.loading(false);
+        // 直接跳转，flash 消息会显示
+        window.location.href = '{{ url_for("mobile.approvals") }}';
+    }).catch(function(err){
+        M.loading(false);
+        M.toast('操作失败：' + err, 'danger');
+    });
+}
+
+function rejectSubmit(){
+    document.getElementById('rejectModal').style.display = 'flex';
+    document.getElementById('rejectReason').focus();
+}
+function closeRejectModal(){
+    document.getElementById('rejectModal').style.display = 'none';
+    document.getElementById('rejectReason').value = '';
+}
+function confirmReject(){
+    var reason = document.getElementById('rejectReason').value.trim();
+    if (!reason) {
+        M.toast('请填写驳回原因', 'warning');
+        return;
+    }
+    var formData = new FormData();
+    formData.append('reason', reason);
+    M.loading(true);
+    fetch('{{ url_for("mobile.approval_reject", instance_id=instance.id) }}', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+    }).then(function(r){
+        M.loading(false);
+        window.location.href = '{{ url_for("mobile.approvals") }}';
+    }).catch(function(err){
+        M.loading(false);
+        M.toast('操作失败：' + err, 'danger');
+    });
+}
+</script>
+{% endblock %}

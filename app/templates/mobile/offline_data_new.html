@@ -1,0 +1,361 @@
+{% extends "mobile/base.html" %}
+{% block title %}离线数据{% endblock %}
+{% block nav_title %}离线数据{% endblock %}
+
+{% block content %}
+<!-- 同步统计卡片 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-cloud-arrow-up"></i>待同步数据</div>
+    <div class="m-stat-row">
+        <div class="m-stat-card in">
+            <div class="label">入库单</div>
+            <div class="value" id="countIn">0</div>
+            <div class="sub">条待同步</div>
+        </div>
+        <div class="m-stat-card out">
+            <div class="label">出库单</div>
+            <div class="value" id="countOut">0</div>
+            <div class="sub">条待同步</div>
+        </div>
+    </div>
+    <div style="margin-top:12px;">
+        <button type="button" class="m-btn m-btn-primary" style="width:100%;" onclick="syncAll()">
+            <i class="bi bi-arrow-repeat" style="margin-right:6px;"></i>一键同步
+        </button>
+    </div>
+    <div id="syncProgress" style="margin-top:10px; display:none;">
+        <div style="background:#f1f3f5; border-radius:4px; height:6px; overflow:hidden;">
+            <div id="syncProgressBar" style="background:#165DFF; height:100%; width:0%; transition:width 0.3s;"></div>
+        </div>
+        <div id="syncProgressText" style="font-size:12px; color:#6c757d; margin-top:4px; text-align:center;"></div>
+    </div>
+</div>
+
+<!-- 网络状态提示 -->
+<div class="m-card" style="padding:12px 16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; font-size:13px;">
+        <span>
+            <i class="bi bi-wifi{% if not online %}-off{% endif %}" style="margin-right:6px; color:{% if online %}#198754{% else %}#dc3545{% endif %};"></i>
+            当前状态：{% if online %}<span style="color:#198754;">在线</span>{% else %}<span style="color:#dc3545;">离线</span>{% endif %}
+        </span>
+        <button type="button" class="m-btn m-btn-outline" style="height:30px; padding:0 12px; font-size:12px;" onclick="location.reload()">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+        </button>
+    </div>
+</div>
+
+<!-- Tab 切换 -->
+<div class="m-tab-switch">
+    <a href="javascript:switchTab('in')" id="tabIn" class="active">入库单</a>
+    <a href="javascript:switchTab('out')" id="tabOut">出库单</a>
+</div>
+
+<!-- 列表 -->
+<div id="listContainer">
+    <div class="m-empty">
+        <i class="bi bi-cloud-arrow-up"></i>
+        <div>加载中...</div>
+    </div>
+</div>
+
+<!-- 数据清理 -->
+<div class="m-card" style="margin-top:12px;">
+    <div class="m-card-title"><i class="bi bi-trash"></i>数据清理</div>
+    <div style="font-size:12px; color:#6c757d; margin-bottom:10px;">
+        清理 7 天前已同步成功的本地缓存数据，释放存储空间。
+    </div>
+    <button type="button" class="m-btn m-btn-outline" style="width:100%;" onclick="clearOld()">
+        <i class="bi bi-brush" style="margin-right:6px;"></i>清理旧数据
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var currentTab = 'in';
+
+function loadCounts(){
+    Promise.all([
+        MobileOffline.count(MobileOffline.STORE_STOCK_IN, 'pending'),
+        MobileOffline.count(MobileOffline.STORE_STOCK_IN, 'failed'),
+        MobileOffline.count(MobileOffline.STORE_STOCK_OUT, 'pending'),
+        MobileOffline.count(MobileOffline.STORE_STOCK_OUT, 'failed')
+    ]).then(function(arr){
+        document.getElementById('countIn').textContent = arr[0] + arr[1];
+        document.getElementById('countOut').textContent = arr[2] + arr[3];
+    });
+}
+
+function switchTab(tab){
+    currentTab = tab;
+    document.getElementById('tabIn').classList.toggle('active', tab === 'in');
+    document.getElementById('tabOut').classList.toggle('active', tab === 'out');
+    loadList();
+}
+
+function loadList(){
+    var store = currentTab === 'in' ? MobileOffline.STORE_STOCK_IN : MobileOffline.STORE_STOCK_OUT;
+    MobileOffline.list(store).then(function(items){
+        items.sort(function(a,b){ return (b.created_at||0) - (a.created_at||0); });
+        var box = document.getElementById('listContainer');
+        if (items.length === 0) {
+            box.innerHTML = '<div class="m-empty"><i class="bi bi-inbox"></i><div>暂无离线数据</div></div>';
+            return;
+        }
+        box.innerHTML = items.map(function(it){
+            var statusTag = '';
+            if (it.status === 'pending') statusTag = '<span class="m-status-tag pending">待同步</span>';
+            else if (it.status === 'syncing') statusTag = '<span class="m-status-tag pending">同步中</span>';
+            else if (it.status === 'synced') statusTag = '<span class="m-status-tag passed">已同步</span>';
+            else if (it.status === 'failed') statusTag = '<span class="m-status-tag rejected">失败</span>';
+
+            var dateStr = it.created_at ? new Date(it.created_at).toLocaleString('zh-CN') : '-';
+            var itemSummary = (it.items||[]).slice(0,3).map(function(x){
+                return '<span class="item-tag">' + escapeHtml(x.name||'-') + ' × ' + (x.quantity||0) + '</span>';
+            }).join('');
+            if (it.items && it.items.length > 3) {
+                itemSummary += '<span class="more">+' + (it.items.length - 3) + ' 项</span>';
+            }
+            var totalQty = 0;
+            (it.items||[]).forEach(function(x){ totalQty += parseFloat(x.quantity||0); });
+
+            return '<div class="m-record-card">' +
+                '<div class="header"><span class="code">[本地] ' + (it.code || '草稿') + '</span>' +
+                '<span class="date">' + dateStr + '</span></div>' +
+                '<div class="party"><i class="bi bi-' + (currentTab==='in'?'truck':'people') + '"></i> ' +
+                (it.supplier_name || it.usage_unit_name || '-') + '</div>' +
+                '<div class="items-summary">' + (itemSummary || '<div class="empty">无明细</div>') +
+                '<div class="total">合计：' + totalQty.toFixed(2) + '</div></div>' +
+                '<div class="footer">' + statusTag +
+                (it.status === 'synced' ? '' :
+                    '<button type="button" class="m-btn m-btn-outline" style="height:28px;padding:0 10px;font-size:12px;margin-left:auto;" onclick="syncOne(\'' + it.uuid + '\')"><i class="bi bi-arrow-up"></i> 同步</button>') +
+                '<button type="button" class="m-btn m-btn-outline" style="height:28px;padding:0 10px;font-size:12px;color:#dc3545;border-color:#f5c2c7;" onclick="deleteOne(\'' + it.uuid + '\')"><i class="bi bi-trash"></i></button>' +
+                '</div></div>';
+        }).join('');
+    });
+}
+
+function escapeHtml(s){
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, function(c){
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+
+function syncAll(){
+    if (!navigator.onLine) {
+        M.toast('当前为离线状态，请连接网络后再同步', 'warning');
+        return;
+    }
+    var store = currentTab === 'in' ? MobileOffline.STORE_STOCK_IN : MobileOffline.STORE_STOCK_OUT;
+    MobileOffline.list(store, 'pending').then(function(items){
+        if (items.length === 0) {
+            // 也包含失败的
+            return MobileOffline.list(store, 'failed');
+        }
+        return items;
+    }).then(function(items){
+        if (items.length === 0) {
+            M.toast('没有需要同步的数据', 'info');
+            return;
+        }
+        var total = items.length;
+        var done = 0;
+        var success = 0;
+        var failed = 0;
+        var progBar = document.getElementById('syncProgressBar');
+        var progText = document.getElementById('syncProgressText');
+        var progBox = document.getElementById('syncProgress');
+        progBox.style.display = 'block';
+
+        var syncUrl = currentTab === 'in' ?
+            "{{ url_for('mobile.stock_in_new') }}" :
+            "{{ url_for('mobile.stock_out_new') }}";
+
+        function next(){
+            if (items.length === 0) {
+                progText.textContent = '同步完成：成功 ' + success + ' 条，失败 ' + failed + ' 条';
+                progBar.style.width = '100%';
+                loadCounts();
+                loadList();
+                if (failed > 0) {
+                    M.toast('部分数据同步失败，请重试', 'warning');
+                } else {
+                    M.toast('全部同步成功', 'success');
+                }
+                return;
+            }
+            var it = items.shift();
+            MobileOffline.updateStatus(store, it.uuid, 'syncing').then(function(){
+                var fd = new FormData();
+                // 基本字段
+                for (var k in it) {
+                    if (k === 'uuid' || k === 'status' || k === 'created_at' || k === 'updated_at' || k === 'items' || k === 'photos' || k === 'signatures') continue;
+                    fd.append(k, it[k]);
+                }
+                // 明细
+                (it.items || []).forEach(function(x, i){
+                    fd.append('material_id[]', x.material_id);
+                    fd.append('quantity[]', x.quantity);
+                    if (x.unit_price) fd.append('unit_price[]', x.unit_price);
+                });
+                // 标记为离线同步
+                fd.append('offline_uuid', it.uuid);
+                // 照片
+                if (it.photos) {
+                    it.photos.forEach(function(p, i){
+                        // 兼容两种格式：纯 base64 字符串 或 {data: '...'} 对象
+                        var dataStr = (typeof p === 'string') ? p : (p && p.data);
+                        if (!dataStr) return;
+                        var arr = dataStr.split(',');
+                        if (arr.length === 2) {
+                            var byteStr = atob(arr[1]);
+                            var mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+                            var ab = new ArrayBuffer(byteStr.length);
+                            var u8 = new Uint8Array(ab);
+                            for (var j=0; j<byteStr.length; j++) u8[j] = byteStr.charCodeAt(j);
+                            var blob = new Blob([ab], { type: mime });
+                            fd.append('photos[]', blob, 'photo_' + i + '.jpg');
+                        }
+                    });
+                }
+                // 签名
+                (it.signatures || []).forEach(function(s, i){
+                    var dataStr = (typeof s === 'string') ? s : (s && s.data);
+                    if (!dataStr) return;
+                    var arr = dataStr.split(',');
+                    if (arr.length === 2) {
+                        try {
+                            var byteStr = atob(arr[1]);
+                            var mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+                            var ab = new ArrayBuffer(byteStr.length);
+                            var u8 = new Uint8Array(ab);
+                            for (var j=0; j<byteStr.length; j++) u8[j] = byteStr.charCodeAt(j);
+                            var blob = new Blob([ab], { type: mime });
+                            fd.append('signatures[]', blob, 'signature_' + i + '.png');
+                        } catch(e){}
+                    }
+                });
+                return fetch(syncUrl, { method: 'POST', body: fd });
+            }).then(function(r){
+                if (r.ok || r.redirected) {
+                    return MobileOffline.updateStatus(store, it.uuid, 'synced');
+                } else {
+                    return MobileOffline.updateStatus(store, it.uuid, 'failed');
+                }
+            }).then(function(){
+                success++;
+            }).catch(function(){
+                failed++;
+                return MobileOffline.updateStatus(store, it.uuid, 'failed');
+            }).then(function(){
+                done++;
+                var pct = Math.round(done / total * 100);
+                progBar.style.width = pct + '%';
+                progText.textContent = '正在同步 ' + done + ' / ' + total + ' ...';
+                next();
+            });
+        }
+        next();
+    });
+}
+
+function syncOne(uuid){
+    if (!navigator.onLine) {
+        M.toast('当前为离线状态', 'warning');
+        return;
+    }
+    var store = currentTab === 'in' ? MobileOffline.STORE_STOCK_IN : MobileOffline.STORE_STOCK_OUT;
+    MobileOffline.list(store).then(function(items){
+        var it = items.find(function(x){ return x.uuid === uuid; });
+        if (!it) return;
+        MobileOffline.updateStatus(store, uuid, 'syncing').then(function(){
+            var fd = new FormData();
+            for (var k in it) {
+                if (k === 'uuid' || k === 'status' || k === 'created_at' || k === 'updated_at' || k === 'items' || k === 'photos' || k === 'signatures') continue;
+                fd.append(k, it[k]);
+            }
+            (it.items || []).forEach(function(x){
+                fd.append('material_id[]', x.material_id);
+                fd.append('quantity[]', x.quantity);
+                if (x.unit_price) fd.append('unit_price[]', x.unit_price);
+            });
+            fd.append('offline_uuid', it.uuid);
+            // 照片
+            (it.photos || []).forEach(function(p, i){
+                var dataStr = (typeof p === 'string') ? p : (p && p.data);
+                if (!dataStr) return;
+                var arr = dataStr.split(',');
+                if (arr.length === 2) {
+                    try {
+                        var byteStr = atob(arr[1]);
+                        var mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+                        var ab = new ArrayBuffer(byteStr.length);
+                        var u8 = new Uint8Array(ab);
+                        for (var j=0; j<byteStr.length; j++) u8[j] = byteStr.charCodeAt(j);
+                        var blob = new Blob([ab], { type: mime });
+                        fd.append('photos[]', blob, 'photo_' + i + '.jpg');
+                    } catch(e){}
+                }
+            });
+            // 签名
+            (it.signatures || []).forEach(function(s, i){
+                var dataStr = (typeof s === 'string') ? s : (s && s.data);
+                if (!dataStr) return;
+                var arr = dataStr.split(',');
+                if (arr.length === 2) {
+                    try {
+                        var byteStr = atob(arr[1]);
+                        var mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+                        var ab = new ArrayBuffer(byteStr.length);
+                        var u8 = new Uint8Array(ab);
+                        for (var j=0; j<byteStr.length; j++) u8[j] = byteStr.charCodeAt(j);
+                        var blob = new Blob([ab], { type: mime });
+                        fd.append('signatures[]', blob, 'signature_' + i + '.png');
+                    } catch(e){}
+                }
+            });
+            var syncUrl = currentTab === 'in' ?
+                "{{ url_for('mobile.stock_in_new') }}" :
+                "{{ url_for('mobile.stock_out_new') }}";
+            return fetch(syncUrl, { method: 'POST', body: fd });
+        }).then(function(r){
+            if (r.ok || r.redirected) {
+                M.toast('同步成功', 'success');
+                MobileOffline.updateStatus(store, uuid, 'synced').then(loadList).then(loadCounts);
+            } else {
+                M.toast('同步失败', 'danger');
+                MobileOffline.updateStatus(store, uuid, 'failed');
+            }
+        }).catch(function(e){
+            M.toast('同步失败：' + e, 'danger');
+            MobileOffline.updateStatus(store, uuid, 'failed');
+        });
+    });
+}
+
+function deleteOne(uuid){
+    M.confirm('确认删除该条离线数据？此操作不可恢复。', function(){
+        var store = currentTab === 'in' ? MobileOffline.STORE_STOCK_IN : MobileOffline.STORE_STOCK_OUT;
+        MobileOffline.remove(store, uuid).then(function(){
+            M.toast('已删除', 'success');
+            loadList();
+            loadCounts();
+        });
+    });
+}
+
+function clearOld(){
+    M.confirm('确认清理 7 天前已同步成功的本地缓存？', function(){
+        MobileOffline.clearOld(7).then(function(){
+            M.toast('清理完成', 'success');
+            loadList();
+            loadCounts();
+        });
+    });
+}
+
+loadCounts();
+loadList();
+</script>
+{% endblock %}

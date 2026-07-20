@@ -7,7 +7,7 @@ from app import db
 from app.models import (MaterialTransfer, MaterialTransferItem,
                        Inventory, Material, Project)
 from app.decorators import editor_required, log_audit
-from app.utils import to_decimal
+from app.utils import to_decimal, apply_data_scope
 
 
 def _gen_transfer_no(project_id):
@@ -41,9 +41,11 @@ def _apply_in_transit(project_id, material_id, quantity):
 def index():
     from flask import session
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
@@ -51,10 +53,13 @@ def index():
     date_from = request.args.get('date_from', '', type=str)
     date_to = request.args.get('date_to', '', type=str)
 
-    query = MaterialTransfer.query.filter(
-        (MaterialTransfer.from_project_id == project_id) |
-        (MaterialTransfer.to_project_id == project_id)
-    )
+    query = MaterialTransfer.query
+    if project_id:
+        query = query.filter(
+            (MaterialTransfer.from_project_id == project_id) |
+            (MaterialTransfer.to_project_id == project_id)
+        )
+    query = apply_data_scope(query, MaterialTransfer)
 
     if keyword:
         query = query.filter(MaterialTransfer.transfer_no.contains(keyword))
@@ -199,7 +204,7 @@ def submit(id):
         return redirect(url_for('material_transfer.detail', id=id))
 
     from app.approval.service import submit_approval
-    success, msg, instance = submit_approval('material_transfer', transfer.id)
+    success, msg, instance = submit_approval('material_transfer', transfer.id, project_id=transfer.from_project_id)
     if success:
         transfer.status = 'pending'
         db.session.commit()

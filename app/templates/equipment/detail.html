@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}{{ equipment.name }} - 设备详情{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('equipment.index') }}">设备管理</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ equipment.name }}</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -16,7 +27,7 @@
                     data-current-status="{{ equipment.status }}"><i class="bi bi-arrow-repeat me-1"></i>状态变更</button>
             <a href="{{ url_for('equipment.edit', id=equipment.id) }}" class="btn btn-sm btn-primary me-1"><i class="bi bi-pencil me-1"></i>编辑</a>
             {% endif %}
-            <a href="{{ url_for('equipment.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+            <button onclick="goBack('{{ url_for('equipment.index') }}', 'equipment_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
         </div>
     </div>
     <div class="card-body">
@@ -57,6 +68,28 @@
         </div>
     </div>
 </div>
+
+{% if equipment.location_lat and equipment.location_lng %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-geo-alt me-2"></i>现场定位</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">纬度</div><div>{{ '%.6f'|format(equipment.location_lat) }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">经度</div><div>{{ '%.6f'|format(equipment.location_lng) }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">定位精度</div><div>±{{ '%.1f'|format(equipment.location_accuracy or 0) }} 米</div></div>
+            <div class="col-md-3"><div class="text-muted small">定位时间</div><div>{{ equipment.location_time.strftime('%Y-%m-%d %H:%M:%S') if equipment.location_time else '-' }}</div></div>
+            <div class="col-12">
+                <a href="https://uri.amap.com/marker?position={{ equipment.location_lng }},{{ equipment.location_lat }}&name=单据录入位置"
+                   target="_blank" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-map me-1"></i>在高德地图中查看
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {# ========== 折旧信息卡片（自有设备） ========== #}
 {% if equipment.source_type == 'self' %}

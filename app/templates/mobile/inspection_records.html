@@ -1,0 +1,76 @@
+{% extends "mobile/base.html" %}
+{% block title %}巡检记录{% endblock %}
+{% block nav_title %}巡检记录{% endblock %}
+
+{% block content %}
+<!-- 搜索框 -->
+<div class="m-card" style="padding:12px 16px;">
+    <form method="GET" action="{{ url_for('mobile.inspection_records') }}" style="display:flex; gap:8px;">
+        <input type="text" name="keyword" value="{{ keyword }}"
+               class="m-form-control" placeholder="设备名称/编号" style="flex:1;">
+        <button type="submit" class="m-btn m-btn-primary" style="width:60px; padding:0;">
+            <i class="bi bi-search"></i>
+        </button>
+    </form>
+</div>
+
+<!-- 记录列表 -->
+<div id="listContainer">
+    {% if records %}
+    <div class="m-list-summary">共 {{ records|length }} 条</div>
+    {% for r in records %}
+    <div class="m-record-card">
+        <div class="header">
+            <span class="code">{{ r.equipment.code }}</span>
+            <span class="date">{{ r.inspect_date.strftime('%Y-%m-%d') }}</span>
+        </div>
+        <div class="party">
+            <i class="bi bi-truck"></i>
+            {{ r.equipment.name }}
+        </div>
+        <div class="items-summary">
+            <div class="total">
+                巡检人：{{ r.inspector_name or '-' }}
+                {% if r.meter_reading %} · 仪表：{{ r.meter_reading }}{% endif %}
+            </div>
+        </div>
+        {% if r.issue_desc %}
+        <div class="items-summary">
+            <div class="total" style="color:#c92a2a;">
+                <i class="bi bi-exclamation-triangle"></i> {{ r.issue_desc }}
+            </div>
+        </div>
+        {% endif %}
+        <div class="footer">
+            <span class="status-tag {% if r.overall_status == 'normal' %}passed{% else %}rejected{% endif %}">
+                {% if r.overall_status == 'normal' %}正常{% else %}异常{% endif %}
+            </span>
+            {% if r.auto_maintenance %}
+            <span class="qc-tag pending">已生成维修工单</span>
+            {% endif %}
+        </div>
+        <div style="font-size:11px; color:#adb5bd; margin-top:4px;">
+            {{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '-' }}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-clipboard-check"></i>
+        <div>{% if keyword %}未找到匹配的巡检记录{% else %}暂无巡检记录{% endif %}</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){ window.location.reload(); done(); }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -5,7 +5,7 @@
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-shop me-2"></i>用料单位</h5>
         {% if current_user.can_edit() %}
-        <a href="{{ url_for('unit.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增单位</a>
+        <a href="{{ url_for('unit.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增单位</a>
         {% endif %}
     </div>
     <div class="card-body">
@@ -35,7 +35,7 @@
                     {% for u in pagination.items %}
                     <tr>
                         <td>
-                            <a href="{{ url_for('unit.detail', id=u.id) }}">{{ u.name }}</a>
+                            <a href="{{ url_for('unit.detail', id=u.id) }}?from=list">{{ u.name }}</a>
                         </td>
                         <td>{{ u.code or '-' }}</td>
                         <td>{{ u.manager or '-' }}</td>
@@ -48,7 +48,7 @@
                             {% endif %}
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('unit.detail', id=u.id) }}" class="btn btn-sm btn-outline-info" title="详情"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('unit.detail', id=u.id) }}?from=list" class="btn btn-sm btn-outline-info" title="详情"><i class="bi bi-eye"></i></a>
                             {% if current_user.can_edit() %}
                             <a href="{{ url_for('unit.edit', id=u.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
                             <form method="POST" action="{{ url_for('unit.delete', id=u.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">

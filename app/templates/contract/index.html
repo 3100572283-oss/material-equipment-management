@@ -8,7 +8,7 @@
             <a href="{{ url_for('contract.invoices') }}" class="btn btn-outline-info btn-sm"><i class="bi bi-receipt me-1"></i>发票台账</a>
             <a href="{{ url_for('contract.payments') }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-cash-coin me-1"></i>付款台账</a>
             {% if current_user.can_edit() %}
-            <a href="{{ url_for('contract.create') }}" class="btn btn-primary btn-sm ms-2"><i class="bi bi-plus-lg me-1"></i>新增合同</a>
+            <a href="{{ url_for('contract.create') }}" class="btn btn-primary ms-2"><i class="bi bi-plus-lg me-1"></i>新增合同</a>
             {% endif %}
         </div>
     </div>
@@ -90,7 +90,7 @@
                         <td>
                             <input type="checkbox" class="form-check-input row-checkbox" data-id="{{ c.id }}" onchange="updateSelection()">
                         </td>
-                        <td><a href="{{ url_for('contract.detail', id=c.id) }}" class="text-decoration-none fw-bold">{{ c.code }}</a></td>
+                        <td><a href="{{ url_for('contract.detail', id=c.id) }}?from=list" class="text-decoration-none fw-bold">{{ c.code }}</a></td>
                         <td>{{ c.name }}</td>
                         <td>{{ c.supplier.name if c.supplier else '-' }}</td>
                         <td>{{ c.contract_type or '-' }}</td>
@@ -116,7 +116,7 @@
                             {% else %}<span class="badge bg-warning text-dark">{{ c.status }}</span>{% endif %}
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('contract.detail', id=c.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('contract.detail', id=c.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                             {% if current_user.can_edit() %}
                             <a href="{{ url_for('contract.create', copy_from=c.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
                             <a href="{{ url_for('contract.edit', id=c.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>

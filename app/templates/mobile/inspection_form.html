@@ -1,0 +1,238 @@
+{% extends "mobile/base.html" %}
+{% block title %}巡检录入{% endblock %}
+{% block nav_title %}巡检录入{% endblock %}
+
+{% block content %}
+<form id="inspectionForm" method="POST"
+      action="{{ url_for('mobile.inspection_form', tid=task.id) }}"
+      enctype="multipart/form-data">
+    <!-- 任务信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-clipboard-check"></i>巡检任务</div>
+        <div class="m-info-row"><span>任务号</span><span>{{ task.task_no }}</span></div>
+        <div class="m-info-row"><span>计划日期</span><span>{{ task.plan_inspect_date.strftime('%Y-%m-%d') }}</span></div>
+        <div class="m-info-row"><span>巡检人</span><span>{{ task.assignee_name or current_user.name or current_user.username }}</span></div>
+    </div>
+
+    <!-- 设备信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-truck"></i>设备信息</div>
+        <div class="m-info-row"><span>设备编号</span><span>{{ eq.code }}</span></div>
+        <div class="m-info-row"><span>设备名称</span><span>{{ eq.name }}</span></div>
+        {% if eq.specification %}<div class="m-info-row"><span>规格型号</span><span>{{ eq.specification }}</span></div>{% endif %}
+        <div class="m-info-row"><span>当前状态</span>
+            <span>
+                {% if eq.status == 'in_use' %}在用
+                {% elif eq.status == 'idle' %}闲置
+                {% elif eq.status == 'repairing' %}维修中
+                {% elif eq.status == 'exited' %}已退场
+                {% else %}{{ eq.status }}{% endif %}
+            </span>
+        </div>
+    </div>
+
+    <!-- 巡检日期 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-calendar"></i>巡检信息</div>
+        <div class="m-form-group">
+            <label>巡检日期 <span style="color:#dc3545;">*</span></label>
+            <input type="date" name="inspect_date" class="m-form-control"
+                   value="{{ today }}" required>
+        </div>
+        <div class="m-form-group">
+            <label>仪表读数</label>
+            <input type="text" name="meter_reading" class="m-form-control"
+                   placeholder="可选，如运行小时数、电度等">
+        </div>
+    </div>
+
+    <!-- 巡检项 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-list-check"></i>巡检项</div>
+        {% for item in inspect_items %}
+        <div class="m-inspect-item">
+            <div class="label">{{ item }}</div>
+            <div class="opts">
+                <label><input type="radio" name="item_{{ loop.index }}" value="normal" checked> 正常</label>
+                <label><input type="radio" name="item_{{ loop.index }}" value="abnormal"> 异常</label>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- 异常描述 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-exclamation-triangle"></i>异常描述</div>
+        <div class="m-form-group">
+            <textarea name="issue_desc" class="m-form-control" rows="3"
+                      placeholder="如有异常请详细描述，提交后将自动生成维修工单"></textarea>
+        </div>
+    </div>
+
+    <!-- 现场照片 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-camera"></i>现场照片（最多6张）</div>
+        <input type="file" name="photos[]" accept="image/*" multiple
+               style="display:none;" id="photoInput"
+               onchange="handlePhotoSelect(this)">
+        <div id="photoPreview" class="m-photo-grid"></div>
+        <button type="button" class="m-btn m-btn-outline-primary m-btn-block"
+                onclick="document.getElementById('photoInput').click()">
+            <i class="bi bi-plus-lg"></i> 添加照片
+        </button>
+    </div>
+
+    <!-- 整体结论 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-clipboard-data"></i>整体结论</div>
+        <div class="m-form-group" style="margin-bottom:0;">
+            <label style="display:flex; gap:16px; padding:8px 0;">
+                <label><input type="radio" name="overall_status" value="normal" checked onclick="toggleIssue()"> 正常</label>
+                <label><input type="radio" name="overall_status" value="abnormal" onclick="toggleIssue()"> 异常</label>
+            </label>
+        </div>
+        <div class="m-form-group">
+            <label>备注</label>
+            <textarea name="remark" class="m-form-control" rows="2" placeholder="可选"></textarea>
+        </div>
+    </div>
+
+    <!-- 提交按钮 -->
+    <div class="m-submit-bar">
+        <button type="submit" class="m-btn m-btn-primary m-btn-block">
+            <i class="bi bi-check-lg"></i> 提交巡检
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var selectedPhotos = [];
+
+function toggleIssue(){
+    // 异常时提醒用户填写异常描述
+    var abnormal = document.querySelector('input[name="overall_status"][value="abnormal"]').checked;
+    if (abnormal) {
+        showToast('异常将自动生成维修工单，请填写异常描述', 'warning');
+    }
+}
+
+function handlePhotoSelect(input){
+    var files = Array.from(input.files || []);
+    files.forEach(function(file){
+        if (selectedPhotos.length >= 6) {
+            showToast('最多上传6张照片', 'warning');
+            return;
+        }
+        if (!file.type.startsWith('image/')) return;
+        // 压缩图片
+        compressImage(file, 1280, 0.7, function(blob){
+            selectedPhotos.push(blob);
+            renderPhotos();
+        });
+    });
+    input.value = '';
+}
+
+function compressImage(file, maxSide, quality, cb){
+    var reader = new FileReader();
+    reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+            var canvas = document.createElement('canvas');
+            var w = img.width, h = img.height;
+            if (w > h && w > maxSide) { h = h * maxSide / w; w = maxSide; }
+            else if (h > maxSide) { w = w * maxSide / h; h = maxSide; }
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            canvas.toBlob(function(blob){ cb(blob); }, 'image/jpeg', quality);
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function renderPhotos(){
+    var box = document.getElementById('photoPreview');
+    box.innerHTML = '';
+    selectedPhotos.forEach(function(blob, idx){
+        var url = URL.createObjectURL(blob);
+        var div = document.createElement('div');
+        div.className = 'm-photo-item';
+        div.innerHTML = '<img src="' + url + '"><span class="remove" onclick="removePhoto(' + idx + ')">&times;</span>';
+        box.appendChild(div);
+    });
+}
+
+function removePhoto(idx){
+    selectedPhotos.splice(idx, 1);
+    renderPhotos();
+}
+
+// 提交时把压缩后的blob塞入form
+document.getElementById('inspectionForm').addEventListener('submit', function(e){
+    if (selectedPhotos.length > 0) {
+        e.preventDefault();
+        var fd = new FormData(this);
+        // 移除原本的 photos[]
+        fd.delete('photos[]');
+        selectedPhotos.forEach(function(blob, idx){
+            fd.append('photos[]', blob, 'inspect_' + idx + '.jpg');
+        });
+        // 提交
+        fetch(this.action, {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(function(res){
+            if (res.redirected) {
+                window.location.href = res.url;
+            } else {
+                window.location.href = "{{ url_for('mobile.inspection_list') }}";
+            }
+        }).catch(function(err){
+            showToast('提交失败：' + err, 'danger');
+        });
+    }
+});
+
+function showToast(msg, type){
+    if (window.MobileToast) {
+        MobileToast.show(msg, type || 'info');
+    } else {
+        alert(msg);
+    }
+}
+</script>
+{% endblock %}
+
+<style>
+.m-inspect-item {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 0; border-bottom:1px solid #f1f3f5;
+}
+.m-inspect-item:last-child { border-bottom:none; }
+.m-inspect-item .label { font-size:14px; color:#212529; flex:1; }
+.m-inspect-item .opts { display:flex; gap:12px; font-size:13px; }
+.m-inspect-item .opts label { display:flex; align-items:center; gap:4px; cursor:pointer; }
+.m-photo-grid {
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:8px;
+}
+.m-photo-item {
+    position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden;
+}
+.m-photo-item img { width:100%; height:100%; object-fit:cover; }
+.m-photo-item .remove {
+    position:absolute; top:2px; right:4px;
+    width:20px; height:20px; border-radius:50%;
+    background:rgba(0,0,0,0.6); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px; line-height:1; cursor:pointer;
+}
+.m-info-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f1f3f5; font-size:14px; }
+.m-info-row:last-child { border-bottom:none; }
+.m-info-row span:first-child { color:#6c757d; }
+.m-info-row span:last-child { color:#212529; font-weight:500; text-align:right; max-width:60%; word-break:break-all; }
+</style>

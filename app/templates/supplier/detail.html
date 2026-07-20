@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}供应商详情 - {{ supplier.name }}{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('supplier.index') }}">供应商管理</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ supplier.name }}</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -17,7 +28,7 @@
             {% if current_user.can_edit() %}
             <a href="{{ url_for('supplier.edit', id=supplier.id) }}" class="btn btn-sm btn-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
             {% endif %}
-            <a href="{{ url_for('supplier.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+            <button onclick="goBack('{{ url_for('supplier.index') }}', 'supplier_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
         </div>
     </div>
     <div class="card-body">

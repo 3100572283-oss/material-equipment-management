@@ -21,6 +21,10 @@ class AIService:
         self.model = 'doubao-pro-32k'
         self.base_url = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
         self.max_tokens = 2000
+        self.vision_enabled = False
+        self.vision_model = 'doubao-vision-pro-32k'
+        self.vision_base_url = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
+        self.vision_max_tokens = 2000
         self._load_config()
     
     def _load_config(self):
@@ -35,12 +39,24 @@ class AIService:
             except (ValueError, TypeError):
                 logger.warning("ai_max_tokens 配置无效,使用默认值 2000")
                 self.max_tokens = 2000
+            
+            # 视觉模型配置
+            self.vision_enabled = str(get_config('ai_vision_enabled', 'false')).lower() == 'true'
+            self.vision_model = get_config('ai_vision_model', 'doubao-vision-pro-32k')
+            self.vision_base_url = get_config('ai_vision_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
+            try:
+                self.vision_max_tokens = int(get_config('ai_vision_max_tokens', '2000'))
+            except (ValueError, TypeError):
+                self.vision_max_tokens = 2000
         except Exception as e:
             logger.warning(f"AI 配置加载失败,已禁用 AI 服务: {e}")
             self.enabled = False
     
     def is_enabled(self):
         return self.enabled
+    
+    def is_vision_enabled(self):
+        return self.enabled and self.vision_enabled
     
     def call(self, messages, module='chat'):
         """调用豆包API"""
@@ -281,6 +297,219 @@ class AIService:
         ]
         
         return self.call(messages, 'approval')
+    
+    def vision_analyze(self, image_base64, prompt_template, module='vision'):
+        """视觉识别 - 图片分析
+        
+        Args:
+            image_base64: 图片的base64编码字符串
+            prompt_template: 提示词模板
+            module: 调用模块标识
+            
+        Returns:
+            (result_text, error_msg)
+        """
+        if not self.is_vision_enabled():
+            return None, '视觉识别未启用'
+        if not self.api_key:
+            return None, '请先配置API Key'
+        
+        start = time.time()
+        success = True
+        error_msg = None
+        response_text = None
+        input_tokens = 0
+        output_tokens = 0
+        
+        try:
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {self.api_key}'
+            }
+            
+            # 构建多模态消息
+            messages = [
+                {
+                    'role': 'user',
+                    'content': [
+                        {
+                            'type': 'text',
+                            'text': prompt_template
+                        },
+                        {
+                            'type': 'image_url',
+                            'image_url': {
+                                'url': f'data:image/jpeg;base64,{image_base64}'
+                            }
+                        }
+                    ]
+                }
+            ]
+            
+            payload = {
+                'model': self.vision_model,
+                'messages': messages,
+                'max_tokens': self.vision_max_tokens
+            }
+            
+            # 调用视觉模型API
+            total_deadline = time.time() + 60
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    remaining = max(5, int(total_deadline - time.time()))
+                    timeout = min(30, remaining)
+                    resp = requests.post(self.vision_base_url, headers=headers, json=payload, timeout=timeout)
+                    if 400 <= resp.status_code < 500:
+                        error_msg = f'视觉识别请求参数错误(HTTP {resp.status_code}): {resp.text[:200]}'
+                        success = False
+                        break
+                    resp.raise_for_status()
+                    result = resp.json()
+                    
+                    if 'choices' in result and result['choices']:
+                        response_text = result['choices'][0]['message']['content']
+                    if 'usage' in result:
+                        input_tokens = result['usage'].get('prompt_tokens', 0)
+                        output_tokens = result['usage'].get('completion_tokens', 0)
+                    break
+                except requests.exceptions.Timeout:
+                    if attempt < max_attempts - 1 and time.time() < total_deadline:
+                        backoff = min(2 ** attempt + random.random(), 5)
+                        time.sleep(backoff)
+                        continue
+                    error_msg = '视觉识别请求超时,请稍后重试'
+                    success = False
+                except requests.exceptions.RequestException as e:
+                    if attempt < max_attempts - 1 and time.time() < total_deadline:
+                        backoff = min(2 ** attempt + random.random(), 5)
+                        time.sleep(backoff)
+                        continue
+                    error_msg = f'视觉识别服务连接失败: {e}'
+                    success = False
+            
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+        
+        cost_time = int((time.time() - start) * 1000)
+        
+        self._log(module, f'[image:{len(image_base64)//1000}KB]', response_text, 
+                  input_tokens, output_tokens, cost_time, success, error_msg)
+        
+        return response_text, error_msg
+    
+    def recognize_business_license(self, image_base64):
+        """识别营业执照"""
+        prompt = """请识别这张营业执照图片，提取以下信息并以JSON格式输出：
+{
+    "company_name": "企业名称",
+    "credit_code": "统一社会信用代码",
+    "legal_representative": "法定代表人",
+    "registered_capital": "注册资本",
+    "establish_date": "成立日期（YYYY-MM-DD格式）",
+    "business_scope": "经营范围",
+    "address": "住所",
+    "business_term": "营业期限"
+}
+
+注意：
+1. 只输出JSON，不要其他说明文字
+2. 无法识别的字段填null
+3. 日期统一使用YYYY-MM-DD格式"""
+        
+        result, error = self.vision_analyze(image_base64, prompt, 'license')
+        if result:
+            try:
+                # 尝试提取JSON部分
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', result)
+                if json_match:
+                    return json.loads(json_match.group()), None
+                return json.loads(result), None
+            except json.JSONDecodeError:
+                return None, '识别结果格式错误'
+        return None, error
+    
+    def recognize_invoice(self, image_base64):
+        """识别发票"""
+        prompt = """请识别这张发票图片，提取以下信息并以JSON格式输出：
+{
+    "invoice_type": "发票类型（增值税专用发票/增值税普通发票/电子发票）",
+    "invoice_code": "发票代码",
+    "invoice_number": "发票号码",
+    "invoice_date": "开票日期（YYYY-MM-DD格式）",
+    "buyer_name": "购买方名称",
+    "buyer_tax_id": "购买方税号",
+    "seller_name": "销售方名称",
+    "seller_tax_id": "销售方税号",
+    "amount": "金额（不含税，数字）",
+    "tax_amount": "税额（数字）",
+    "total_amount": "价税合计（数字）",
+    "tax_rate": "税率（百分比数字）",
+    "remarks": "备注"
+}
+
+注意：
+1. 只输出JSON，不要其他说明文字
+2. 金额只输出数字，不带符号
+3. 无法识别的字段填null"""
+        
+        result, error = self.vision_analyze(image_base64, prompt, 'invoice')
+        if result:
+            try:
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', result)
+                if json_match:
+                    return json.loads(json_match.group()), None
+                return json.loads(result), None
+            except json.JSONDecodeError:
+                return None, '识别结果格式错误'
+        return None, error
+    
+    def recognize_receipt(self, image_base64):
+        """识别收料小票/送货单"""
+        prompt = """请识别这张收料小票/送货单图片，提取物资明细信息并以JSON格式输出：
+{
+    "supplier": "供应商名称",
+    "receipt_date": "收料日期（YYYY-MM-DD格式）",
+    "items": [
+        {
+            "material_name": "物资名称",
+            "specification": "规格型号",
+            "quantity": "数量（数字）",
+            "unit": "单位",
+            "unit_price": "单价（数字）",
+            "amount": "金额（数字）"
+        }
+    ],
+    "total_amount": "合计金额",
+    "remarks": "备注"
+}
+
+注意：
+1. 只输出JSON，不要其他说明文字
+2. 数量和金额只输出数字
+3. 如果有多行物资明细，全部识别
+4. 无法识别的字段填null"""
+        
+        result, error = self.vision_analyze(image_base64, prompt, 'receipt')
+        if result:
+            try:
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', result)
+                if json_match:
+                    return json.loads(json_match.group()), None
+                return json.loads(result), None
+            except json.JSONDecodeError:
+                return None, '识别结果格式错误'
+        return None, error
+    
+    def extract_text(self, image_base64):
+        """通用图片文字提取"""
+        prompt = """请提取这张图片中的所有文字内容，按原文格式输出。如果是表格，请保持表格结构。只输出识别的文字内容，不要其他说明。"""
+        
+        return self.vision_analyze(image_base64, prompt, 'ocr')
 
 
 ai_service = None
@@ -303,7 +532,11 @@ def get_ai_config():
         'api_key': get_config('ai_api_key', ''),
         'model': get_config('ai_model', 'doubao-pro-32k'),
         'base_url': get_config('ai_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'),
-        'max_tokens': int(get_config('ai_max_tokens', '2000'))
+        'max_tokens': int(get_config('ai_max_tokens', '2000')),
+        'vision_enabled': get_config('ai_vision_enabled', 'false') == 'true',
+        'vision_model': get_config('ai_vision_model', 'doubao-vision-pro-32k'),
+        'vision_base_url': get_config('ai_vision_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'),
+        'vision_max_tokens': int(get_config('ai_vision_max_tokens', '2000'))
     }
 
 
@@ -316,7 +549,11 @@ def save_ai_config(config):
         ('ai_api_key', config.get('api_key', '')),
         ('ai_model', config.get('model', 'doubao-pro-32k')),
         ('ai_base_url', config.get('base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')),
-        ('ai_max_tokens', str(config.get('max_tokens', 2000)))
+        ('ai_max_tokens', str(config.get('max_tokens', 2000))),
+        ('ai_vision_enabled', config.get('vision_enabled', 'false')),
+        ('ai_vision_model', config.get('vision_model', 'doubao-vision-pro-32k')),
+        ('ai_vision_base_url', config.get('vision_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')),
+        ('ai_vision_max_tokens', str(config.get('vision_max_tokens', 2000)))
     ]
     
     for key, value in configs:

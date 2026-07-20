@@ -5,7 +5,7 @@
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-box-arrow-in-up me-2"></i>出库管理</h5>
         {% if current_user.can_edit() %}
-        <a href="{{ url_for('stock_out.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增出库单</a>
+        <a href="{{ url_for('stock_out.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增出库单</a>
         {% endif %}
     </div>
     <div class="card-body">
@@ -104,7 +104,7 @@
                         <td>
                             <input type="checkbox" class="form-check-input row-checkbox" data-id="{{ s.id }}" onchange="updateSelection()">
                         </td>
-                        <td><a href="{{ url_for('stock_out.detail', id=s.id) }}" class="text-decoration-none fw-bold">{{ s.code }}</a></td>
+                        <td><a href="{{ url_for('stock_out.detail', id=s.id) }}?from=list" class="text-decoration-none fw-bold">{{ s.code }}</a></td>
                         <td>{{ s.stock_out_date or '-' }}</td>
                         <td>
                             {% if s.stock_out_type == '工程领用' %}<span class="badge bg-primary">{{ s.stock_out_type }}</span>
@@ -132,7 +132,7 @@
                             {% endif %}
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('stock_out.detail', id=s.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('stock_out.detail', id=s.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                             <a href="{{ url_for('stock_out.print_stock_out', id=s.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="打印"><i class="bi bi-printer"></i></a>
                             {% if current_user.can_edit() %}
                             <a href="{{ url_for('stock_out.create', copy_from=s.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>

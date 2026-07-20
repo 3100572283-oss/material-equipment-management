@@ -80,7 +80,7 @@
                     {% for app in pagination.items %}
                     <tr>
                         <td>
-                            <a href="{{ url_for('payment_application.detail', id=app.id) }}">{{ app.application_code }}</a>
+                            <a href="{{ url_for('payment_application.detail', id=app.id) }}?from=list">{{ app.application_code }}</a>
                         </td>
                         <td>{{ app.apply_date if app.apply_date else '-' }}</td>
                         <td>{{ app.applicant_name or '-' }}</td>
@@ -94,7 +94,7 @@
                             <span class="badge bg-{{ cls }}">{{ label }}</span>
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('payment_application.detail', id=app.id) }}" class="btn btn-sm btn-outline-primary">查看</a>
+                            <a href="{{ url_for('payment_application.detail', id=app.id) }}?from=list" class="btn btn-sm btn-outline-primary">查看</a>
                             {% if current_user.can_edit() %}
                             <a href="{{ url_for('payment_application.create', copy_from=app.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
                             {% endif %}

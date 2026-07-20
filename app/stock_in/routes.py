@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, date
 from flask import render_template, request, redirect, url_for, flash, jsonify, session, make_response
-from flask_login import login_required
+from flask_login import login_required, current_user
 from sqlalchemy import or_, func
 
 from app.stock_in import bp
@@ -9,9 +9,20 @@ from app import db
 from app.models import (StockIn, StockInItem, Inventory, Material, Supplier,
                        Contract, ContractItem)
 from app.decorators import editor_required, log_audit
-from app.utils import to_decimal, record_changes, get_change_logs, model_to_dict, get_field_label
+from app.utils import (to_decimal, record_changes, get_change_logs, model_to_dict,
+                       get_field_label, apply_data_scope,
+                       get_project_materials, get_project_suppliers, ConfigCache)
 from app.services.inventory_cost import InventoryCostService
 from app.services.business_logger import BusinessLogger
+
+
+def _ai_vision_enabled():
+    """判断AI视觉识别是否启用"""
+    try:
+        return (ConfigCache.get('ai_enabled', 'false') == 'true'
+                and ConfigCache.get('ai_vision_enabled', 'false') == 'true')
+    except Exception:
+        return False
 
 
 def _gen_stock_in_code(project_id):
@@ -128,10 +139,13 @@ def check_contract_over(contract_id, material_id, quantity, contract_item_id=Non
 @login_required
 def index():
     from flask import session
-    project_id = session.get('current_project_id')
-    if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+    from app.utils import get_project_filter, is_module_enabled
+    project_id, project_ids, is_all_projects_mode = get_project_filter()
+    # 全部数据权限用户在"全部项目"模式下不限制项目
+    if is_all_projects_mode:
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
@@ -142,11 +156,20 @@ def index():
     date_to = request.args.get('date_to', '', type=str)
     approval_status = request.args.get('approval_status', '', type=str)
     quality_status = request.args.get('quality_status', '', type=str)
+    project_filter = request.args.get('project_filter', 0, type=int)
 
-    from app.utils import ConfigCache
-    enable_quality_check = ConfigCache.get('enable_quality_check') == 'true'
+    enable_quality_check = is_module_enabled('module_quality_check')
 
-    query = StockIn.query.filter_by(project_id=project_id)
+    query = StockIn.query
+    if is_all_projects_mode:
+        # 汇总模式：按项目筛选条件过滤
+        if project_filter:
+            query = query.filter_by(project_id=project_filter)
+        else:
+            query = query.filter(StockIn.project_id.in_(project_ids))
+    else:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, StockIn)
     if keyword:
         query = query.filter(or_(StockIn.code.contains(keyword), StockIn.remark.contains(keyword)))
     if supplier_id:
@@ -173,14 +196,24 @@ def index():
     pagination = query.order_by(StockIn.created_at.desc()).paginate(
         page=page, per_page=10, error_out=False)
 
-    suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
-    contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
+    # 筛选用数据
+    if is_all_projects_mode:
+        from app.models import Project
+        filter_projects = Project.query.filter(Project.id.in_(project_ids), Project.is_archived == False).order_by(Project.name).all()
+        suppliers = Supplier.query.filter(Supplier.project_id.in_(project_ids)).order_by(Supplier.name).all()
+        contracts = Contract.query.filter(Contract.project_id.in_(project_ids)).order_by(Contract.code).all()
+    else:
+        filter_projects = []
+        suppliers = get_project_suppliers(project_id, common_only=True).all()
+        contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
     return render_template('stock_in/index.html', pagination=pagination, keyword=keyword,
                            suppliers=suppliers, contracts=contracts,
                            supplier_id=supplier_id, contract_id=contract_id,
                            stock_in_type=stock_in_type, date_from=date_from, date_to=date_to,
                            approval_status=approval_status, quality_status=quality_status,
-                           enable_quality_check=enable_quality_check)
+                           enable_quality_check=enable_quality_check,
+                           is_all_projects_mode=is_all_projects_mode,
+                           filter_projects=filter_projects, project_filter=project_filter)
 
 
 @bp.route('/create', methods=['GET', 'POST'])
@@ -300,14 +333,15 @@ def create():
                 db.session.rollback()
                 # 重新获取数据渲染表单
                 contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
-                suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
-                materials = Material.query.filter_by(project_id=project_id).order_by(Material.name).all()
+                suppliers = get_project_suppliers(project_id, common_only=True).all()
+                materials = get_project_materials(project_id, common_only=True).all()
                 is_admin = current_user.is_admin() if hasattr(current_user, 'is_admin') else False
                 return render_template('stock_in/form.html', stock_in=None, contracts=contracts,
                                        suppliers=suppliers, materials=materials,
                                        default_code=_gen_stock_in_code(project_id),
                                        over_items=over_items, form_data=request.form,
-                                       is_admin=is_admin)
+                                       is_admin=is_admin,
+                                       ai_vision_enabled=_ai_vision_enabled())
 
         # 强制超量入库时标记明细行
         if stock_in.contract_id and stock_in.stock_in_type == '采购入库' and force_over:
@@ -350,8 +384,8 @@ def create():
         return redirect(url_for('stock_in.detail', id=stock_in.id))
 
     contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
-    suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
-    materials = Material.query.filter_by(project_id=project_id).order_by(Material.name).all()
+    suppliers = get_project_suppliers(project_id, common_only=True).all()
+    materials = get_project_materials(project_id, common_only=True).all()
 
     # 复制新增
     copy_from_id = request.args.get('copy_from', type=int)
@@ -364,7 +398,8 @@ def create():
     return render_template('stock_in/form.html', stock_in=copy_stock_in, contracts=contracts,
                            suppliers=suppliers, materials=materials,
                            default_code=_gen_stock_in_code(project_id),
-                           is_copy=bool(copy_stock_in))
+                           is_copy=bool(copy_stock_in),
+                           ai_vision_enabled=_ai_vision_enabled())
 
 
 @bp.route('/<int:id>')
@@ -387,6 +422,10 @@ def detail(id):
 @editor_required
 @log_audit(module='stock_in', operation='编辑')
 def edit(id):
+    from app.utils import reject_in_all_projects_mode
+    if reject_in_all_projects_mode():
+        flash('汇总视图下不可编辑，请先切换到具体项目', 'warning')
+        return redirect(url_for('stock_in.index'))
     stock_in = StockIn.query.get_or_404(id)
     if stock_in.is_reconciled:
         flash('已对账的入库单禁止编辑。', 'danger')
@@ -512,10 +551,11 @@ def edit(id):
         return redirect(url_for('stock_in.detail', id=stock_in.id))
 
     contracts = Contract.query.filter_by(project_id=stock_in.project_id).order_by(Contract.code).all()
-    suppliers = Supplier.query.filter_by(project_id=stock_in.project_id).order_by(Supplier.name).all()
-    materials = Material.query.filter_by(project_id=stock_in.project_id).order_by(Material.name).all()
+    suppliers = get_project_suppliers(stock_in.project_id, common_only=True).all()
+    materials = get_project_materials(stock_in.project_id, common_only=True).all()
     return render_template('stock_in/form.html', stock_in=stock_in, contracts=contracts,
-                           suppliers=suppliers, materials=materials)
+                           suppliers=suppliers, materials=materials,
+                           ai_vision_enabled=_ai_vision_enabled())
 
 
 @bp.route('/<int:id>/delete', methods=['POST'])
@@ -523,6 +563,10 @@ def edit(id):
 @editor_required
 @log_audit(module='stock_in', operation='删除')
 def delete(id):
+    from app.utils import reject_in_all_projects_mode
+    if reject_in_all_projects_mode():
+        flash('汇总视图下不可删除，请先切换到具体项目', 'warning')
+        return redirect(url_for('stock_in.index'))
     stock_in = StockIn.query.get_or_404(id)
     if stock_in.is_reconciled:
         flash('已对账的入库单禁止删除。', 'danger')
@@ -724,7 +768,7 @@ def api_materials_by_project():
     project_id = session.get('current_project_id')
     if not project_id:
         return jsonify([])
-    materials = Material.query.filter_by(project_id=project_id).order_by(Material.name).all()
+    materials = get_project_materials(project_id, common_only=True).all()
     return jsonify([{
         'id': m.id,
         'name': m.name,

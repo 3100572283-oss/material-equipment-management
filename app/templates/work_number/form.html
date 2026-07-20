@@ -23,9 +23,9 @@
                             <input type="text" class="form-control" name="item_name" value="{{ work_number.item_name if work_number else '' }}">
                         </div>
                     </div>
-                    <div class="mt-4">
+                    <div class="form-actions">
+                        <a href="{{ url_for('work_number.index') }}" class="btn btn-secondary">返回</a>
                         <button type="submit" class="btn btn-primary">保存</button>
-                        <a href="{{ url_for('work_number.index') }}" class="btn btn-secondary ms-2">返回</a>
                     </div>
                 </form>
             </div>

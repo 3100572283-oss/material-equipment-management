@@ -6,6 +6,32 @@
         <h5 class="mb-0"><i class="bi bi-clipboard-check me-2"></i>我的审批</h5>
     </div>
     <div class="card-body">
+        <!-- 项目筛选 -->
+        <div class="mb-3">
+            <form method="GET" class="row g-2 align-items-center">
+                <div class="col-auto">
+                    <label class="form-label">项目筛选</label>
+                </div>
+                <div class="col-auto">
+                    <select class="form-select form-select-sm" name="project_id" onchange="this.form.submit()">
+                        <option value="">全部项目</option>
+                        {% for project in projects %}
+                        <option value="{{ project.id }}" {% if project_filter == project.id %}selected{% endif %}>
+                            {{ project.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% if project_filter %}
+                <div class="col-auto">
+                    <a href="{{ url_for('approval.my_approvals') }}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i> 清除筛选
+                    </a>
+                </div>
+                {% endif %}
+            </form>
+        </div>
+
         <!-- Tab 切换 -->
         <ul class="nav nav-tabs mb-3" id="approvalTabs" role="tablist">
             <li class="nav-item" role="presentation">
@@ -34,6 +60,7 @@
                             <tr>
                                 <th>单据标题</th>
                                 <th>业务类型</th>
+                                <th>所属项目</th>
                                 <th>提交人</th>
                                 <th>提交时间</th>
                                 <th>当前节点</th>
@@ -47,6 +74,13 @@
                                 <td>{{ inst.biz_title or '-' }}</td>
                                 <td>
                                     <span class="badge bg-info text-dark">{{ biz_names.get(inst.biz_type, inst.biz_type) }}</span>
+                                </td>
+                                <td>
+                                    {% if inst.project %}
+                                    <span class="badge bg-secondary">{{ inst.project.name }}</span>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
                                 </td>
                                 <td>{{ inst.applicant.name or inst.applicant.username }}</td>
                                 <td>{{ inst.submit_time.strftime('%Y-%m-%d %H:%M') if inst.submit_time else '-' }}</td>
@@ -62,14 +96,14 @@
                                     <span class="badge bg-{{ st[1] }}">{{ st[0] }}</span>
                                 </td>
                                 <td class="text-end">
-                                    <a href="{{ url_for('approval.detail', instance_id=inst.id) }}"
+                                    <a href="{{ url_for('approval.detail', instance_id=inst.id) }}?from=approval_list"
                                        class="btn btn-sm btn-outline-primary">
                                         <i class="bi bi-eye me-1"></i>查看详情
                                     </a>
                                 </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="7" class="text-center text-muted py-4">
+                            <tr><td colspan="8" class="text-center text-muted py-4">
                                 <i class="bi bi-check2-circle d-block mb-2" style="font-size:2rem;"></i>
                                 暂无待审批事项
                             </td></tr>
@@ -87,6 +121,7 @@
                             <tr>
                                 <th>单据标题</th>
                                 <th>业务类型</th>
+                                <th>所属项目</th>
                                 <th>提交人</th>
                                 <th>提交时间</th>
                                 <th>当前节点</th>
@@ -100,6 +135,13 @@
                                 <td>{{ inst.biz_title or '-' }}</td>
                                 <td>
                                     <span class="badge bg-info text-dark">{{ biz_names.get(inst.biz_type, inst.biz_type) }}</span>
+                                </td>
+                                <td>
+                                    {% if inst.project %}
+                                    <span class="badge bg-secondary">{{ inst.project.name }}</span>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
                                 </td>
                                 <td>{{ inst.applicant.name or inst.applicant.username }}</td>
                                 <td>{{ inst.submit_time.strftime('%Y-%m-%d %H:%M') if inst.submit_time else '-' }}</td>
@@ -115,14 +157,14 @@
                                     <span class="badge bg-{{ st[1] }}">{{ st[0] }}</span>
                                 </td>
                                 <td class="text-end">
-                                    <a href="{{ url_for('approval.detail', instance_id=inst.id) }}"
+                                    <a href="{{ url_for('approval.detail', instance_id=inst.id) }}?from=approval_list"
                                        class="btn btn-sm btn-outline-primary">
                                         <i class="bi bi-eye me-1"></i>查看详情
                                     </a>
                                 </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="7" class="text-center text-muted py-4">
+                            <tr><td colspan="8" class="text-center text-muted py-4">
                                 <i class="bi bi-clock-history d-block mb-2" style="font-size:2rem;"></i>
                                 暂无已审批记录
                             </td></tr>

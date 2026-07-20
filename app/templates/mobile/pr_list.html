@@ -1,0 +1,153 @@
+{% extends "mobile/base.html" %}
+{% block title %}领料申请{% endblock %}
+{% block nav_title %}领料申请{% endblock %}
+
+{% block content %}
+<!-- 顶部Tab切换 -->
+<div class="m-card" style="padding:8px 12px;">
+    <div class="m-pr-tabs">
+        <a href="{{ url_for('mobile.pr_list', tab='my') }}" class="m-pr-tab {% if tab != 'approval' %}active{% endif %}">
+            <i class="bi bi-person-lines-fill"></i> 我的申请
+        </a>
+        <a href="{{ url_for('mobile.pr_list', tab='approval') }}" class="m-pr-tab {% if tab == 'approval' %}active{% endif %}">
+            <i class="bi bi-clipboard-check"></i> 待我审批
+        </a>
+    </div>
+</div>
+
+{% if tab != 'approval' %}
+<!-- 状态筛选 chip -->
+<div class="m-card" style="padding:8px 12px;">
+    <div class="m-chip-row">
+        <a href="{{ url_for('mobile.pr_list', tab='my') }}" class="m-chip {% if not status %}active{% endif %}">全部</a>
+        <a href="{{ url_for('mobile.pr_list', tab='my', status='draft') }}" class="m-chip {% if status == 'draft' %}active{% endif %}">草稿</a>
+        <a href="{{ url_for('mobile.pr_list', tab='my', status='pending') }}" class="m-chip {% if status == 'pending' %}active{% endif %}">待审批</a>
+        <a href="{{ url_for('mobile.pr_list', tab='my', status='passed') }}" class="m-chip {% if status == 'passed' %}active{% endif %}">已通过</a>
+        <a href="{{ url_for('mobile.pr_list', tab='my', status='rejected') }}" class="m-chip {% if status == 'rejected' %}active{% endif %}">已驳回</a>
+        <a href="{{ url_for('mobile.pr_list', tab='my', status='completed') }}" class="m-chip {% if status == 'completed' %}active{% endif %}">已完成</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- 列表 -->
+<div id="listContainer">
+    {% if prs %}
+    <div class="m-list-summary">共 {{ prs|length }} 条</div>
+    {% for pr in prs %}
+    <div class="m-record-card" onclick="location.href='{{ url_for('mobile.pr_detail', id=pr.id) }}'" style="cursor:pointer;">
+        <div class="header">
+            <span class="code">{{ pr.pr_no }}</span>
+            <span class="date">{{ pr.apply_date.strftime('%Y-%m-%d') if pr.apply_date else '-' }}</span>
+        </div>
+        <div class="party">
+            <i class="bi bi-file-earmark-text"></i>
+            {{ pr.apply_dept or '未填写部门' }}
+            {% if pr.apply_user %}<span style="color:#6c757d;font-size:12px;"> · {{ pr.apply_user }}</span>{% endif %}
+        </div>
+        <div class="items-summary">
+            <div class="total">
+                明细 {{ pr.item_count }} 条
+                {% if pr.demand_date %}<span style="color:#6c757d;font-size:12px;"> · 期望领料：{{ pr.demand_date.strftime('%Y-%m-%d') }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="footer">
+            <span class="status-tag {{ pr.status }}">
+                {% if pr.status == 'draft' %}草稿
+                {% elif pr.status == 'pending' %}待审批
+                {% elif pr.status == 'passed' %}已通过
+                {% elif pr.status == 'rejected' %}已驳回
+                {% elif pr.status == 'completed' %}已完成
+                {% else %}{{ pr.status }}{% endif %}
+            </span>
+            {% if pr.status == 'passed' and pr.unapproved_qty > 0 %}
+            <span class="qc-tag pending">待出库</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-file-earmark-text"></i>
+        <div>{% if tab == 'approval' %}暂无待审批的领料申请{% else %}暂无领料申请，点击右下角 + 新建{% endif %}</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 新增按钮 -->
+<a href="{{ url_for('mobile.pr_create') }}" class="m-fab-btn">
+    <i class="bi bi-plus-lg"></i>
+</a>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){ window.location.reload(); done(); }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}
+
+<style>
+.m-pr-tabs {
+    display: flex;
+    gap: 8px;
+}
+.m-pr-tab {
+    flex: 1;
+    text-align: center;
+    padding: 10px 0;
+    border-radius: 8px;
+    background: #f1f3f5;
+    color: #495057;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+}
+.m-pr-tab.active {
+    background: #165DFF;
+    color: #fff;
+}
+.m-chip-row {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+}
+.m-chip {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 14px;
+    background: #f1f3f5;
+    color: #495057;
+    font-size: 12px;
+    flex: 0 0 auto;
+    text-decoration: none;
+}
+.m-chip.active { background: #165DFF; color: #fff; }
+.status-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.status-tag.draft { background: #e9ecef; color: #495057; }
+.status-tag.pending { background: #fff3bf; color: #f08c00; }
+.status-tag.passed { background: #d3f9d8; color: #2b8a3e; }
+.status-tag.rejected { background: #ffe0e0; color: #c92a2a; }
+.status-tag.completed { background: #d0ebff; color: #1971c2; }
+.m-fab-btn {
+    position: fixed; right: 18px; bottom: 70px;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: #fab005; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; box-shadow: 0 4px 12px rgba(249, 168, 38, 0.5);
+    z-index: 99;
+    text-decoration: none;
+}
+</style>

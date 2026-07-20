@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}巡检记录 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-clipboard-data me-2"></i>巡检记录</h5>
+        <a href="{{ url_for('equipment.inspection_list') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i>返回计划列表
+        </a>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th width="60">ID</th>
+                        <th>设备</th>
+                        <th>巡检日期</th>
+                        <th>巡检人</th>
+                        <th>结论</th>
+                        <th>仪表读数</th>
+                        <th>异常描述</th>
+                        <th>自动维修工单</th>
+                        <th width="80">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in records %}
+                    <tr>
+                        <td>{{ r.id }}</td>
+                        <td>{{ r.equipment.name if r.equipment else '-' }}<br>
+                            <small class="text-muted">{{ r.equipment.code if r.equipment else '' }}</small></td>
+                        <td>{{ r.inspect_date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ r.inspector_name or '-' }}</td>
+                        <td>
+                            {% if r.overall_status == 'normal' %}<span class="badge bg-success">正常</span>
+                            {% else %}<span class="badge bg-danger">异常</span>{% endif %}
+                        </td>
+                        <td>{{ r.meter_reading or '-' }}</td>
+                        <td>{{ r.issue_desc or '-' }}</td>
+                        <td>
+                            {% if r.auto_maintenance %}<span class="badge bg-info">已生成</span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('equipment.inspection_record_detail', rid=r.id) }}"
+                               class="btn btn-sm btn-outline-primary" title="详情">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9" class="text-center text-muted py-4">暂无巡检记录</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

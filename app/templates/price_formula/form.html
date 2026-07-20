@@ -103,9 +103,9 @@
                     <textarea class="form-control" name="remark" rows="2">{{ formula.remark if formula and formula.remark else '' }}</textarea>
                 </div>
             </div>
-            <div class="mt-4">
+            <div class="form-actions">
+                <a href="{{ url_for('price_formula.index') }}" class="btn btn-secondary">返回</a>
                 <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>保存</button>
-                <a href="{{ url_for('price_formula.index') }}" class="btn btn-outline-secondary">返回</a>
             </div>
         </form>
     </div>

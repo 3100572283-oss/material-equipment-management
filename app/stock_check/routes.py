@@ -1,13 +1,13 @@
 from datetime import datetime, date
 from flask import render_template, request, redirect, url_for, flash, jsonify, Response
-from flask_login import login_required
-from sqlalchemy import or_
+from flask_login import login_required, current_user
+from sqlalchemy import or_, func
 
 from app.stock_check import bp
 from app import db
 from app.models import StockCheck, StockCheckItem, Inventory, Material, Category
 from app.decorators import editor_required, log_audit
-from app.utils import to_decimal
+from app.utils import to_decimal, apply_data_scope, get_project_materials
 
 
 def _gen_check_no(project_id):
@@ -54,9 +54,11 @@ def _get_category_descendants(category_id):
 def index():
     from flask import session
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
@@ -65,7 +67,10 @@ def index():
     date_from = request.args.get('date_from', '', type=str)
     date_to = request.args.get('date_to', '', type=str)
 
-    query = StockCheck.query.filter_by(project_id=project_id)
+    query = StockCheck.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, StockCheck)
     if keyword:
         query = query.filter(or_(StockCheck.check_no.contains(keyword), StockCheck.remark.contains(keyword)))
     if check_type:
@@ -148,8 +153,7 @@ def create():
                 db.session.add(item)
         else:
             cat_ids = _get_category_descendants(category_id)
-            materials = Material.query.filter(
-                Material.project_id == project_id,
+            materials = get_project_materials(project_id, common_only=True).filter(
                 Material.category_id.in_(cat_ids)
             ).all()
             for mat in materials:

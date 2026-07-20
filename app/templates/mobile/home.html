@@ -1,0 +1,156 @@
+{% extends "mobile/base.html" %}
+{% block title %}首页{% endblock %}
+{% block nav_title %}首页{% endblock %}
+
+{% block content %}
+<!-- 项目卡片 + 问候 -->
+<div class="m-card">
+    <div style="display:flex; align-items:center;">
+        <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#165DFF,#0a4ed6);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:12px;">
+            <i class="bi bi-building"></i>
+        </div>
+        <div style="flex:1;">
+            <div style="font-size:13px;color:#6c757d;">{{ greeting }}，{{ current_user.name or current_user.username }}</div>
+            <div style="font-size:16px;font-weight:600;margin-top:2px;">{{ project.name }}</div>
+        </div>
+        {% if visible_projects and visible_projects|length > 1 %}
+        <a href="{{ url_for('mobile.profile') }}" style="font-size:12px;color:#165DFF;">
+            切换 <i class="bi bi-chevron-right"></i>
+        </a>
+        {% endif %}
+        <a href="javascript:void(0)" onclick="openQuickEditor()" style="font-size:12px;color:#165DFF;margin-left:12px;">
+            <i class="bi bi-gear"></i> 编辑
+        </a>
+    </div>
+    <div style="font-size:12px;color:#adb5bd;margin-top:8px;">
+        {{ today_str }}
+    </div>
+</div>
+
+<!-- 快捷功能 -->
+<div class="m-quick-grid" id="quickGrid"></div>
+
+<style>
+.m-quick-btn { position:relative; }
+.m-badge-dot {
+    position:absolute; top:6px; right:10px;
+    background:#dc3545; color:#fff;
+    font-size:11px; min-width:18px; height:18px;
+    border-radius:9px; padding:0 5px;
+    display:flex; align-items:center; justify-content:center;
+    line-height:1;
+}
+</style>
+
+<!-- 今日概览 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-graph-up"></i>今日概览</div>
+    <div class="m-stat-row">
+        <div class="m-stat-card in">
+            <div class="label">今日入库</div>
+            <div class="value">{{ today_in_count }} 笔</div>
+            <div class="sub">{{ '%.2f'|format(today_in_qty) }} 单位</div>
+        </div>
+        <div class="m-stat-card out">
+            <div class="label">今日出库</div>
+            <div class="value">{{ today_out_count }} 笔</div>
+            <div class="sub">{{ '%.2f'|format(today_out_qty) }} 单位</div>
+        </div>
+    </div>
+</div>
+
+<!-- 待办提醒 -->
+<div class="m-card" style="padding: 10px 14px;">
+    <div class="m-card-title"><i class="bi bi-bell"></i>待办提醒</div>
+    {% if pending_approval_count > 0 %}
+    <a href="{{ url_for('mobile.approvals') }}" class="m-todo-item">
+        <div class="icon"><i class="bi bi-clipboard-check"></i></div>
+        <div class="text">待我审批</div>
+        <span class="count">{{ pending_approval_count }}</span>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    {% endif %}
+    <a href="{{ url_for('mobile.records', type='in') }}" class="m-todo-item">
+        <div class="icon"><i class="bi bi-clipboard-check"></i></div>
+        <div class="text">待质检入库</div>
+        {% if pending_qc > 0 %}<span class="count">{{ pending_qc }}</span>{% endif %}
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    {% if pending_qc == 0 and pending_approval_count == 0 and today_in_count == 0 and today_out_count == 0 %}
+    <div style="text-align:center; padding:20px; color:#adb5bd; font-size:13px;">
+        <i class="bi bi-check-circle" style="font-size:32px;display:block;margin-bottom:6px;"></i>
+        暂无待办事项
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function quickScan(){
+    MobileScanner.open(function(code){
+        window.location.href = "{{ url_for('mobile.inventory') }}?keyword=" + encodeURIComponent(code);
+    });
+}
+
+// 快捷功能自定义（功能池由 Jinja 渲染 Flask 路由 URL）
+var quickAvailable = [
+    { key: 'stock_in', label: '入库登记', icon: 'bi-box-arrow-in-down', color: 'blue', url: "{{ url_for('mobile.stock_in_new') }}" },
+    { key: 'stock_out', label: '出库登记', icon: 'bi-box-arrow-up', color: 'green', url: "{{ url_for('mobile.stock_out_new') }}" },
+    { key: 'inventory', label: '库存查询', icon: 'bi-clipboard-data', color: 'orange', url: "{{ url_for('mobile.inventory') }}" },
+    { key: 'concrete', label: '商砼小票', icon: 'bi-receipt', color: 'info', url: "{{ url_for('mobile.concrete_list') }}" },
+    { key: 'stock_check', label: '库存盘点', icon: 'bi-clipboard-data', color: 'green', url: "{{ url_for('mobile.stock_check_list') }}" },
+    { key: 'equipment_create', label: '设备进场', icon: 'bi-truck', color: 'cyan', url: "{{ url_for('mobile.equipment_create') }}" },
+    { key: 'equipment_maintenance', label: '维修登记', icon: 'bi-tools', color: 'amber', url: "{{ url_for('mobile.equipment_list') }}" },
+    { key: 'turnover_borrow', label: '周转材领用', icon: 'bi-box-seam', color: 'amber', url: "{{ url_for('mobile.turnover_borrow') }}" },
+    { key: 'turnover_return', label: '周转材归还', icon: 'bi-arrow-counterclockwise', color: 'teal', url: "{{ url_for('mobile.turnover_list') }}" },
+    { key: 'pr', label: '领料申请', icon: 'bi-file-earmark-text', color: 'warning', url: "{{ url_for('mobile.pr_list') }}" },
+    { key: 'scrap', label: '报废申请', icon: 'bi-trash', color: 'danger', url: "{{ url_for('mobile.scrap_list') }}" },
+    { key: 'scan', label: '扫码查询', icon: 'bi-qr-code-scan', color: 'pink', url: 'javascript:quickScan()' }
+];
+MobileQuickEdit.init({
+    available: quickAvailable,
+    maxCount: 8,
+    minCount: 4
+});
+MobileQuickEdit.render(document.getElementById('quickGrid'));
+
+// 红点提示：待审批 / 设备巡检（若用户将这些功能加入首页则显示）
+(function(){
+    var approvalCount = {{ pending_approval_count }};
+    var inspectionCount = {{ pending_inspection_count }};
+    if (approvalCount > 0) {
+        var btn = document.querySelector('#quickGrid .m-quick-btn[data-key="approvals"]');
+        if (btn) {
+            var badge = document.createElement('span');
+            badge.className = 'm-badge-dot';
+            badge.textContent = approvalCount;
+            btn.appendChild(badge);
+        }
+    }
+    if (inspectionCount > 0) {
+        var btn = document.querySelector('#quickGrid .m-quick-btn[data-key="inspection"]');
+        if (btn) {
+            var badge = document.createElement('span');
+            badge.className = 'm-badge-dot';
+            badge.textContent = inspectionCount;
+            btn.appendChild(badge);
+        }
+    }
+})();
+
+window.openQuickEditor = function() { MobileQuickEdit.openEditor(); };
+
+// 下拉刷新
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){
+                window.location.reload();
+                done();
+            }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}

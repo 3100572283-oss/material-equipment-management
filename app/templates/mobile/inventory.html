@@ -1,0 +1,114 @@
+{% extends "mobile/base.html" %}
+{% block title %}库存查询{% endblock %}
+{% block nav_title %}库存查询{% endblock %}
+{% block active_tab %}query{% endblock %}
+
+{% block content %}
+<!-- 查询分类切换 -->
+<div class="m-card" style="padding:8px 12px;">
+    <div style="display:flex; gap:6px; overflow-x:auto; white-space:nowrap;">
+        <a href="{{ url_for('mobile.inventory') }}" class="m-chip active">
+            <i class="bi bi-box"></i> 物资库存
+        </a>
+        <a href="{{ url_for('mobile.equipment_list') }}" class="m-chip">
+            <i class="bi bi-truck"></i> 设备台账
+        </a>
+        <a href="{{ url_for('mobile.turnover_list') }}" class="m-chip">
+            <i class="bi bi-box-seam"></i> 周转材台账
+        </a>
+        <a href="{{ url_for('mobile.inspection_records') }}" class="m-chip">
+            <i class="bi bi-clipboard-check"></i> 巡检记录
+        </a>
+        <a href="{{ url_for('mobile.concrete_list') }}" class="m-chip">
+            <i class="bi bi-receipt"></i> 商砼记录
+        </a>
+    </div>
+</div>
+
+<!-- 搜索框 -->
+<div class="m-card" style="padding:12px 16px;">
+    <form method="GET" action="{{ url_for('mobile.inventory') }}" style="display:flex; gap:8px;">
+        <input type="text" name="keyword" value="{{ keyword }}"
+               class="m-form-control" placeholder="输入物资名称/编码"
+               style="flex:1;" autofocus>
+        <button type="button" class="m-btn m-btn-outline" style="width:44px; padding:0;font-size:18px;"
+                onclick="scanToSearch()">
+            <i class="bi bi-qr-code-scan"></i>
+        </button>
+        <button type="submit" class="m-btn m-btn-primary" style="width:60px; padding:0;">
+            <i class="bi bi-search"></i>
+        </button>
+    </form>
+</div>
+
+<!-- 结果列表 -->
+<div id="listContainer">
+    {% if results %}
+    <div class="m-list-summary">
+        共 {{ results|length }} 条结果{% if keyword %}（关键词：{{ keyword }}）{% endif %}
+    </div>
+
+    {% for m, cat, qty, est, act in results %}
+    <div class="m-inv-card {% if qty|float < 0 %}neg{% elif qty|float == 0 %}zero{% endif %}">
+        <div class="top">
+            <div class="name">{{ m.name }}</div>
+            {% if qty|float < 0 %}
+            <span class="m-status-tag draft">负库存</span>
+            {% elif qty|float == 0 %}
+            <span class="m-status-tag draft">无库存</span>
+            {% endif %}
+        </div>
+        <div class="meta">
+            <span>{{ m.code or '-' }}</span>
+            <span class="sep">·</span>
+            <span>{{ m.specification or '-' }}</span>
+            <span class="sep">·</span>
+            <span>{{ m.unit or '-' }}</span>
+        </div>
+        {% if cat %}
+        <div class="category">
+            <i class="bi bi-tag"></i>
+            {{ cat.name }}
+        </div>
+        {% endif %}
+        <div class="stock-row">
+            <div class="stock-label">当前库存</div>
+            <div class="stock-value">
+                <span class="num">{{ '%.3f'|format(qty|float) }}</span>
+                <span class="unit">{{ m.unit or '' }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-inbox"></i>
+        <div>{% if keyword %}未找到匹配的物资{% else %}当前项目暂无物资{% endif %}</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function scanToSearch() {
+    MobileScanner.open(function(code){
+        // 直接跳到带关键字的结果页
+        window.location.href = "{{ url_for('mobile.inventory') }}?keyword=" + encodeURIComponent(code);
+    });
+}
+
+// 下拉刷新
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            // 重新加载当前页面
+            setTimeout(function(){
+                window.location.reload();
+                done();
+            }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}

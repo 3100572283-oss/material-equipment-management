@@ -1,0 +1,125 @@
+{% extends "mobile/base.html" %}
+{% block title %}设备巡检{% endblock %}
+{% block nav_title %}设备巡检{% endblock %}
+
+{% block content %}
+<!-- 统计 -->
+<div class="m-card" style="padding:12px 16px;">
+    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+        <div class="m-stat-card pending" onclick="filterStatus('pending')" style="background:#fff3bf;">
+            <div class="label" style="color:#f08c00;">待巡检</div>
+            <div class="value" style="color:#f08c00; font-size:20px;">{{ stats.pending }}</div>
+        </div>
+        <div class="m-stat-card overdue" onclick="filterStatus('overdue')" style="background:#ffe0e0;">
+            <div class="label" style="color:#c92a2a;">已逾期</div>
+            <div class="value" style="color:#c92a2a; font-size:20px;">{{ stats.overdue }}</div>
+        </div>
+        <div class="m-stat-card done" onclick="filterStatus('done')" style="background:#d3f9d8;">
+            <div class="label" style="color:#2b8a3e;">已完成</div>
+            <div class="value" style="color:#2b8a3e; font-size:20px;">{{ stats.done }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- 状态筛选 -->
+<div class="m-card" style="padding:8px 12px;">
+    <div style="display:flex; gap:6px; overflow-x:auto; white-space:nowrap;">
+        <a href="{{ url_for('mobile.inspection_list') }}" class="m-chip {% if not current_status %}active{% endif %}">待办</a>
+        <a href="{{ url_for('mobile.inspection_list') }}?status=pending" class="m-chip {% if current_status == 'pending' %}active{% endif %}">待巡检</a>
+        <a href="{{ url_for('mobile.inspection_list') }}?status=overdue" class="m-chip {% if current_status == 'overdue' %}active{% endif %}">逾期</a>
+        <a href="{{ url_for('mobile.inspection_list') }}?status=done" class="m-chip {% if current_status == 'done' %}active{% endif %}">已完成</a>
+        <a href="{{ url_for('mobile.inspection_list') }}?status=skipped" class="m-chip {% if current_status == 'skipped' %}active{% endif %}">已跳过</a>
+    </div>
+</div>
+
+<!-- 任务列表 -->
+<div id="listContainer">
+    {% if tasks %}
+    <div class="m-list-summary">共 {{ tasks|length }} 条</div>
+    {% for t in tasks %}
+    <div class="m-record-card"
+         onclick="location.href='{{ url_for('mobile.inspection_form', tid=t.id) }}'"
+         style="cursor:pointer;">
+        <div class="header">
+            <span class="code">{{ t.task_no }}</span>
+            <span class="date">计划：{{ t.plan_inspect_date.strftime('%Y-%m-%d') }}</span>
+        </div>
+        <div class="party">
+            <i class="bi bi-truck"></i>
+            {{ t.equipment.name }}
+            {% if t.equipment.code %}<span style="color:#6c757d;font-size:12px;"> · {{ t.equipment.code }}</span>{% endif %}
+        </div>
+        {% if t.assignee_name %}
+        <div class="items-summary">
+            <div class="total">巡检人：{{ t.assignee_name }}</div>
+        </div>
+        {% endif %}
+        <div class="footer">
+            <span class="status-tag
+                {% if t.status == 'pending' %}pending
+                {% elif t.status == 'overdue' %}rejected
+                {% elif t.status == 'done' %}passed
+                {% else %}draft{% endif %}">
+                {% if t.status == 'pending' %}待巡检
+                {% elif t.status == 'overdue' %}已逾期
+                {% elif t.status == 'done' %}已完成
+                {% elif t.status == 'skipped' %}已跳过
+                {% else %}{{ t.status }}{% endif %}
+            </span>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-clipboard-check"></i>
+        <div>暂无巡检任务</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 扫码巡检按钮 -->
+<a href="{{ url_for('mobile.inspection_scan') }}" class="m-fab-btn" style="background:#2b8a3e;">
+    <i class="bi bi-qr-code-scan"></i>
+</a>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function filterStatus(s){
+    window.location.href = "{{ url_for('mobile.inspection_list') }}?status=" + s;
+}
+
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){ window.location.reload(); done(); }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}
+
+<style>
+.m-stat-card.pending { background:#fff3bf; color:#f08c00; }
+.m-stat-card.overdue { background:#ffe0e0; color:#c92a2a; }
+.m-stat-card.done { background:#d3f9d8; color:#2b8a3e; }
+.m-stat-card { cursor:pointer; }
+.m-chip {
+    display:inline-block;
+    padding:4px 12px;
+    border-radius:14px;
+    background:#f1f3f5;
+    color:#495057;
+    font-size:12px;
+    flex:0 0 auto;
+}
+.m-chip.active { background:#165DFF; color:#fff; }
+.m-fab-btn {
+    position:fixed; right:18px; bottom:70px;
+    width:52px; height:52px; border-radius:50%;
+    background:#2b8a3e; color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; box-shadow:0 4px 12px rgba(43,138,62,0.4);
+    z-index:99;
+}
+</style>

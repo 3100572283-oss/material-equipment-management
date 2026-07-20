@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#165DFF">
+    <title>登录 - 物资设备管理</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css') }}">
+</head>
+<body>
+<div class="m-login">
+    <div class="m-login-logo">
+        <div class="icon"><i class="bi bi-box-seam"></i></div>
+        <h1>物资设备管理</h1>
+        <div class="sub">移动端录入门户</div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div style="margin-bottom: 12px;">
+            {% for category, message in messages %}
+            <div class="m-flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" class="m-login-form">
+        <div class="m-form-group">
+            <label class="m-form-label">用户名</label>
+            <input type="text" name="username" class="m-form-control" 
+                   placeholder="请输入用户名" required autocomplete="username" autofocus>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">密码</label>
+            <input type="password" name="password" class="m-form-control" 
+                   placeholder="请输入密码" required autocomplete="current-password">
+        </div>
+        <label class="m-checkbox">
+            <input type="checkbox" name="remember" value="1"> 记住密码
+        </label>
+        <button type="submit" class="m-btn m-btn-primary m-btn-block m-btn-lg">
+            <i class="bi bi-box-arrow-in-right" style="margin-right:6px;"></i>登录
+        </button>
+    </form>
+
+    <div style="text-align:center; margin-top: 24px; font-size:12px; color:#adb5bd;">
+        © 2026 物资设备管理系统 · 移动端 v1.0
+    </div>
+</div>
+</body>
+</html>

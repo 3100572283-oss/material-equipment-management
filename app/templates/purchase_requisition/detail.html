@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}采购申请详情 - {{ pr.pr_no }}{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('purchase_requisition.index') }}">采购申请</a></li>
+            <li class="breadcrumb-item active" aria-current="page">采购申请详情 {{ pr.pr_no }}</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -28,6 +39,10 @@
             <form method="POST" action="{{ url_for('purchase_requisition.convert_contract', id=pr.id) }}" class="d-inline">
                 <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-arrow-right-circle me-1"></i>生成合同</button>
             </form>
+            <form method="POST" action="{{ url_for('purchase_requisition.convert_stock_out', id=pr.id) }}" class="d-inline"
+                  onsubmit="return confirm('将根据申请明细生成出库单并扣减库存，确定？');">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-box-arrow-up me-1"></i>生成出库单</button>
+            </form>
             {% endif %}
             {% if pr.status in ('draft', 'rejected') %}
             <form method="POST" action="{{ url_for('purchase_requisition.delete', id=pr.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
@@ -35,7 +50,7 @@
             </form>
             {% endif %}
             {% endif %}
-            <a href="{{ url_for('purchase_requisition.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+            <button onclick="goBack('{{ url_for('purchase_requisition.index') }}', 'purchase_requisition_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
         </div>
     </div>
     <div class="card-body">

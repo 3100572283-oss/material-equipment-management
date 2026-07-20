@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}报废单详情 - {{ scrap.code }}{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('scrap.index') }}">物资报废</a></li>
+            <li class="breadcrumb-item active" aria-current="page">报废单详情 {{ scrap.code }}</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -11,7 +22,7 @@
             {% endif %}
         </h5>
         <div>
-            <a href="{{ url_for('scrap.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+            <button onclick="goBack('{{ url_for('scrap.index') }}', 'scrap_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
         </div>
     </div>
     <div class="card-body">
@@ -35,6 +46,28 @@
         </div>
     </div>
 </div>
+
+{% if scrap.location_lat and scrap.location_lng %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-geo-alt me-2"></i>现场定位</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">纬度</div><div>{{ '%.6f'|format(scrap.location_lat) }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">经度</div><div>{{ '%.6f'|format(scrap.location_lng) }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">定位精度</div><div>±{{ '%.1f'|format(scrap.location_accuracy or 0) }} 米</div></div>
+            <div class="col-md-3"><div class="text-muted small">定位时间</div><div>{{ scrap.location_time.strftime('%Y-%m-%d %H:%M:%S') if scrap.location_time else '-' }}</div></div>
+            <div class="col-12">
+                <a href="https://uri.amap.com/marker?position={{ scrap.location_lng }},{{ scrap.location_lat }}&name=单据录入位置"
+                   target="_blank" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-map me-1"></i>在高德地图中查看
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="card shadow-sm">
     <div class="card-header bg-white"><h6 class="mb-0">报废明细</h6></div>
@@ -83,16 +116,26 @@
     </div>
 </div>
 
-{% if current_user.can_edit() and scrap.approval_status == 'draft' %}
+{% if current_user.can_edit() and scrap.approval_status in ('draft', 'rejected') %}
 <div class="card shadow-sm">
-    <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-clipboard-check me-2"></i>审批操作</h6></div>
+    <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-clipboard-check me-2"></i>操作</h6></div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('scrap.approve', id=scrap.id) }}" class="d-inline" onsubmit="return confirm('确定审批通过？将自动扣减库存且不可撤销。');">
-            <button type="submit" class="btn btn-success"><i class="bi bi-check-circle me-1"></i>审批通过</button>
+        <form method="POST" action="{{ url_for('scrap.submit', id=scrap.id) }}" class="d-inline" onsubmit="return confirm('确定提交审批？');">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i>提交审批</button>
         </form>
-        <form method="POST" action="{{ url_for('scrap.reject', id=scrap.id) }}" class="d-inline" onsubmit="return confirm('确定驳回此报废单？');">
-            <button type="submit" class="btn btn-danger"><i class="bi bi-x-circle me-1"></i>审批驳回</button>
-        </form>
+        <a href="{{ url_for('scrap.create') }}" class="btn btn-outline-secondary"><i class="bi bi-pencil me-1"></i>编辑</a>
+    </div>
+</div>
+{% endif %}
+
+{% if scrap.approval_instance_id %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-list-check me-2"></i>审批进度</h6></div>
+    <div class="card-body">
+        {% set instance = scrap.approval_instance_id %}
+        <a href="{{ url_for('approval.detail', instance_id=scrap.approval_instance_id) }}" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-eye me-1"></i>查看审批详情
+        </a>
     </div>
 </div>
 {% endif %}

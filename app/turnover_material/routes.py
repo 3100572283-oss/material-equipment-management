@@ -7,7 +7,7 @@ from app.turnover_material import bp
 from app import db
 from app.models import TurnoverMaterial, TurnoverInventory, TurnoverRecord, Project
 from app.decorators import editor_required, log_audit
-from app.utils import log_operation
+from app.utils import log_operation, apply_data_scope
 
 
 def _get_project_id():
@@ -22,13 +22,19 @@ def _get_project_id():
 @bp.route('/')
 @login_required
 def index():
-    project_id = _get_project_id()
+    project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目', 'warning')
+            return redirect(url_for('main.index'))
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
     material_type = request.args.get('material_type', '', type=str)
-    query = TurnoverMaterial.query.filter_by(project_id=project_id)
+    query = TurnoverMaterial.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, TurnoverMaterial)
     if keyword:
         query = query.filter(TurnoverMaterial.name.contains(keyword) | TurnoverMaterial.code.contains(keyword))
     if material_type:

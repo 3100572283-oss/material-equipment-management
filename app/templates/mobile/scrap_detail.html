@@ -1,0 +1,227 @@
+{% extends "mobile/base.html" %}
+{% block title %}报废单详情{% endblock %}
+{% block nav_title %}报废单详情{% endblock %}
+
+{% block content %}
+<!-- 基本信息 -->
+<div class="m-card">
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div>
+            <div style="font-size:18px; font-weight:600;">{{ scrap.code }}</div>
+            <div style="font-size:13px; color:#6c757d; margin-top:4px;">
+                报废日期：{{ scrap.scrap_date.strftime('%Y-%m-%d') if scrap.scrap_date else '-' }}
+            </div>
+        </div>
+        <span class="status-tag
+            {% if scrap.approval_status == 'passed' %}passed
+            {% elif scrap.approval_status == 'pending' %}pending
+            {% elif scrap.approval_status == 'draft' %}draft
+            {% elif scrap.approval_status == 'rejected' %}rejected
+            {% endif %}">
+            {% if scrap.approval_status == 'passed' %}已通过
+            {% elif scrap.approval_status == 'pending' %}待审批
+            {% elif scrap.approval_status == 'draft' %}草稿
+            {% elif scrap.approval_status == 'rejected' %}已驳回
+            {% else %}{{ scrap.approval_status }}{% endif %}
+        </span>
+    </div>
+</div>
+
+<!-- 详细信息 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-info-circle"></i>基本信息</div>
+    <div class="m-info-row"><span>报废原因</span><span>
+        {% set reason_label = reason_labels.get(scrap.reason, scrap.reason) %}
+        {% if scrap.reason == 'expired' %}<span class="m-status-tag pending">{{ reason_label }}</span>
+        {% elif scrap.reason == 'damaged' %}<span class="m-status-tag rejected">{{ reason_label }}</span>
+        {% elif scrap.reason == 'unqualified' %}<span class="m-status-tag draft">{{ reason_label }}</span>
+        {% else %}<span class="m-status-tag info">{{ reason_label }}</span>{% endif %}
+    </span></div>
+    <div class="m-info-row"><span>用料单位</span><span>{{ scrap.usage_unit.name if scrap.usage_unit else '-' }}</span></div>
+    <div class="m-info-row"><span>申请人</span><span>{{ scrap.applicant_name or '-' }}</span></div>
+    <div class="m-info-row"><span>总数量</span><span class="fw-bold">{{ scrap.total_quantity }}</span></div>
+    <div class="m-info-row"><span>总金额</span><span>¥{{ '%.2f'|format(scrap.total_amount or 0) }}</span></div>
+    <div class="m-info-row"><span>创建时间</span><span>{{ scrap.created_at.strftime('%Y-%m-%d %H:%M') if scrap.created_at else '-' }}</span></div>
+    {% if scrap.remark %}
+    <div class="m-info-row"><span>备注</span><span>{{ scrap.remark }}</span></div>
+    {% endif %}
+</div>
+
+<!-- 报废明细 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-list-ul"></i>报废明细（{{ scrap.items|length }}）</div>
+    {% if scrap.items %}
+    {% for it in scrap.items %}
+    <div class="m-detail-item">
+        <div class="row1">
+            <span class="name">{{ it.material.name if it.material else '物资#' + it.material_id|string }}</span>
+            <span class="qty">× {{ it.quantity }}</span>
+        </div>
+        <div class="row2">
+            {% if it.material and it.material.specification %}<span class="spec">{{ it.material.specification }}</span>{% endif %}
+            {% if it.material and it.material.unit %}<span class="unit">{{ it.material.unit }}</span>{% endif %}
+        </div>
+        {% if it.reason_detail %}
+        <div class="row3">原因：{{ it.reason_detail }}</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty-mini">暂无明细</div>
+    {% endif %}
+</div>
+
+<!-- 现场照片 -->
+{% if attachments %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-images"></i>现场照片（{{ attachments|length }}）</div>
+    <div class="m-photo-grid">
+        {% for att in attachments %}
+        <div class="m-photo-item" onclick="previewAttachment({{ att.id }})">
+            <img src="{{ url_for('admin.download_attachment', id=att.id) }}" alt="照片">
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- 审批进度 -->
+{% if instance %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-list-check"></i>审批进度</div>
+    <div class="m-info-row">
+        <span>审批状态</span>
+        <span class="status-tag
+            {% if instance.status == 'approved' %}passed
+            {% elif instance.status == 'pending' or instance.status == 'approving' %}pending
+            {% elif instance.status == 'rejected' %}rejected
+            {% else %}draft{% endif %}">
+            {% if instance.status == 'approved' %}已通过
+            {% elif instance.status == 'pending' %}待审
+            {% elif instance.status == 'approving' %}审批中
+            {% elif instance.status == 'rejected' %}已驳回
+            {% else %}{{ instance.status }}{% endif %}
+        </span>
+    </div>
+    <div class="m-info-row">
+        <span>提交时间</span>
+        <span>{{ instance.submit_time.strftime('%Y-%m-%d %H:%M') if instance.submit_time else '-' }}</span>
+    </div>
+    <div style="margin-top:10px;">
+        <a href="{{ url_for('mobile.approval_detail', instance_id=instance.id) }}" class="m-btn m-btn-outline-primary" style="display:inline-block;">
+            <i class="bi bi-eye"></i> 查看审批详情
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<!-- 定位信息 -->
+{% if scrap.location_lat and scrap.location_lng %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-geo-alt"></i>定位信息</div>
+    <div class="m-info-row"><span>纬度</span><span>{{ '%.6f'|format(scrap.location_lat|float) }}</span></div>
+    <div class="m-info-row"><span>经度</span><span>{{ '%.6f'|format(scrap.location_lng|float) }}</span></div>
+    {% if scrap.location_accuracy %}
+    <div class="m-info-row"><span>精度</span><span>±{{ '%.1f'|format(scrap.location_accuracy|float) }} 米</span></div>
+    {% endif %}
+    {% if scrap.location_time %}
+    <div class="m-info-row"><span>定位时间</span><span>{{ scrap.location_time.strftime('%Y-%m-%d %H:%M:%S') }}</span></div>
+    {% endif %}
+    <div style="margin-top:10px;">
+        <a href="https://uri.amap.com/marker?position={{ scrap.location_lng }},{{ scrap.location_lat }}"
+           target="_blank" class="m-btn m-btn-outline-primary" style="display:inline-block;">
+            <i class="bi bi-map"></i> 在地图中查看
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<!-- 操作按钮 -->
+<div class="m-card">
+    {% if scrap.approval_status in ('draft', 'rejected') %}
+    <form method="POST" action="{{ url_for('mobile.scrap_submit', id=scrap.id) }}" onsubmit="return confirm('确定提交审批？提交后将无法修改。');">
+        <button type="submit" class="m-btn m-btn-primary" style="width:100%;">
+            <i class="bi bi-send" style="margin-right:6px;"></i>提交审批
+        </button>
+    </form>
+    <a href="{{ url_for('mobile.scrap_create') }}" class="m-btn m-btn-outline-primary" style="width:100%; margin-top:8px; display:block; text-align:center;">
+        <i class="bi bi-pencil"></i> 新建报废申请
+    </a>
+    {% elif scrap.approval_status == 'passed' %}
+    <a href="{{ url_for('mobile.records', type='out') }}" class="m-btn m-btn-outline-primary" style="width:100%; display:block; text-align:center;">
+        <i class="bi bi-box-arrow-up"></i> 查看生成的出库单
+    </a>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function previewAttachment(attId){
+    // 使用 MobilePreview 加载图片
+    var url = "{{ url_for('admin.download_attachment', id=0) }}".replace('/0', '/' + attId);
+    if (window.MobilePreview) {
+        MobilePreview.open(url, 0);
+    } else {
+        window.open(url, '_blank');
+    }
+}
+
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){ window.location.reload(); done(); }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}
+
+<style>
+.m-info-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 0; border-bottom:1px solid #f1f3f5; font-size:14px;
+}
+.m-info-row:last-child { border-bottom:none; }
+.m-info-row span:first-child { color:#6c757d; }
+.m-info-row span:last-child { color:#212529; font-weight:500; text-align:right; max-width:60%; word-break:break-all; }
+.m-empty-mini { text-align:center; padding:20px; color:#adb5bd; font-size:13px; }
+.m-detail-item {
+    padding:10px 0; border-bottom:1px solid #f1f3f5;
+}
+.m-detail-item:last-child { border-bottom:none; }
+.m-detail-item .row1 {
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:14px;
+}
+.m-detail-item .row1 .name { font-weight:500; flex:1; }
+.m-detail-item .row1 .qty { color:#dc3545; font-weight:600; }
+.m-detail-item .row2 {
+    margin-top:4px; font-size:12px; color:#6c757d;
+    display:flex; gap:8px;
+}
+.m-detail-item .row2 .spec { background:#f1f3f5; padding:1px 6px; border-radius:3px; }
+.m-detail-item .row2 .unit { color:#165DFF; }
+.m-detail-item .row3 {
+    margin-top:4px; font-size:12px; color:#495057;
+}
+.m-status-tag.info {
+    background:#cff4fc; color:#055160;
+}
+.m-photo-grid {
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+.m-photo-item {
+    width:100%;
+    aspect-ratio: 1/1;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    background: #f1f3f5;
+}
+.m-photo-item img {
+    width:100%; height:100%; object-fit: cover;
+}
+</style>

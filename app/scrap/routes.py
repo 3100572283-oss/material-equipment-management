@@ -8,7 +8,7 @@ from app import db
 from app.models import (MaterialScrap, MaterialScrapItem, Material, Inventory,
                        InventoryBatch, UsageUnit, Project)
 from app.decorators import log_audit
-from app.utils import to_decimal
+from app.utils import to_decimal, apply_data_scope, get_project_materials, upload_attachment
 
 
 def _gen_scrap_code(project_id):
@@ -38,16 +38,21 @@ REASON_LABELS = {
 def index():
     """报废单列表页"""
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     status = request.args.get('status', '', type=str)
     start_date = request.args.get('start_date', '', type=str)
     end_date = request.args.get('end_date', '', type=str)
 
-    query = MaterialScrap.query.filter_by(project_id=project_id)
+    query = MaterialScrap.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, MaterialScrap)
     if status:
         query = query.filter(MaterialScrap.approval_status == status)
     if start_date:
@@ -90,6 +95,18 @@ def create():
         reason = request.form.get('reason', 'other')
         remark = request.form.get('remark', '').strip()
 
+        # 定位信息（移动端传入）
+        location_lat = request.form.get('location_lat', type=float) or None
+        location_lng = request.form.get('location_lng', type=float) or None
+        location_accuracy = request.form.get('location_accuracy', type=float) or None
+        location_time_str = request.form.get('location_time', '').strip()
+        location_time = None
+        if location_time_str:
+            try:
+                location_time = datetime.fromisoformat(location_time_str)
+            except Exception:
+                pass
+
         scrap = MaterialScrap(
             project_id=project_id,
             code=_gen_scrap_code(project_id),
@@ -100,6 +117,10 @@ def create():
             approval_status='draft',
             applicant_id=current_user.id,
             applicant_name=current_user.name or current_user.username,
+            location_lat=location_lat,
+            location_lng=location_lng,
+            location_accuracy=location_accuracy,
+            location_time=location_time,
         )
         db.session.add(scrap)
         db.session.flush()
@@ -143,17 +164,68 @@ def create():
         scrap.total_quantity = total_qty
         scrap.total_amount = total_amount
 
-        db.session.commit()
-        flash('报废单创建成功，等待审批。', 'success')
-        return redirect(url_for('scrap.index'))
+        # 照片上传（多张）
+        photos = request.files.getlist('photos[]')
+        for photo in photos:
+            if photo and photo.filename:
+                att, err = upload_attachment(photo, 'scrap',
+                                             biz_id=scrap.id, project_id=project_id)
+                if err:
+                    flash(f'照片 {photo.filename} 上传失败：{err}', 'warning')
 
-    materials = Material.query.filter_by(project_id=project_id).order_by(Material.name).all()
+        db.session.commit()
+
+        # 如果是"提交并审批"按钮，自动提交审批流
+        if request.form.get('submit_type') == 'submit':
+            return _submit_to_approval(scrap)
+
+        flash('报废单创建成功，可继续编辑或提交审批。', 'success')
+        return redirect(url_for('scrap.detail', id=scrap.id))
+
+    materials = get_project_materials(project_id, common_only=True).all()
     usage_units = UsageUnit.query.filter_by(project_id=project_id).order_by(UsageUnit.name).all()
     return render_template('scrap/create.html', materials=materials,
                            usage_units=usage_units,
                            default_code=_gen_scrap_code(project_id),
                            reason_labels=REASON_LABELS,
                            today=date.today().isoformat())
+
+
+def _submit_to_approval(scrap):
+    """提交报废单到审批流"""
+    from app.approval.service import submit_approval, is_approval_enabled
+    if not is_approval_enabled('scrap'):
+        # 未启用审批流：直接通过并扣减库存
+        scrap.approval_status = 'pending'  # 标记为待处理（兼容历史直审）
+        from app.approval.service import _apply_scrap_inventory
+        _apply_scrap_inventory(scrap)
+        scrap.approval_status = 'passed'
+        db.session.commit()
+        flash('报废单已直接通过（未启用审批流），库存已扣减。', 'success')
+        return redirect(url_for('scrap.detail', id=scrap.id))
+    success, msg, instance = submit_approval('scrap', scrap.id,
+                                              applicant_id=current_user.id,
+                                              project_id=scrap.project_id)
+    if success:
+        scrap.approval_status = 'pending'
+        scrap.approval_instance_id = instance.id if instance else None
+        db.session.commit()
+        flash('报废单已提交审批。', 'success')
+    else:
+        flash(f'提交审批失败：{msg}', 'danger')
+    return redirect(url_for('scrap.detail', id=scrap.id))
+
+
+@bp.route('/<int:id>/submit', methods=['POST'])
+@login_required
+@log_audit(module='scrap', operation='提交审批')
+def submit(id):
+    """提交报废单到审批流"""
+    scrap = MaterialScrap.query.get_or_404(id)
+    if scrap.approval_status not in ('draft', 'rejected'):
+        flash('当前状态不允许提交。', 'warning')
+        return redirect(url_for('scrap.detail', id=scrap.id))
+    return _submit_to_approval(scrap)
 
 
 @bp.route('/<int:id>')

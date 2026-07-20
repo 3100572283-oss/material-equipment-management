@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if material else '新增' }}公司物资 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-box-seam me-2"></i>{{ '编辑' if material else '新增' }}公司物资
+                </h5>
+                <a href="{{ url_for('master.material_index') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-1"></i>返回列表
+                </a>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="materialForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">物资编码</label>
+                            <input type="text" class="form-control" name="code"
+                                   value="{{ material.code if material else '' }}"
+                                   readonly placeholder="保存时自动生成">
+                            <div class="form-text">公司级物资编码由系统自动生成（WL + 6位流水号，如 WL000001）。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">物资名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name"
+                                   value="{{ material.name if material else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">规格型号</label>
+                            <input type="text" class="form-control" name="specification"
+                                   value="{{ material.specification if material else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">单位 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="unit" required>
+                                <option value="">-- 请选择 --</option>
+                                {% for label, value in get_dict_items('material_unit') %}
+                                <option value="{{ value }}" {% if material and material.unit == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- 三级联动分类选择（公司级分类） -->
+                        <div class="col-12">
+                            <label class="form-label">物资分类 <span class="text-danger">*</span></label>
+                            <input type="hidden" name="category_id" id="categoryId" value="{{ material.category_id if material and material.category_id else '' }}">
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <select class="form-select" id="catL1">
+                                        <option value="">-- 一级分类 --</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select class="form-select" id="catL2" disabled>
+                                        <option value="">-- 二级分类 --</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select class="form-select" id="catL3" disabled>
+                                        <option value="">-- 三级分类 --</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-text">请依次选择一级、二级、三级分类，必须选择到三级分类。</div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">备注</label>
+                            <textarea class="form-control" name="remark" rows="3">{{ material.remark if material else '' }}</textarea>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>保存
+                        </button>
+                        <a href="{{ url_for('master.material_index') }}" class="btn btn-secondary ms-2">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    // 公司级分类三级联动（独立于项目分类）
+    var API_BASE = '{{ url_for("master.category_index") }}'.replace(/\/$/, '');
+    var catL1 = document.getElementById('catL1');
+    var catL2 = document.getElementById('catL2');
+    var catL3 = document.getElementById('catL3');
+    var categoryIdInput = document.getElementById('categoryId');
+
+    var initialCategoryId = {{ material.category_id if material and material.category_id else 'null' }};
+
+    function fillSelect(selectEl, items, placeholder) {
+        selectEl.innerHTML = '';
+        var opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = placeholder || '-- 请选择 --';
+        selectEl.appendChild(opt);
+        items.forEach(function (item) {
+            var o = document.createElement('option');
+            o.value = item.id;
+            o.textContent = (item.category_code || '') + ' / ' + item.name;
+            selectEl.appendChild(o);
+        });
+    }
+
+    function loadChildren(parentId, selectEl, placeholder) {
+        return fetch(API_BASE + '/api/children/' + parentId)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                fillSelect(selectEl, data, placeholder);
+                return data;
+            });
+    }
+
+    catL1.addEventListener('change', function () {
+        var pid = this.value;
+        categoryIdInput.value = '';
+        if (!pid) {
+            catL2.innerHTML = '<option value="">-- 二级分类 --</option>';
+            catL2.disabled = true;
+            catL3.innerHTML = '<option value="">-- 三级分类 --</option>';
+            catL3.disabled = true;
+            return;
+        }
+        catL2.disabled = false;
+        catL3.innerHTML = '<option value="">-- 三级分类 --</option>';
+        catL3.disabled = true;
+        loadChildren(pid, catL2, '-- 二级分类 --');
+    });
+
+    catL2.addEventListener('change', function () {
+        var pid = this.value;
+        categoryIdInput.value = '';
+        if (!pid) {
+            catL3.innerHTML = '<option value="">-- 三级分类 --</option>';
+            catL3.disabled = true;
+            return;
+        }
+        catL3.disabled = false;
+        loadChildren(pid, catL3, '-- 三级分类 --');
+    });
+
+    catL3.addEventListener('change', function () {
+        categoryIdInput.value = this.value;
+    });
+
+    document.getElementById('materialForm').addEventListener('submit', function (e) {
+        if (!categoryIdInput.value) {
+            e.preventDefault();
+            alert('请选择物资分类（必须到三级）。');
+        }
+    });
+
+    // 初始化：加载一级分类
+    loadChildren(0, catL1, '-- 一级分类 --').then(function () {
+        if (!initialCategoryId) return;
+        fetch(API_BASE + '/api/tree')
+            .then(function (res) { return res.json(); })
+            .then(function (tree) {
+                var chain = findChain(tree, initialCategoryId);
+                if (!chain) return;
+                catL1.value = chain.l1;
+                catL1.dispatchEvent(new Event('change'));
+                loadChildren(chain.l1, catL2, '-- 二级分类 --').then(function () {
+                    catL2.value = chain.l2;
+                    catL2.dispatchEvent(new Event('change'));
+                    loadChildren(chain.l2, catL3, '-- 三级分类 --').then(function () {
+                        catL3.value = chain.l3;
+                        categoryIdInput.value = chain.l3;
+                    });
+                });
+            });
+    });
+
+    function findChain(tree, targetId) {
+        for (var i = 0; i < tree.length; i++) {
+            var l1 = tree[i];
+            for (var j = 0; j < (l1.children || []).length; j++) {
+                var l2 = l1.children[j];
+                for (var k = 0; k < (l2.children || []).length; k++) {
+                    var l3 = l2.children[k];
+                    if (l3.id == targetId) {
+                        return { l1: l1.id, l2: l2.id, l3: l3.id };
+                    }
+                }
+            }
+        }
+        return null;
+    }
+})();
+</script>
+{% endblock %}

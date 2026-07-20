@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}公司供应商主库 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="mb-0"><i class="bi bi-truck me-2"></i>公司供应商主库</h5>
+            <small class="text-muted">公司级统一维护的供应商基础数据，所有项目共用</small>
+        </div>
+        <div>
+            <a href="{{ url_for('master.supplier_create') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i>新增供应商
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('master.supplier_index') }}">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" name="keyword"
+                       placeholder="搜索供应商名称/编码" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    <option value="qualified" {% if status == 'qualified' %}selected{% endif %}>合格</option>
+                    <option value="unqualified" {% if status == 'unqualified' %}selected{% endif %}>不合格</option>
+                    <option value="blacklist" {% if status == 'blacklist' %}selected{% endif %}>黑名单</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('master.supplier_index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>供应商名称</th>
+                        <th>编码</th>
+                        <th>社会信用代码</th>
+                        <th>联系人</th>
+                        <th>电话</th>
+                        <th>状态</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in pagination.items %}
+                    <tr>
+                        <td class="fw-bold">{{ s.name }}</td>
+                        <td>{{ s.code or '-' }}</td>
+                        <td>{{ s.credit_code or '-' }}</td>
+                        <td>{{ s.contact_person or '-' }}</td>
+                        <td>{{ s.phone or '-' }}</td>
+                        <td>
+                            {% if s.status == 'qualified' %}
+                                <span class="badge bg-success">合格</span>
+                            {% elif s.status == 'unqualified' %}
+                                <span class="badge bg-warning text-dark">不合格</span>
+                            {% elif s.status == 'blacklist' %}
+                                <span class="badge bg-danger">黑名单</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ s.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('master.supplier_edit', id=s.id) }}" class="btn btn-sm btn-outline-primary" title="编辑">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-warning" title="状态管理"
+                                    data-bs-toggle="modal" data-bs-target="#statusModal"
+                                    data-id="{{ s.id }}" data-name="{{ s.name }}" data-status="{{ s.status }}">
+                                <i class="bi bi-toggles"></i>
+                            </button>
+                            <form method="POST" action="{{ url_for('master.supplier_delete', id=s.id) }}" class="d-inline"
+                                  onsubmit="return confirm('确定删除该供应商？删除后不可恢复。');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_pagination.html' %}
+    </div>
+</div>
+
+<!-- 状态管理模态框 -->
+<div class="modal fade" id="statusModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="statusForm" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-toggles me-2"></i>供应商状态管理</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">供应商</label>
+                        <input type="text" class="form-control" id="statusModalName" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">状态 <span class="text-danger">*</span></label>
+                        <select class="form-select" name="status" id="statusSelect">
+                            <option value="qualified">合格</option>
+                            <option value="unqualified">不合格</option>
+                            <option value="blacklist">黑名单</option>
+                        </select>
+                        <div class="form-text">黑名单供应商将无法在项目中使用。</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var statusModal = document.getElementById('statusModal');
+    if (statusModal) {
+        statusModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var id = button.getAttribute('data-id');
+            var name = button.getAttribute('data-name');
+            var status = button.getAttribute('data-status');
+            document.getElementById('statusModalName').value = name || '';
+            document.getElementById('statusSelect').value = status || 'qualified';
+            document.getElementById('statusForm').action = '/master/supplier/' + id + '/status';
+        });
+    }
+})();
+</script>
+{% endblock %}

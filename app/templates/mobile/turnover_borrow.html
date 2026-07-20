@@ -1,0 +1,287 @@
+{% extends "mobile/base.html" %}
+{% block title %}周转材领用{% endblock %}
+{% block nav_title %}领用登记{% endblock %}
+
+{% block content %}
+<form method="POST" id="borrowForm" enctype="multipart/form-data">
+    <!-- 基本信息 -->
+    <div class="m-card">
+        <div class="m-form-group">
+            <label class="m-form-label">领用人<span class="req">*</span></label>
+            <input type="text" name="borrower" class="m-form-control" value="{{ current_user.name or current_user.username }}" required>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">领用日期<span class="req">*</span></label>
+            <input type="date" name="out_date" class="m-form-control" value="{{ today }}" required>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">预计归还日期</label>
+            <input type="date" name="expect_return_date" class="m-form-control">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">备注</label>
+            <textarea name="remark" class="m-form-control" rows="2" placeholder="备注..."></textarea>
+        </div>
+    </div>
+
+    <!-- 周转材明细 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-list-ul"></i>周转材明细</div>
+        <div id="itemsContainer"></div>
+        <button type="button" class="m-add-row-btn" onclick="addItemRow()">
+            <i class="bi bi-plus-lg"></i> 添加周转材
+        </button>
+    </div>
+
+    <!-- 现场照片 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-camera"></i>现场照片（可选，最多4张）</div>
+        <div class="m-photo-grid" id="photoGrid">
+            <label class="m-photo-add" style="position:relative;">
+                <input type="file" accept="image/*" capture="environment" multiple
+                       style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;"
+                       onchange="handlePhotoSelect(this)">
+            </label>
+        </div>
+    </div>
+</form>
+
+<!-- 周转材搜索弹层 -->
+<div class="m-search-modal" id="materialModal">
+    <div class="panel">
+        <div class="panel-header">
+            <input type="text" id="materialSearchInput" placeholder="搜索周转材名称/编码" oninput="searchMaterials()">
+            <button type="button" class="close" onclick="closeMaterialModal()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="panel-body" id="materialOptions">
+            <div class="empty">输入关键字搜索周转材</div>
+        </div>
+    </div>
+</div>
+
+<div class="m-submit-bar">
+    <button type="button" class="m-btn m-btn-primary" style="flex:1;" onclick="submitForm()">
+        <i class="bi bi-check-lg" style="margin-right:6px;"></i>提交领用单
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var currentEditingRow = null;
+var photos = [];
+
+function addItemRow() {
+    var container = document.getElementById('itemsContainer');
+    var idx = container.children.length;
+    var row = document.createElement('div');
+    row.className = 'm-item-row';
+    row.innerHTML = `
+        <div class="m-item-header">
+            <span>第 ${idx + 1} 行</span>
+            <button type="button" class="m-item-del" onclick="removeItemRow(this)"><i class="bi bi-trash"></i></button>
+        </div>
+        <input type="hidden" name="material_id[]" value="">
+        <div class="m-item-grid" style="grid-template-columns: 1fr 70px;">
+            <input type="text" class="m-form-control material-name"
+                   placeholder="点击选择周转材" readonly onclick="openMaterialModal(this)">
+            <button type="button" class="m-btn m-btn-outline" style="height:44px;padding:0;font-size:18px;"
+                    onclick="scanMaterial(this)" title="扫码">
+                <i class="bi bi-qr-code-scan"></i>
+            </button>
+        </div>
+        <div style="margin-top:8px;">
+            <input type="number" class="m-form-control material-qty"
+                   name="qty[]" step="0.0001" min="0" placeholder="领用数量" inputmode="decimal">
+        </div>
+        <div style="margin-top:8px;">
+            <input type="text" class="m-form-control" name="team[]"
+                   placeholder="领用班组/单位（可选）">
+        </div>
+        <div class="m-item-row-3" style="margin-top:8px;">
+            <input type="text" class="m-form-control material-spec"
+                   placeholder="规格" disabled style="font-size:13px;">
+            <input type="text" class="m-form-control material-unit"
+                   placeholder="单位" disabled style="font-size:13px;">
+            <input type="text" class="m-form-control material-stock"
+                   placeholder="库存" disabled style="font-size:13px;color:#165DFF;">
+        </div>
+    `;
+    container.appendChild(row);
+}
+
+function removeItemRow(btn) {
+    btn.closest('.m-item-row').remove();
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    rows.forEach(function(r, i) {
+        r.querySelector('.m-item-header span').textContent = '第 ' + (i + 1) + ' 行';
+    });
+}
+
+function openMaterialModal(inputEl) {
+    currentEditingRow = inputEl.closest('.m-item-row');
+    document.getElementById('materialModal').classList.add('show');
+    var input = document.getElementById('materialSearchInput');
+    input.value = '';
+    input.focus();
+    searchMaterials();
+}
+
+function closeMaterialModal() {
+    document.getElementById('materialModal').classList.remove('show');
+    currentEditingRow = null;
+}
+
+function searchMaterials() {
+    var kw = document.getElementById('materialSearchInput').value.trim();
+    fetch("{{ url_for('mobile.api_turnover_search') }}?q=" + encodeURIComponent(kw))
+        .then(function(r) { return r.json(); })
+        .then(function(list) {
+            var box = document.getElementById('materialOptions');
+            if (!list || list.length === 0) {
+                box.innerHTML = '<div class="empty">未找到匹配的周转材</div>';
+                return;
+            }
+            box.innerHTML = list.map(function(m) {
+                return '<div class="m-option" onclick="selectMaterial(' + m.id + ', \'' +
+                    m.name.replace(/'/g, "\\'") + '\', \'' + (m.spec||'').replace(/'/g, "\\'") +
+                    '\', \'' + (m.unit||'').replace(/'/g, "\\'") + '\', ' + m.stock + ')">' +
+                    '<div class="name">' + m.name + '</div>' +
+                    '<div class="meta">' + (m.code||'') + ' · ' + (m.spec||'-') + ' · 库存 ' + m.stock + '</div>' +
+                    '</div>';
+            }).join('');
+        });
+}
+
+function selectMaterial(id, name, spec, unit, stock) {
+    if (!currentEditingRow) return;
+    currentEditingRow.querySelector('input[name="material_id[]"]').value = id;
+    currentEditingRow.querySelector('.material-name').value = name;
+    currentEditingRow.querySelector('.material-spec').value = spec || '-';
+    currentEditingRow.querySelector('.material-unit').value = unit || '-';
+    currentEditingRow.querySelector('.material-stock').value = '库存 ' + stock;
+    // 最近使用记录（用户需求3.1）
+    if (window.MobileRecentUse) MobileRecentUse.record('turnover_material', { id: id, name: name });
+    closeMaterialModal();
+}
+
+function scanMaterial(btn) {
+    currentEditingRow = btn.closest('.m-item-row');
+    MobileScanner.open(function(code){
+        fetch("{{ url_for('mobile.scan_redirect') }}?code=" + encodeURIComponent(code))
+            .then(function(r){
+                // 通过API查找周转材
+                fetch("{{ url_for('mobile.api_turnover_search') }}?q=" + encodeURIComponent(code))
+                    .then(function(r){ return r.json(); })
+                    .then(function(list){
+                        if (list && list.length > 0) {
+                            var m = list[0];
+                            selectMaterial(m.id, m.name, m.spec, m.unit, m.stock);
+                        } else {
+                            M.toast('未找到编码 ' + code + ' 对应的周转材', 'warning');
+                        }
+                    });
+            });
+    });
+}
+
+// 照片
+function handlePhotoSelect(input){
+    var files = input.files;
+    if (!files || files.length === 0) return;
+    var remaining = 4 - photos.length;
+    if (files.length > remaining) M.toast('最多4张', 'warning');
+    for (var i = 0; i < Math.min(files.length, remaining); i++) {
+        compressImage(files[i]);
+    }
+    input.value = '';
+}
+
+function compressImage(file){
+    var reader = new FileReader();
+    reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+            var max = 1280, w = img.width, h = img.height;
+            if (w > max || h > max) {
+                if (w > h) { h = h * max / w; w = max; }
+                else { w = w * max / h; h = max; }
+            }
+            var canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            photos.push({ dataUrl: canvas.toDataURL('image/jpeg', 0.7), name: file.name });
+            renderPhotos();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function renderPhotos(){
+    var grid = document.getElementById('photoGrid');
+    while (grid.children.length > 1) grid.removeChild(grid.lastChild);
+    photos.forEach(function(p, i){
+        var div = document.createElement('div');
+        div.style.cssText = 'position:relative;width:72px;height:72px;border-radius:6px;overflow:hidden;';
+        div.innerHTML = '<img src="' + p.dataUrl + '" style="width:100%;height:100%;object-fit:cover;" onclick="previewPhoto(' + i + ')">' +
+            '<div style="position:absolute;top:2px;right:2px;width:18px;height:18px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;text-align:center;line-height:18px;font-size:12px;cursor:pointer;" onclick="event.stopPropagation();photos.splice(' + i + ',1);renderPhotos();">×</div>';
+        grid.appendChild(div);
+    });
+}
+
+function previewPhoto(i){
+    var urls = photos.map(function(p){ return p.dataUrl; });
+    if (window.MobilePreview) MobilePreview.open(urls, i);
+}
+
+function submitForm(){
+    var form = document.getElementById('borrowForm');
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    var hasItem = false;
+    rows.forEach(function(r){
+        var mid = r.querySelector('input[name="material_id[]"]').value;
+        var qty = r.querySelector('.material-qty').value;
+        if (mid && parseFloat(qty) > 0) hasItem = true;
+    });
+    if (!hasItem) {
+        M.toast('请至少添加一条有效的周转材明细', 'danger');
+        return;
+    }
+    // 获取定位后注入表单，再执行提交（loc 为 null 时不阻塞提交）
+    MobileLocation.capture().then(function(loc) {
+        if (loc) {
+            injectLocationToForm(form, loc);
+        }
+        _doSubmit(form);
+    });
+}
+
+function _doSubmit(form) {
+    var fd = new FormData(form);
+    photos.forEach(function(p){
+        var arr = p.dataUrl.split(',');
+        var mime = arr[0].match(/:(.*?);/)[1] || 'image/jpeg';
+        var byteStr = atob(arr[1]);
+        var ab = new ArrayBuffer(byteStr.length);
+        var u8 = new Uint8Array(ab);
+        for (var j = 0; j < byteStr.length; j++) u8[j] = byteStr.charCodeAt(j);
+        fd.append('photos[]', new Blob([ab], { type: mime }), p.name);
+    });
+    M.loading(true);
+    fetch(window.location.href, {
+        method: 'POST', body: fd, credentials: 'same-origin'
+    }).then(function(r){
+        M.loading(false);
+        if (r.redirected) window.location.href = r.url;
+        else window.location.href = "{{ url_for('mobile.turnover_list') }}";
+    }).catch(function(err){
+        M.loading(false);
+        M.toast('提交失败：' + err, 'danger');
+    });
+}
+
+// 默认添加一行
+addItemRow();
+</script>
+{% endblock %}

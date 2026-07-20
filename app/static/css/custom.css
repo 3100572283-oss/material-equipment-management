@@ -376,6 +376,20 @@ body.density-standard .form-select {
     min-height: 38px;
     font-size: 14px;
 }
+body.density-standard .form-control-sm,
+body.density-standard .form-select-sm {
+    min-height: 36px;
+    font-size: 14px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+body.density-standard .form-label {
+    font-size: 14px;
+}
+body.density-standard .input-group-text {
+    min-height: 38px;
+    font-size: 14px;
+}
 body.density-standard .card-header {
     padding: 1rem 1.25rem;
 }
@@ -454,7 +468,8 @@ body.density-standard .dashboard-stat-card .stat-label {
     vertical-align: middle;
 }
 
-/* 主要按钮（Primary）- 高度36px，padding左右16px，字号14px */
+/* ========== 一级按钮：页面主按钮 36px ========== */
+/* 使用场景：列表页"新增"按钮、提交确认等最主要操作 */
 .btn-primary, .btn-success, .btn-info, .btn-warning, .btn-danger {
     height: 36px;
     padding: 0 16px;
@@ -463,35 +478,83 @@ body.density-standard .dashboard-stat-card .stat-label {
     line-height: 34px;
 }
 
-/* 次要按钮（Secondary/Outline）- 高度32px，padding左右12px，字号13px */
+/* ========== 二级按钮：页面次要按钮 32px ========== */
+/* 使用场景：列表页的导出、搜索、重置、批量删除、导入、刷新等次要操作 */
 .btn-secondary, .btn-outline-secondary, .btn-outline-primary, .btn-outline-success,
-.btn-outline-info, .btn-outline-warning, .btn-outline-danger, .btn-light {
+.btn-outline-info, .btn-outline-warning, .btn-outline-danger, .btn-light,
+.btn-sm {
     height: 32px;
     padding: 0 12px;
     font-size: 13px;
     line-height: 30px;
 }
 
-/* 小号按钮 - 高度28px，宽度自适应内容，用于筛选区和批量操作 */
-.btn-sm {
-    height: 28px;
-    padding: 0 10px;
-    font-size: 12px;
-    line-height: 26px;
-    border-radius: 4px;
+/* 筛选区按钮组 - 使用 .btn-sm 类 */
+.col-auto .btn-sm,
+form .btn-sm {
+    height: 32px;
+    padding: 0 12px;
+    font-size: 13px;
+    line-height: 30px;
 }
 
-/* 纯图标按钮 - 28x28正方形，用于表格行内操作 */
+/* ========== 三级按钮：表单/弹窗底部按钮 30px ========== */
+/* 使用场景：所有表单编辑页底部的保存/返回、所有弹窗底部的确认/取消 */
+
+/* 弹窗底部按钮 */
+.modal-footer {
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: 8px !important;
+    padding: 14px !important;
+}
+
+/* 提高选择器优先级，确保覆盖全局按钮样式 */
+.modal-footer .btn,
+.modal-footer .btn-primary,
+.modal-footer .btn-secondary,
+.modal-footer .btn-outline-secondary,
+.modal-footer .btn-outline-primary {
+    height: 30px !important;
+    padding: 0 12px !important;
+    font-size: 13px !important;
+    line-height: 28px !important;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 14px;
+}
+
+.modal-actions .btn {
+    height: 30px !important;
+    padding: 0 12px !important;
+    font-size: 13px !important;
+    line-height: 28px !important;
+}
+
+/* ========== 四级按钮：表格行内操作按钮 28x28 ========== */
+/* 使用场景：表格每行的查看、编辑、删除等图标按钮 */
 .btn-icon {
     width: 28px;
     height: 28px;
     min-width: 28px;
     padding: 0;
-    font-size: 13px;
+    font-size: 14px;
     border-radius: 4px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+/* 表格内的 .btn-sm 也使用四级尺寸 */
+.table .btn-sm {
+    height: 28px !important;
+    padding: 0 8px !important;
+    font-size: 12px !important;
+    line-height: 26px !important;
 }
 
 /* 按钮图标大小 */
@@ -507,6 +570,61 @@ body.density-standard .dashboard-stat-card .stat-label {
 }
 .btn-group .btn + .btn {
     margin-left: -1px;
+}
+
+/* ========== 合计行样式 ========== */
+.table tfoot tr.table-total-row {
+    background-color: #f8f9fa !important;
+    height: 36px;
+}
+
+.table tfoot tr.table-total-row td {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 8px;
+    border-top: 1px solid #dee2e6;
+    vertical-align: middle;
+}
+
+.table tfoot tr.table-total-row .total-label {
+    color: #666;
+    font-weight: 600;
+}
+
+.table tfoot tr.table-total-row .total-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.table tfoot tr.table-total-row .total-qty {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+/* ========== 表单页底部操作按钮（三级按钮30px）========== */
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px;
+    margin-top: 12px;
+    border-top: 1px solid #e9ecef;
+    background-color: #fafbfc;
+}
+
+/* 提高选择器优先级，确保覆盖全局按钮样式 */
+.form-actions .btn,
+.form-actions .btn-primary,
+.form-actions .btn-secondary,
+.form-actions .btn-outline-secondary,
+.form-actions .btn-outline-primary {
+    height: 30px !important;
+    padding: 0 12px !important;
+    font-size: 13px !important;
+    line-height: 28px !important;
+    border-radius: 4px !important;
 }
 
 /* flex容器内按钮间距 */
@@ -799,6 +917,7 @@ form.row.g-2 > div, form.row.g-3 > div {
     }
 
     /* ===== 按钮触摸区域 ===== */
+    /* 移动端按钮统一放大 */
     .btn {
         min-height: 40px;
         height: 40px;
@@ -806,6 +925,7 @@ form.row.g-2 > div, form.row.g-3 > div {
         font-size: 14px;
         border-radius: 6px;
     }
+    /* 一级主按钮：44px */
     .btn-primary, .btn-success, .btn-info, .btn-warning, .btn-danger {
         min-height: 44px;
         height: 44px;
@@ -813,6 +933,7 @@ form.row.g-2 > div, form.row.g-3 > div {
         font-size: 15px;
         line-height: 42px;
     }
+    /* 二级次要按钮：40px */
     .btn-secondary, .btn-outline-secondary, .btn-outline-primary {
         min-height: 40px;
         height: 40px;
@@ -820,21 +941,37 @@ form.row.g-2 > div, form.row.g-3 > div {
         font-size: 14px;
         line-height: 38px;
     }
-    .btn-sm {
+    /* 三级表单/弹窗按钮：36px（移动端触控优化） */
+    .modal-footer .btn,
+    .modal-footer .btn-primary,
+    .modal-footer .btn-secondary,
+    .modal-footer .btn-outline-secondary,
+    .modal-footer .btn-outline-primary,
+    .form-actions .btn,
+    .form-actions .btn-primary,
+    .form-actions .btn-secondary,
+    .form-actions .btn-outline-secondary,
+    .form-actions .btn-outline-primary {
         min-height: 36px;
         height: 36px;
         padding: 0 12px;
-        font-size: 13px;
+        font-size: 14px;
         line-height: 34px;
-        width: auto;
     }
-    .btn-icon {
+    /* 四级表格行内按钮：36px正方形 */
+    .btn-sm, .btn-icon {
         min-height: 36px;
         height: 36px;
         min-width: 36px;
         width: 36px;
         padding: 0;
         font-size: 15px;
+    }
+    .table .btn-sm {
+        min-height: 36px;
+        height: 36px;
+        width: auto;
+        padding: 0 12px;
     }
     .card-header .btn {
         margin-bottom: 0.25rem;
@@ -1541,70 +1678,113 @@ form.row.g-2 > div, form.row.g-3 > div {
 }
 
 /* ========== 深色模式 ========== */
+/* 配色规范：不用纯黑/纯白，深灰背景减少眼部疲劳，浅灰文字降低眩光 */
 [data-theme="dark"] {
-    --bg-body: #1a1a2e;
-    --bg-card: #16213e;
-    --bg-sidebar: #0f0f23;
-    --bg-navbar: #16213e;
-    --bg-light: #1e2a47;
-    --text-primary: #e8e8e8;
-    --text-secondary: #a0a0b0;
-    --text-muted: #6c757d;
-    --border-color: #2a2a4a;
-    --primary-color: #4d7fff;
+    /* 背景层级（由深到浅） */
+    --bg-body: #121212;          /* 页面最底层背景 */
+    --bg-sidebar: #1a1a1a;       /* 侧边栏背景 */
+    --bg-card: #1e1e1e;          /* 卡片/表格/内容区背景 */
+    --bg-modal: #1e1e1e;        /* 弹窗背景 */
+    --bg-input: #252525;        /* 输入框/下拉框背景 */
+    --bg-hover: #2a2a2a;        /* hover行/选中行背景 */
+    --bg-stripe: #212121;        /* 斑马纹偶数行背景 */
+    --bg-header: #252525;        /* 表头背景 */
+
+    /* 文字层级（由浅到深） */
+    --text-primary: #e0e0e0;    /* 一级文字：标题、主要内容 */
+    --text-secondary: #b8b8b8;  /* 二级文字：正文、普通内容 */
+    --text-tertiary: #808080;   /* 三级文字：辅助说明、placeholder */
+    --text-disabled: #555555;   /* 禁用文字 */
+
+    /* 边框与分割线 */
+    --border-table: #2d2d2d;    /* 表格边框 */
+    --border-card: #2a2a2a;     /* 卡片边框 */
+    --border-divider: #272727;  /* 分割线 */
+    --border-input: #333333;     /* 输入框边框 */
+
+    /* 主色与状态色（深色下降饱和度） */
+    --primary-color: #3a8ee6;    /* 主色蓝 */
+    --primary-hover: #5598c9;
+    --success-color: #5daf34;    /* 成功绿 */
+    --warning-color: #cf9236;    /* 警告橙 */
+    --danger-color: #dd6161;     /* 危险红 */
 }
 
 [data-theme="dark"] body {
     background-color: var(--bg-body);
-    color: var(--text-primary);
+    color: var(--text-secondary);
 }
 
+/* 卡片 */
 [data-theme="dark"] .card {
     background-color: var(--bg-card);
-    border-color: var(--border-color);
-    color: var(--text-primary);
+    border-color: var(--border-card);
+    color: var(--text-secondary);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .card.border-0 {
+    border: 1px solid var(--border-card) !important;
+}
+
+[data-theme="dark"] .shadow-sm {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
 }
 
 [data-theme="dark"] .card-header {
-    background-color: var(--bg-light);
-    border-bottom-color: var(--border-color);
+    background-color: var(--bg-header);
+    border-bottom-color: var(--border-divider);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .card-title {
     color: var(--text-primary);
 }
 
 [data-theme="dark"] .bg-light {
-    background-color: var(--bg-light) !important;
-    color: var(--text-primary) !important;
+    background-color: var(--bg-card) !important;
+    color: var(--text-secondary) !important;
 }
 
 [data-theme="dark"] .bg-white {
     background-color: var(--bg-card) !important;
-    color: var(--text-primary) !important;
+    color: var(--text-secondary) !important;
 }
 
+/* 侧边栏 */
 [data-theme="dark"] #sidebar-wrapper {
     background-color: var(--bg-sidebar) !important;
-    border-right-color: var(--border-color) !important;
-    color: var(--text-primary);
+    border-right-color: var(--border-divider) !important;
+    color: var(--text-secondary);
 }
 
 [data-theme="dark"] .sidebar-heading {
     color: var(--text-primary) !important;
-    border-bottom-color: var(--border-color) !important;
+    border-bottom-color: var(--border-divider) !important;
+}
+
+[data-theme="dark"] .sidebar-item {
+    color: var(--text-secondary);
 }
 
 [data-theme="dark"] .sidebar-item.active {
-    background-color: rgba(77, 127, 255, 0.2) !important;
+    background-color: var(--bg-hover) !important;
     color: var(--primary-color) !important;
 }
 
 [data-theme="dark"] .sidebar-item:hover {
-    background-color: var(--bg-light) !important;
+    background-color: var(--bg-input) !important;
     color: var(--text-primary) !important;
 }
 
+[data-theme="dark"] .sidebar-group-title {
+    color: var(--text-tertiary);
+}
+
+/* 顶部导航栏 */
 [data-theme="dark"] .navbar {
-    background-color: var(--bg-navbar) !important;
-    border-bottom-color: var(--border-color) !important;
+    background-color: var(--bg-sidebar) !important;
+    border-bottom-color: var(--border-divider) !important;
 }
 
 [data-theme="dark"] .navbar-brand,
@@ -1612,168 +1792,298 @@ form.row.g-2 > div, form.row.g-3 > div {
     color: var(--text-primary) !important;
 }
 
+/* 按钮 - 主按钮 */
+[data-theme="dark"] .btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+}
+
+[data-theme="dark"] .btn-primary:hover,
+[data-theme="dark"] .btn-primary:focus {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
+/* 按钮 - 成功 */
+[data-theme="dark"] .btn-success {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+}
+
+/* 按钮 - 警告 */
+[data-theme="dark"] .btn-warning {
+    background-color: var(--warning-color);
+    border-color: var(--warning-color);
+    color: #fff;
+}
+
+/* 按钮 - 危险 */
+[data-theme="dark"] .btn-danger {
+    background-color: var(--danger-color);
+    border-color: var(--danger-color);
+}
+
+/* 按钮 - 次按钮（边框） */
 [data-theme="dark"] .btn-light {
-    background-color: var(--bg-light);
-    border-color: var(--border-color);
-    color: var(--text-primary);
+    background-color: transparent;
+    border-color: #444;
+    color: var(--text-secondary);
 }
 
 [data-theme="dark"] .btn-light:hover {
-    background-color: var(--border-color);
+    background-color: var(--bg-hover);
     color: var(--text-primary);
 }
 
-[data-theme="dark"] .btn-outline-secondary {
+[data-theme="dark"] .btn-secondary {
+    background-color: var(--bg-input);
+    border-color: var(--border-input);
     color: var(--text-secondary);
-    border-color: var(--border-color);
 }
 
+[data-theme="dark"] .btn-secondary:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .btn-outline-secondary,
+[data-theme="dark"] .btn-outline-primary,
+[data-theme="dark"] .btn-outline-success,
+[data-theme="dark"] .btn-outline-info,
+[data-theme="dark"] .btn-outline-warning,
+[data-theme="dark"] .btn-outline-danger {
+    color: var(--text-secondary);
+    border-color: #444;
+}
+
+[data-theme="dark"] .btn-outline-secondary:hover,
+[data-theme="dark"] .btn-outline-primary:hover,
+[data-theme="dark"] .btn-outline-success:hover,
+[data-theme="dark"] .btn-outline-info:hover,
+[data-theme="dark"] .btn-outline-warning:hover,
+[data-theme="dark"] .btn-outline-danger:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* 禁用按钮 */
+[data-theme="dark"] .btn:disabled,
+[data-theme="dark"] .btn.disabled {
+    opacity: 0.4;
+}
+
+/* 下拉菜单 */
 [data-theme="dark"] .dropdown-menu {
     background-color: var(--bg-card);
-    border-color: var(--border-color);
-    color: var(--text-primary);
+    border-color: var(--border-card);
+    color: var(--text-secondary);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
 [data-theme="dark"] .dropdown-item {
-    color: var(--text-primary);
+    color: var(--text-secondary);
 }
 
-[data-theme="dark"] .dropdown-item:hover {
-    background-color: var(--bg-light);
+[data-theme="dark"] .dropdown-item:hover,
+[data-theme="dark"] .dropdown-item:focus {
+    background-color: var(--bg-hover);
     color: var(--text-primary);
 }
 
 [data-theme="dark"] .dropdown-item-text {
-    color: var(--text-secondary);
+    color: var(--text-tertiary);
 }
 
 [data-theme="dark"] .dropdown-divider {
-    border-top-color: var(--border-color);
+    border-top-color: var(--border-divider);
 }
 
+/* 表格 */
 [data-theme="dark"] .table {
-    color: var(--text-primary);
+    color: var(--text-secondary);
     --bs-table-bg: transparent;
-    --bs-table-striped-color: var(--text-primary);
-    --bs-table-striped-bg: rgba(255,255,255,0.02);
+    --bs-table-striped-color: var(--text-secondary);
+    --bs-table-striped-bg: var(--bg-stripe);
     --bs-table-hover-color: var(--text-primary);
-    --bs-table-hover-bg: rgba(255,255,255,0.05);
+    --bs-table-hover-bg: var(--bg-hover);
 }
 
 [data-theme="dark"] .table thead th {
-    background-color: var(--bg-light);
-    border-bottom-color: var(--border-color);
-    color: var(--text-secondary);
+    background-color: var(--bg-header);
+    border-bottom-color: var(--border-table);
+    color: var(--text-primary);
 }
 
 [data-theme="dark"] .table td,
 [data-theme="dark"] .table th {
-    border-color: var(--border-color);
+    border-color: var(--border-table);
 }
 
+[data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) {
+    --bs-table-accent-bg: var(--bg-card);
+}
+
+[data-theme="dark"] .table-striped tbody tr:nth-of-type(even) {
+    --bs-table-accent-bg: var(--bg-stripe);
+}
+
+/* 合计行 */
+[data-theme="dark"] .table-total-row td,
+[data-theme="dark"] .table-total-row th {
+    background-color: var(--bg-header) !important;
+    color: var(--text-primary) !important;
+    border-top-color: var(--border-table) !important;
+}
+
+[data-theme="dark"] .table-total-row .total-amount {
+    color: var(--primary-color) !important;
+}
+
+/* 表单输入 */
 [data-theme="dark"] .form-control,
 [data-theme="dark"] .form-select {
-    background-color: var(--bg-light);
-    border-color: var(--border-color);
+    background-color: var(--bg-input);
+    border-color: var(--border-input);
     color: var(--text-primary);
+}
+
+[data-theme="dark"] .form-control::placeholder,
+[data-theme="dark"] .form-select::placeholder {
+    color: #666666;
 }
 
 [data-theme="dark"] .form-control:focus,
 [data-theme="dark"] .form-select:focus {
-    background-color: var(--bg-light);
+    background-color: var(--bg-input);
     border-color: var(--primary-color);
     color: var(--text-primary);
+    box-shadow: 0 0 0 0.2rem rgba(58, 142, 230, 0.25);
 }
 
 [data-theme="dark"] .form-label {
     color: var(--text-primary);
 }
 
-[data-theme="dark"] .text-muted {
-    color: var(--text-muted) !important;
+[data-theme="dark"] .form-text {
+    color: var(--text-tertiary);
 }
 
+[data-theme="dark"] .input-group-text {
+    background-color: var(--bg-input);
+    border-color: var(--border-input);
+    color: var(--text-secondary);
+}
+
+/* 文字辅助类 */
+[data-theme="dark"] .text-muted {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="dark"] .text-dark {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .text-primary {
+    color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] a {
+    color: var(--primary-color);
+}
+
+/* 提示框 */
 [data-theme="dark"] .alert {
-    border-color: var(--border-color);
+    border-color: var(--border-card);
 }
 
 [data-theme="dark"] .alert-info {
-    background-color: rgba(13, 202, 240, 0.1);
-    color: #0dcaf0;
-    border-color: rgba(13, 202, 240, 0.2);
+    background-color: rgba(58, 142, 230, 0.1);
+    color: #5a9de6;
+    border-color: rgba(58, 142, 230, 0.3);
 }
 
 [data-theme="dark"] .alert-success {
-    background-color: rgba(25, 135, 84, 0.1);
-    color: #198754;
-    border-color: rgba(25, 135, 84, 0.2);
+    background-color: rgba(93, 175, 52, 0.1);
+    color: #6dbb46;
+    border-color: rgba(93, 175, 52, 0.3);
 }
 
 [data-theme="dark"] .alert-warning {
-    background-color: rgba(255, 193, 7, 0.1);
-    color: #ffc107;
-    border-color: rgba(255, 193, 7, 0.2);
+    background-color: rgba(207, 146, 54, 0.1);
+    color: #d99b3e;
+    border-color: rgba(207, 146, 54, 0.3);
 }
 
 [data-theme="dark"] .alert-danger {
-    background-color: rgba(220, 53, 69, 0.1);
-    color: #dc3545;
-    border-color: rgba(220, 53, 69, 0.2);
+    background-color: rgba(221, 97, 97, 0.1);
+    color: #e57373;
+    border-color: rgba(221, 97, 97, 0.3);
 }
 
+/* 徽章 */
 [data-theme="dark"] .badge.bg-secondary,
 [data-theme="dark"] .bg-secondary {
-    background-color: var(--text-muted) !important;
+    background-color: var(--text-tertiary) !important;
 }
 
 [data-theme="dark"] .border-warning {
-    border-color: rgba(255, 193, 7, 0.3) !important;
+    border-color: var(--warning-color) !important;
 }
 
+/* 弹窗 */
 [data-theme="dark"] .modal-content {
-    background-color: var(--bg-card);
-    border-color: var(--border-color);
-    color: var(--text-primary);
+    background-color: var(--bg-modal);
+    border-color: var(--border-card);
+    color: var(--text-secondary);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
 }
 
 [data-theme="dark"] .modal-header {
-    border-bottom-color: var(--border-color);
+    border-bottom-color: var(--border-divider);
+}
+
+[data-theme="dark"] .modal-title {
+    color: var(--text-primary);
 }
 
 [data-theme="dark"] .modal-footer {
-    border-top-color: var(--border-color);
+    border-top-color: var(--border-divider);
 }
 
 [data-theme="dark"] .btn-close {
     filter: invert(1) grayscale(100%) brightness(200%);
 }
 
+/* 列表组 */
 [data-theme="dark"] .list-group-item {
     background-color: var(--bg-card);
-    border-color: var(--border-color);
-    color: var(--text-primary);
+    border-color: var(--border-divider);
+    color: var(--text-secondary);
 }
 
+/* 分页 */
 [data-theme="dark"] .page-link {
     background-color: var(--bg-card);
-    border-color: var(--border-color);
-    color: var(--text-primary);
+    border-color: var(--border-input);
+    color: var(--text-secondary);
 }
 
 [data-theme="dark"] .page-link:hover {
-    background-color: var(--bg-light);
+    background-color: var(--bg-hover);
     color: var(--text-primary);
 }
 
 [data-theme="dark"] .page-item.active .page-link {
     background-color: var(--primary-color);
     border-color: var(--primary-color);
+    color: #fff;
 }
 
 [data-theme="dark"] .page-item.disabled .page-link {
     background-color: var(--bg-card);
-    color: var(--text-muted);
-    border-color: var(--border-color);
+    color: var(--text-disabled);
+    border-color: var(--border-input);
 }
 
 /* 登录页深色模式 */
@@ -1784,13 +2094,131 @@ form.row.g-2 > div, form.row.g-3 > div {
 
 [data-theme="dark"] .auth-card {
     background-color: var(--bg-card) !important;
-    border-color: var(--border-color);
-    color: var(--text-primary);
+    border-color: var(--border-card);
+    color: var(--text-secondary);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
 }
 
 [data-theme="dark"] .auth-card h3,
 [data-theme="dark"] .auth-card h5 {
     color: var(--text-primary);
+}
+
+/* 系统管理内页菜单深色适配 */
+[data-theme="dark"] .sys-sidebar {
+    background: var(--bg-sidebar) !important;
+    border-right-color: var(--border-divider) !important;
+}
+
+[data-theme="dark"] .sys-sidebar::-webkit-scrollbar-thumb {
+    background: #3a3a3a;
+}
+
+[data-theme="dark"] .sys-content {
+    background: var(--bg-body) !important;
+}
+
+[data-theme="dark"] .sys-breadcrumb {
+    color: var(--text-tertiary);
+}
+
+[data-theme="dark"] .sys-breadcrumb a {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .sys-breadcrumb a:hover {
+    color: var(--primary-color);
+}
+
+[data-theme="dark"] .sys-breadcrumb .breadcrumb-separator {
+    color: var(--text-disabled);
+}
+
+[data-theme="dark"] .sys-breadcrumb .breadcrumb-current {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .sys-menu-group-title {
+    color: var(--text-tertiary);
+}
+
+[data-theme="dark"] .sys-menu-item {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .sys-menu-item:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .sys-menu-item.active {
+    background: var(--bg-hover);
+    color: var(--primary-color);
+}
+
+[data-theme="dark"] .sys-menu-item i {
+    color: var(--text-tertiary);
+}
+
+[data-theme="dark"] .sys-menu-item.active i {
+    color: var(--primary-color);
+}
+
+[data-theme="dark"] .sys-content .card {
+    background: var(--bg-card);
+    border-color: var(--border-card);
+    box-shadow: none;
+}
+
+/* 表单按钮区深色适配 */
+[data-theme="dark"] .form-actions {
+    background-color: var(--bg-header);
+    border-top-color: var(--border-divider);
+}
+
+/* Tabs 选项卡深色适配 */
+[data-theme="dark"] .nav-tabs {
+    border-bottom-color: var(--border-divider);
+}
+
+[data-theme="dark"] .nav-tabs .nav-link {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .nav-tabs .nav-link:hover {
+    border-color: var(--border-divider);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .nav-tabs .nav-link.active {
+    background-color: var(--bg-card);
+    border-color: var(--border-divider);
+    color: var(--primary-color);
+}
+
+[data-theme="dark"] .nav-pills .nav-link {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .nav-pills .nav-link.active {
+    background-color: var(--primary-color);
+    color: #fff;
+}
+
+/* ========== 主题切换菜单选中项 ========== */
+.theme-option.active {
+    color: #409eff;
+    background-color: #ecf5ff;
+    font-weight: 500;
+}
+
+[data-theme="dark"] .theme-option.active {
+    color: var(--primary-color);
+    background-color: var(--bg-hover);
+}
+
+.theme-option.active i {
+    color: inherit;
 }
 
 /* ========== 条码标签打印 ========== */

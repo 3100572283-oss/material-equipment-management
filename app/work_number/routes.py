@@ -5,7 +5,7 @@ from app.work_number import bp
 from app import db
 from app.models import WorkNumber, MaterialQuota, Material, StockOut, StockOutItem
 from app.decorators import editor_required, log_audit
-from app.utils import to_decimal, ConfigCache
+from app.utils import to_decimal, ConfigCache, apply_data_scope
 from sqlalchemy import func
 
 
@@ -47,13 +47,18 @@ def _get_used_amount(project_id, work_number_id, material_id):
 def index():
     from flask import session
     project_id = session.get('current_project_id')
+    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
-        flash('请先选择项目。', 'warning')
-        return redirect(url_for('main.index'))
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
 
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
-    query = WorkNumber.query.filter_by(project_id=project_id)
+    query = WorkNumber.query
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    query = apply_data_scope(query, WorkNumber)
     if keyword:
         query = query.filter(WorkNumber.code.contains(keyword) | WorkNumber.division_name.contains(keyword))
     pagination = query.order_by(WorkNumber.created_at.desc()).paginate(

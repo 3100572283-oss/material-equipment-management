@@ -1,0 +1,264 @@
+{# 统一供应商选择弹窗组件
+   使用方式：
+     1. 在需要供应商选择的页面 {% include '_supplier_picker.html' %}
+     2. 调用 JS：openSupplierPicker(callback, options)
+        - callback(selectedItems): 选中后回调，selectedItems 为数组 [{id, code, name, credit_code, contact_person, phone}]
+        - options: { multi: true/false, title: '自定义标题' }
+     3. 数据来源：/supplier/api/project_suppliers（当前项目常用供应商）
+#}
+<div class="modal fade" id="supplierPickerModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-truck me-2"></i><span id="supplierPickerTitle">选择供应商</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <input type="text" class="form-control form-control-sm" id="supplierPickerSearch" placeholder="搜索供应商名称/编码">
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width:40px;" class="supplier-picker-check-col"><input type="checkbox" id="supplierPickerCheckAll"></th>
+                                <th>供应商编码</th>
+                                <th>供应商名称</th>
+                                <th>统一社会信用代码</th>
+                                <th>联系人</th>
+                                <th>联系电话</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierPickerTbody">
+                            <tr><td colspan="6" class="text-center text-muted">请输入关键字后搜索</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted" id="supplierPickerInfo">共 0 条结果</small>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="supplierPickerPrevPage">上一页</button>
+                        <span class="mx-2 small" id="supplierPickerPageInfo">第 1 页</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="supplierPickerNextPage">下一页</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span class="text-muted me-auto small" id="supplierPickerSelectedInfo">已选 0 项</span>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="supplierPickerConfirmBtn">
+                    <i class="bi bi-check2-circle me-1"></i>确定选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    if (window.__supplierPickerInitialized) return;
+    window.__supplierPickerInitialized = true;
+
+    var modalEl = document.getElementById('supplierPickerModal');
+    if (!modalEl) return;
+    var bsModal = null;
+    try { bsModal = new bootstrap.Modal(modalEl); } catch (e) { bsModal = null; }
+
+    var searchInput = document.getElementById('supplierPickerSearch');
+    var tbody = document.getElementById('supplierPickerTbody');
+    var infoEl = document.getElementById('supplierPickerInfo');
+    var pageInfoEl = document.getElementById('supplierPickerPageInfo');
+    var prevBtn = document.getElementById('supplierPickerPrevPage');
+    var nextBtn = document.getElementById('supplierPickerNextPage');
+    var checkAll = document.getElementById('supplierPickerCheckAll');
+    var confirmBtn = document.getElementById('supplierPickerConfirmBtn');
+    var selectedInfoEl = document.getElementById('supplierPickerSelectedInfo');
+    var titleEl = document.getElementById('supplierPickerTitle');
+    var checkCol = modalEl.querySelector('.supplier-picker-check-col');
+
+    var API_BASE = '{{ url_for("supplier.api_project_suppliers") }}'.split('?')[0];
+
+    var state = {
+        page: 1, per_page: 10, total: 0, pages: 1, items: [],
+        selected: {},
+        multi: true,
+        callback: null
+    };
+
+    // ---------- 搜索防抖 ----------
+    var searchTimer = null;
+    searchInput.addEventListener('input', function () {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+            state.page = 1;
+            loadList();
+        }, 300);
+    });
+
+    searchInput.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            state.page = 1;
+            loadList();
+        }
+    });
+
+    // ---------- 分页 ----------
+    prevBtn.addEventListener('click', function () {
+        if (state.page > 1) { state.page--; loadList(); }
+    });
+    nextBtn.addEventListener('click', function () {
+        if (state.page < state.pages) { state.page++; loadList(); }
+    });
+
+    // ---------- 列表加载 ----------
+    function buildQuery() {
+        var params = [];
+        params.push('page=' + state.page);
+        params.push('per_page=' + state.per_page);
+        var q = searchInput.value.trim();
+        if (q) params.push('q=' + encodeURIComponent(q));
+        return params.join('&');
+    }
+
+    function loadList() {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">加载中...</td></tr>';
+        fetch(API_BASE + '?' + buildQuery())
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                state.items = data.items || [];
+                state.total = data.total || 0;
+                state.pages = data.pages || 0;
+                renderRows();
+            }).catch(function () {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">加载失败</td></tr>';
+            });
+    }
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function renderRows() {
+        if (!state.items.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">未找到匹配的供应商</td></tr>';
+            infoEl.textContent = '共 0 条结果';
+            pageInfoEl.textContent = '第 ' + state.page + ' 页';
+            updateSelectedInfo();
+            return;
+        }
+        var html = '';
+        state.items.forEach(function (it) {
+            var checked = state.selected[it.id] ? 'checked' : '';
+            html += '<tr>'
+                + '<td><input type="checkbox" class="supplier-picker-row-check" value="' + it.id + '" ' + checked + '></td>'
+                + '<td><span class="badge bg-secondary">' + escapeHtml(it.code || '-') + '</span></td>'
+                + '<td>' + escapeHtml(it.name) + '</td>'
+                + '<td>' + escapeHtml(it.credit_code || '-') + '</td>'
+                + '<td>' + escapeHtml(it.contact_person || '-') + '</td>'
+                + '<td>' + escapeHtml(it.phone || '-') + '</td>'
+                + '</tr>';
+        });
+        tbody.innerHTML = html;
+        infoEl.textContent = '共 ' + state.total + ' 条结果';
+        pageInfoEl.textContent = '第 ' + state.page + ' / ' + (state.pages || 1) + ' 页';
+        updateSelectedInfo();
+        syncCheckAll();
+    }
+
+    // ---------- 行选择 ----------
+    tbody.addEventListener('change', function (e) {
+        var cb = e.target;
+        if (!cb.classList.contains('supplier-picker-row-check')) return;
+        var id = parseInt(cb.value, 10);
+        var item = state.items.find(function (x) { return x.id === id; });
+        if (!item) return;
+        if (cb.checked) {
+            if (!state.multi) {
+                // 单选模式：清空其他选择
+                state.selected = {};
+                state.selected[id] = item;
+                var all = tbody.querySelectorAll('.supplier-picker-row-check');
+                all.forEach(function (other) {
+                    if (other !== cb) other.checked = false;
+                });
+            } else {
+                state.selected[id] = item;
+            }
+        } else {
+            delete state.selected[id];
+        }
+        updateSelectedInfo();
+        syncCheckAll();
+    });
+
+    checkAll.addEventListener('change', function () {
+        var checked = checkAll.checked;
+        var rowChecks = tbody.querySelectorAll('.supplier-picker-row-check');
+        rowChecks.forEach(function (cb) {
+            var id = parseInt(cb.value, 10);
+            var item = state.items.find(function (x) { return x.id === id; });
+            if (!item) return;
+            cb.checked = checked;
+            if (checked) {
+                if (state.multi) {
+                    state.selected[id] = item;
+                } else {
+                    cb.checked = false;
+                }
+            } else {
+                delete state.selected[id];
+            }
+        });
+        if (!state.multi && checked) {
+            checkAll.checked = false;
+        }
+        updateSelectedInfo();
+    });
+
+    function syncCheckAll() {
+        var rowChecks = tbody.querySelectorAll('.supplier-picker-row-check');
+        if (!rowChecks.length) { checkAll.checked = false; return; }
+        var allChecked = true;
+        rowChecks.forEach(function (cb) { if (!cb.checked) allChecked = false; });
+        checkAll.checked = allChecked;
+    }
+
+    function updateSelectedInfo() {
+        var count = Object.keys(state.selected).length;
+        selectedInfoEl.textContent = '已选 ' + count + ' 项';
+    }
+
+    // ---------- 确认按钮 ----------
+    confirmBtn.addEventListener('click', function () {
+        var selected = Object.values(state.selected);
+        if (!selected.length) {
+            if (state.callback) state.callback([]);
+            if (bsModal) bsModal.hide();
+            return;
+        }
+        if (state.callback) state.callback(selected);
+        if (bsModal) bsModal.hide();
+    });
+
+    // ---------- 对外暴露的打开函数 ----------
+    window.openSupplierPicker = function (callback, options) {
+        options = options || {};
+        state.multi = options.multi !== false;
+        state.callback = callback || null;
+        state.selected = {};
+        state.page = 1;
+        titleEl.textContent = options.title || (state.multi ? '选择供应商（可多选）' : '选择供应商');
+        checkCol.style.display = state.multi ? '' : 'none';
+        searchInput.value = '';
+        updateSelectedInfo();
+        loadList();
+        if (bsModal) bsModal.show();
+    };
+})();
+</script>

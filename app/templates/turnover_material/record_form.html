@@ -36,9 +36,9 @@
                     <textarea class="form-control" name="remark" rows="2">{{ record.remark if record else '' }}</textarea>
                 </div>
             </div>
-            <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-                <button type="submit" class="btn btn-primary">保存</button>
+            <div class="form-actions">
                 <a href="{{ url_for('turnover_material.record_index') }}" class="btn btn-secondary">返回</a>
+                <button type="submit" class="btn btn-primary">保存</button>
             </div>
         </form>
     </div>

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if supplier else '新增' }}公司供应商 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-truck me-2"></i>{{ '编辑' if supplier else '新增' }}公司供应商
+                </h5>
+                <a href="{{ url_for('master.supplier_index') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-1"></i>返回列表
+                </a>
+            </div>
+            <div class="card-body">
+                {% if ai_vision_enabled %}
+                <div class="alert alert-info d-flex align-items-center">
+                    <i class="bi bi-camera-fill me-2"></i>
+                    <div class="flex-grow-1">支持上传营业执照自动识别企业信息</div>
+                    <button type="button" id="licenseRecognizeBtn" class="btn btn-sm btn-info text-white">
+                        <i class="bi bi-camera me-1"></i>识别营业执照
+                    </button>
+                    <input type="file" id="licenseInput" accept="image/jpeg,image/png" style="display:none">
+                </div>
+                {% endif %}
+                <form method="POST" id="supplierForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">供应商名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name" id="name"
+                                   value="{{ supplier.name if supplier else '' }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">编码</label>
+                            <input type="text" class="form-control" name="code"
+                                   value="{{ supplier.code if supplier else '' }}"
+                                   {% if not supplier %}readonly placeholder="保存时自动生成"{% endif %}>
+                            {% if not supplier %}
+                            <div class="form-text">公司级供应商编码由系统自动生成（GYS + 6位流水号）。</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">社会信用代码</label>
+                            <input type="text" class="form-control" name="credit_code" id="credit_code"
+                                   value="{{ supplier.credit_code if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">法定代表人</label>
+                            <input type="text" class="form-control" name="legal_person" id="legal_person"
+                                   value="{{ supplier.legal_person if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">联系人</label>
+                            <input type="text" class="form-control" name="contact_person"
+                                   value="{{ supplier.contact_person if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">电话</label>
+                            <input type="text" class="form-control" name="phone"
+                                   value="{{ supplier.phone if supplier else '' }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">地址</label>
+                            <input type="text" class="form-control" name="address" id="address"
+                                   value="{{ supplier.address if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">开户行</label>
+                            <input type="text" class="form-control" name="bank_name"
+                                   value="{{ supplier.bank_name if supplier else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">银行账号</label>
+                            <input type="text" class="form-control" name="bank_account"
+                                   value="{{ supplier.bank_account if supplier else '' }}">
+                        </div>
+                        {% if ai_vision_enabled %}
+                        <div class="col-12">
+                            <div class="form-text">提示：点击上方"识别营业执照"按钮，上传营业执照图片可自动填充企业名称、信用代码、法定代表人、地址等字段。</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <i class="bi bi-check-lg me-1"></i>保存
+                        </button>
+                        <a href="{{ url_for('master.supplier_index') }}" class="btn btn-secondary ms-2">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/ai_vision.js"></script>
+<script>
+// 防止重复提交
+document.getElementById('supplierForm').addEventListener('submit', function () {
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中...';
+});
+
+{% if ai_vision_enabled %}
+// 营业执照识别
+document.getElementById('licenseRecognizeBtn').addEventListener('click', function() {
+    document.getElementById('licenseInput').click();
+});
+
+document.getElementById('licenseInput').addEventListener('change', function(e) {
+    if (!e.target.files || !e.target.files[0]) return;
+    var file = e.target.files[0];
+    var btn = document.getElementById('licenseRecognizeBtn');
+    var originalHtml = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>识别中...';
+    btn.disabled = true;
+
+    AIVision.recognizeImage('license', file, function(success, data, message) {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+        e.target.value = '';
+
+        if (success && data) {
+            if (data.company_name) document.getElementById('name').value = data.company_name;
+            if (data.credit_code) document.getElementById('credit_code').value = data.credit_code;
+            if (data.legal_representative) document.getElementById('legal_person').value = data.legal_representative;
+            if (data.address) document.getElementById('address').value = data.address;
+            AIVision.showToast('营业执照识别成功，请核对信息', 'success');
+        } else {
+            AIVision.showToast(message || '识别失败，请手动录入', 'danger');
+        }
+    });
+});
+{% endif %}
+</script>
+{% endblock %}

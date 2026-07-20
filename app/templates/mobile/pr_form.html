@@ -1,0 +1,484 @@
+{% extends "mobile/base.html" %}
+{% block title %}{% if pr %}编辑领料申请{% else %}新建领料申请{% endif %}{% endblock %}
+{% block nav_title %}{% if pr %}编辑领料申请{% else %}新建领料申请{% endif %}{% endblock %}
+
+{% block content %}
+<form method="POST" id="prForm" action="{% if pr %}{{ url_for('mobile.pr_edit', id=pr.id) }}{% else %}{{ url_for('mobile.pr_create') }}{% endif %}">
+    <input type="hidden" name="submit_type" id="submitType" value="">
+
+    <!-- 基本信息 -->
+    <div class="m-card">
+        <div class="m-form-group">
+            <label class="m-form-label">申请单号</label>
+            <input type="text" class="m-form-control" value="{{ default_pr_no }}" readonly
+                   style="background:#f8f9fa; color:#6c757d;">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">申请部门</label>
+            <input type="text" name="apply_dept" class="m-form-control"
+                   value="{{ pr.apply_dept if pr else '' }}" placeholder="如：机电安装班组">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">关联工号（可选）</label>
+            <select name="work_number_id" class="m-form-select">
+                <option value="">-- 不指定 --</option>
+                {% for w in work_numbers %}
+                <option value="{{ w.id }}">
+                    {{ w.code }}{% if w.item_name %} · {{ w.item_name }}{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">施工部位（可选）</label>
+            <input type="text" name="construction_part" class="m-form-control"
+                   value="" placeholder="如：3#楼一层">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">期望领料时间</label>
+            <input type="date" name="demand_date" class="m-form-control"
+                   value="{{ pr.demand_date.strftime('%Y-%m-%d') if pr and pr.demand_date else today }}">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">备注（可选）</label>
+            <textarea name="remark" class="m-form-control" rows="2"
+                      placeholder="申请说明">{{ pr.remark if pr and pr.remark else '' }}</textarea>
+        </div>
+    </div>
+
+    <!-- 物资明细 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-list-ul"></i>物资明细</div>
+        <div id="itemsContainer">
+            {% if pr and pr.items.count() > 0 %}
+            {% for item in pr.items %}
+            <div class="m-item-row">
+                <div class="m-item-header">
+                    <span>第 {{ loop.index }} 行</span>
+                    <button type="button" class="m-item-del" onclick="removeItemRow(this)"><i class="bi bi-trash"></i></button>
+                </div>
+                <input type="hidden" name="material_id[]" value="{{ item.material_id }}">
+                <div class="m-item-grid" style="grid-template-columns: 1fr 70px;">
+                    <input type="text" class="m-form-control material-name"
+                           value="{{ item.material_name }}" placeholder="点击选择物资" readonly
+                           onclick="openMaterialModal(this)">
+                    <button type="button" class="m-btn m-btn-outline" style="height:44px;padding:0;font-size:18px;"
+                            onclick="scanMaterial(this)" title="扫码">
+                        <i class="bi bi-qr-code-scan"></i>
+                    </button>
+                </div>
+                <div style="margin-top:8px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                    <input type="number" class="m-form-control material-qty"
+                           name="apply_qty[]" step="0.0001" min="0"
+                           value="{{ item.apply_qty }}" placeholder="申请数量" inputmode="decimal">
+                    <input type="text" class="m-form-control material-unit"
+                           value="{{ item.unit or '' }}" placeholder="单位" disabled style="font-size:13px;">
+                </div>
+                <div style="margin-top:8px;">
+                    <input type="text" class="m-form-control material-spec"
+                           value="{{ item.specification or '' }}" placeholder="规格" disabled style="font-size:13px;">
+                </div>
+                <div style="margin-top:8px;">
+                    <input type="text" class="m-form-control material-purpose"
+                           name="purpose[]" value="{{ item.purpose or '' }}" placeholder="用途说明（可选）">
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+        <button type="button" class="m-add-row-btn" onclick="addItemRow()">
+            <i class="bi bi-plus-lg"></i> 添加物资
+        </button>
+    </div>
+
+    <!-- 草稿恢复提示 -->
+    <div id="draftTip" class="m-card" style="display:none; padding:10px 14px; background:#fff8e1; border:1px solid #ffe08a;">
+        <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:#866a04;">
+            <i class="bi bi-cloud-arrow-down"></i>
+            <span id="draftTipText">检测到未提交的草稿</span>
+            <button type="button" class="m-btn m-btn-outline" style="height:28px; padding:0 10px; font-size:12px; margin-left:auto;" onclick="restoreDraft()">恢复</button>
+            <button type="button" class="m-btn m-btn-outline" style="height:28px; padding:0 10px; font-size:12px; color:#dc3545; border-color:#f5c2c7;" onclick="clearDraft()">忽略</button>
+        </div>
+    </div>
+</form>
+
+<!-- 底部提交栏 -->
+<div class="m-submit-bar">
+    <button type="button" class="m-btn m-btn-outline-primary" style="flex:1;" onclick="saveDraft()">
+        <i class="bi bi-cloud-arrow-down" style="margin-right:4px;"></i>存草稿
+    </button>
+    <button type="button" class="m-btn m-btn-primary" style="flex:1.4;" onclick="submitForm('save')">
+        <i class="bi bi-check-lg" style="margin-right:6px;"></i>保存草稿
+    </button>
+    <button type="button" class="m-btn m-btn-success" style="flex:1.4;" onclick="submitForm('submit')">
+        <i class="bi bi-send" style="margin-right:6px;"></i>提交审批
+    </button>
+</div>
+
+<!-- 物资搜索弹层 -->
+<div class="m-search-modal" id="materialModal">
+    <div class="panel">
+        <div class="panel-header">
+            <input type="text" id="materialSearchInput" placeholder="搜索物资名称/编码/规格" oninput="searchMaterials()">
+            <button type="button" class="close" onclick="closeMaterialModal()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="panel-body" id="materialOptions">
+            <div class="empty">输入关键字搜索物资</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var currentEditingRow = null;
+var DRAFT_KEY = 'pr_create';
+
+// ========== MobileDraft 工具（使用全局 mobile_utils.js 提供） ==========
+// 全局 MobileDraft.save(bizType, data) / load(bizType) / clear(bizType) 已在 mobile_utils.js 中实现
+
+// ========== 物资明细行 ==========
+function addItemRow(material) {
+    var container = document.getElementById('itemsContainer');
+    var idx = container.children.length;
+    var row = document.createElement('div');
+    row.className = 'm-item-row';
+    row.innerHTML = `
+        <div class="m-item-header">
+            <span>第 ${idx + 1} 行</span>
+            <button type="button" class="m-item-del" onclick="removeItemRow(this)"><i class="bi bi-trash"></i></button>
+        </div>
+        <input type="hidden" name="material_id[]" value="">
+        <div class="m-item-grid" style="grid-template-columns: 1fr 70px;">
+            <input type="text" class="m-form-control material-name"
+                   placeholder="点击选择物资" readonly onclick="openMaterialModal(this)">
+            <button type="button" class="m-btn m-btn-outline" style="height:44px;padding:0;font-size:18px;"
+                    onclick="scanMaterial(this)" title="扫码">
+                <i class="bi bi-qr-code-scan"></i>
+            </button>
+        </div>
+        <div style="margin-top:8px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+            <input type="number" class="m-form-control material-qty"
+                   name="apply_qty[]" step="0.0001" min="0"
+                   placeholder="申请数量" inputmode="decimal">
+            <input type="text" class="m-form-control material-unit"
+                   placeholder="单位" disabled style="font-size:13px;">
+        </div>
+        <div style="margin-top:8px;">
+            <input type="text" class="m-form-control material-spec"
+                   placeholder="规格" disabled style="font-size:13px;">
+        </div>
+        <div style="margin-top:8px;">
+            <input type="text" class="m-form-control material-purpose"
+                   name="purpose[]" placeholder="用途说明（可选）">
+        </div>
+    `;
+    container.appendChild(row);
+    if (material) {
+        row.querySelector('input[name="material_id[]"]').value = material.id;
+        row.querySelector('.material-name').value = material.name;
+        row.querySelector('.material-spec').value = material.spec || '';
+        row.querySelector('.material-unit').value = material.unit || '';
+        row.querySelector('.material-qty').focus();
+    }
+}
+
+function removeItemRow(btn) {
+    var row = btn.closest('.m-item-row');
+    row.remove();
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    rows.forEach(function(r, i) {
+        r.querySelector('.m-item-header span').textContent = '第 ' + (i + 1) + ' 行';
+    });
+}
+
+// ========== 物资搜索弹层 ==========
+function openMaterialModal(inputEl) {
+    currentEditingRow = inputEl.closest('.m-item-row');
+    document.getElementById('materialModal').classList.add('show');
+    var input = document.getElementById('materialSearchInput');
+    input.value = '';
+    input.focus();
+    searchMaterials();
+}
+
+function closeMaterialModal() {
+    document.getElementById('materialModal').classList.remove('show');
+    currentEditingRow = null;
+}
+
+function searchMaterials() {
+    var kw = document.getElementById('materialSearchInput').value.trim();
+    fetch("{{ url_for('mobile.api_pr_materials') }}?keyword=" + encodeURIComponent(kw))
+        .then(function(r) { return r.json(); })
+        .then(function(list) {
+            var box = document.getElementById('materialOptions');
+            if (!list || list.length === 0) {
+                box.innerHTML = '<div class="empty">未找到匹配的物资</div>';
+                return;
+            }
+            box.innerHTML = list.map(function(m) {
+                return `<div class="opt" onclick='selectMaterial(${m.id}, ${JSON.stringify(m).replace(/'/g, "&#39;")})'>
+                    <div class="name">${escapeHtml(m.name)}</div>
+                    <div class="desc">${escapeHtml(m.code || '')} · ${escapeHtml(m.spec || '-')} · ${escapeHtml(m.unit || '-')}</div>
+                </div>`;
+            }).join('');
+        });
+}
+
+function selectMaterial(id, m) {
+    if (!currentEditingRow) return;
+    currentEditingRow.querySelector('input[name="material_id[]"]').value = id;
+    currentEditingRow.querySelector('.material-name').value = m.name;
+    currentEditingRow.querySelector('.material-spec').value = m.spec || '';
+    currentEditingRow.querySelector('.material-unit').value = m.unit || '';
+    // 最近使用记录（用户需求3.1）
+    if (window.MobileRecentUse) MobileRecentUse.record('material', { id: id, name: m.name });
+    var qtyInput = currentEditingRow.querySelector('.material-qty');
+    if (qtyInput) qtyInput.focus();
+    closeMaterialModal();
+}
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/[&<>"']/g, function(s) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s];
+    });
+}
+
+// ========== 扫码选择物资 ==========
+function scanMaterial(btn) {
+    currentEditingRow = btn.closest('.m-item-row');
+    MobileScanner.open(function(code){
+        fetch("{{ url_for('mobile.api_pr_materials') }}?keyword=" + encodeURIComponent(code))
+            .then(function(r){ return r.json(); })
+            .then(function(list){
+                var matched = null;
+                for (var i = 0; i < list.length; i++) {
+                    if (list[i].code === code || list[i].code === code.trim()) {
+                        matched = list[i]; break;
+                    }
+                }
+                if (!matched && list.length === 1) matched = list[0];
+                if (matched) {
+                    selectMaterial(matched.id, matched);
+                    setTimeout(function(){
+                        var lastRow = document.querySelector('#itemsContainer .m-item-row:last-child');
+                        if (lastRow && lastRow.querySelector('input[name="material_id[]"]').value) {
+                            addItemRow();
+                        }
+                    }, 200);
+                } else {
+                    M.toast('未找到编码为 ' + code + ' 的物资', 'warning');
+                }
+            });
+    });
+}
+
+// ========== 收集表单数据 ==========
+function collectFormData() {
+    var data = {
+        apply_dept: document.querySelector('[name=apply_dept]').value,
+        work_number_id: document.querySelector('[name=work_number_id]').value,
+        construction_part: document.querySelector('[name=construction_part]').value,
+        demand_date: document.querySelector('[name=demand_date]').value,
+        remark: document.querySelector('[name=remark]').value,
+        items: []
+    };
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    rows.forEach(function(r) {
+        var mid = r.querySelector('input[name="material_id[]"]').value;
+        var qty = r.querySelector('input[name="apply_qty[]"]').value;
+        var purpose = r.querySelector('input[name="purpose[]"]').value;
+        var name = r.querySelector('.material-name').value;
+        var spec = r.querySelector('.material-spec').value;
+        var unit = r.querySelector('.material-unit').value;
+        if (mid && qty && parseFloat(qty) > 0) {
+            data.items.push({
+                material_id: mid, apply_qty: qty, purpose: purpose,
+                material_name: name, spec: spec, unit: unit
+            });
+        }
+    });
+    return data;
+}
+
+// ========== 存草稿到本地 ==========
+function saveDraft() {
+    var data = collectFormData();
+    if (data.items.length === 0) {
+        M.toast('请至少添加一条物资明细', 'warning');
+        return;
+    }
+    MobileDraft.save('pr_create', data);
+    M.toast('草稿已保存到本地（' + data.items.length + ' 条明细）', 'success');
+}
+
+function restoreDraft() {
+    var data = MobileDraft.load('pr_create');
+    if (!data) {
+        M.toast('未找到草稿', 'warning');
+        return;
+    }
+    document.querySelector('[name=apply_dept]').value = data.apply_dept || '';
+    document.querySelector('[name=work_number_id]').value = data.work_number_id || '';
+    document.querySelector('[name=construction_part]').value = data.construction_part || '';
+    document.querySelector('[name=demand_date]').value = data.demand_date || '';
+    document.querySelector('[name=remark]').value = data.remark || '';
+    // 清空现有明细行
+    document.getElementById('itemsContainer').innerHTML = '';
+    // 恢复明细
+    if (data.items && data.items.length > 0) {
+        data.items.forEach(function(it) {
+            addItemRow({
+                id: it.material_id, name: it.material_name,
+                spec: it.spec, unit: it.unit
+            });
+            var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+            var last = rows[rows.length - 1];
+            last.querySelector('input[name="apply_qty[]"]').value = it.apply_qty;
+            last.querySelector('input[name="purpose[]"]').value = it.purpose || '';
+        });
+    } else {
+        addItemRow();
+    }
+    document.getElementById('draftTip').style.display = 'none';
+    M.toast('草稿已恢复', 'success');
+}
+
+function clearDraft() {
+    MobileDraft.clear('pr_create');
+    document.getElementById('draftTip').style.display = 'none';
+    M.toast('已忽略草稿', 'info');
+}
+
+// ========== 提交表单 ==========
+function submitForm(submitType) {
+    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+    var validRows = 0;
+    for (var i = 0; i < rows.length; i++) {
+        var mid = rows[i].querySelector('input[name="material_id[]"]').value;
+        var qty = rows[i].querySelector('input[name="apply_qty[]"]').value;
+        if (mid && qty && parseFloat(qty) > 0) validRows++;
+    }
+    if (validRows === 0) {
+        M.toast('请添加至少1条有效的物资明细', 'warning');
+        return;
+    }
+    var form = document.getElementById('prForm');
+    // 获取定位后注入表单，再执行提交（loc 为 null 时不阻塞提交）
+    MobileLocation.capture().then(function(loc) {
+        if (loc) {
+            injectLocationToForm(form, loc);
+        }
+        _doSubmit(form, submitType);
+    });
+}
+
+function _doSubmit(form, submitType) {
+    document.getElementById('submitType').value = submitType;
+    // 提交后清除草稿
+    MobileDraft.clear('pr_create');
+    M.loading(true);
+    form.submit();
+}
+
+// ========== 初始化 ==========
+(function init() {
+    // 新建模式下，若没有明细行则添加一行
+    var container = document.getElementById('itemsContainer');
+    if (container.children.length === 0) {
+        addItemRow();
+    }
+    // 仅新建模式下检查草稿
+    {% if not pr %}
+    var data = MobileDraft.load('pr_create');
+    if (data && data.items && data.items.length > 0) {
+        var tipText = document.getElementById('draftTipText');
+        var ts = MobileDraft.has('pr_create') ? '本地' : '';
+        tipText.textContent = '检测到未提交的草稿（' + data.items.length + ' 条明细' + (ts ? '，' + ts : '') + '）';
+        document.getElementById('draftTip').style.display = 'block';
+    }
+    {% endif %}
+})();
+</script>
+{% endblock %}
+
+<style>
+.m-btn-success {
+    background: #198754;
+    color: #fff;
+    border: none;
+}
+.m-search-modal {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1000;
+    display: none;
+    align-items: flex-end;
+}
+.m-search-modal.show { display: flex; }
+.m-search-modal .panel {
+    background: #fff;
+    width: 100%;
+    max-height: 70vh;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    flex-direction: column;
+}
+.m-search-modal .panel-header {
+    display: flex;
+    padding: 12px;
+    border-bottom: 1px solid #e9ecef;
+    gap: 8px;
+}
+.m-search-modal .panel-header input {
+    flex: 1;
+    height: 40px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 0 12px;
+    font-size: 14px;
+}
+.m-search-modal .panel-header .close {
+    background: none; border: none; font-size: 18px; color: #6c757d;
+    width: 40px; cursor: pointer;
+}
+.m-search-modal .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.m-search-modal .opt {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f3f5;
+    cursor: pointer;
+}
+.m-search-modal .opt:active { background: #f1f3f5; }
+.m-search-modal .opt .name {
+    font-size: 15px; font-weight: 500; color: #212529;
+}
+.m-search-modal .opt .desc {
+    font-size: 12px; color: #6c757d; margin-top: 4px;
+}
+.m-search-modal .empty {
+    text-align: center; padding: 30px; color: #adb5bd; font-size: 14px;
+}
+.m-add-row-btn {
+    width: 100%;
+    padding: 10px;
+    background: #f1f3f5;
+    border: 1px dashed #ced4da;
+    border-radius: 8px;
+    color: #495057;
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 8px;
+}
+.m-add-row-btn:active { background: #e9ecef; }
+</style>

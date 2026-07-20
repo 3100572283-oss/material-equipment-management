@@ -51,7 +51,7 @@
                 <tbody>
                     {% for t in pagination.items %}
                     <tr>
-                        <td><a href="{{ url_for('material_transfer.detail', id=t.id) }}" class="text-decoration-none fw-bold">{{ t.transfer_no }}</a></td>
+                        <td><a href="{{ url_for('material_transfer.detail', id=t.id) }}?from=list" class="text-decoration-none fw-bold">{{ t.transfer_no }}</a></td>
                         <td>{{ t.from_project.name if t.from_project else '-' }}</td>
                         <td>{{ t.to_project.name if t.to_project else '-' }}</td>
                         <td>{{ t.transfer_date or '-' }}</td>
@@ -65,7 +65,7 @@
                         </td>
                         <td>{{ t.applicant or '-' }}</td>
                         <td class="text-end">
-                            <a href="{{ url_for('material_transfer.detail', id=t.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('material_transfer.detail', id=t.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                             {% if current_user.can_edit() %}
                             {% if t.status in ('draft', 'cancelled') %}
                             <form method="POST" action="{{ url_for('material_transfer.delete', id=t.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">

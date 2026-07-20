@@ -3,13 +3,27 @@
 {% block content %}
 <div class="card shadow-sm">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>入库管理</h5>
-        {% if current_user.can_edit() %}
-        <a href="{{ url_for('stock_in.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增入库单</a>
+        <h5 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>入库管理
+            {% if is_all_projects_mode %}<span class="badge bg-warning text-dark ms-1">汇总</span>{% endif %}
+        </h5>
+        {% if current_user.can_edit() and can_edit_in_current_mode() %}
+        <a href="{{ url_for('stock_in.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增入库单</a>
+        {% elif current_user.can_edit() and not can_edit_in_current_mode() %}
+        <span class="text-muted small"><i class="bi bi-info-circle me-1"></i>汇总视图下不可新增，请先切换到具体项目</span>
         {% endif %}
     </div>
     <div class="card-body">
         <form class="row g-2 mb-3" method="GET" action="{{ url_for('stock_in.index') }}">
+            {% if is_all_projects_mode %}
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="project_filter">
+                    <option value="0">全部项目</option>
+                    {% for p in filter_projects %}
+                    <option value="{{ p.id }}" {% if p.id == project_filter %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div class="col-md-2">
                 <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索单号/备注" value="{{ keyword or '' }}">
             </div>
@@ -105,6 +119,7 @@
                             <input type="checkbox" class="form-check-input" id="selectAll" onchange="toggleSelectAll(this)">
                         </th>
                         <th>入库单号</th>
+                        {% if is_all_projects_mode %}<th>所属项目</th>{% endif %}
                         <th>日期</th>
                         <th>类型</th>
                         <th>合同</th>
@@ -124,7 +139,8 @@
                         <td>
                             <input type="checkbox" class="form-check-input row-checkbox" data-id="{{ s.id }}" onchange="updateSelection()">
                         </td>
-                        <td><a href="{{ url_for('stock_in.detail', id=s.id) }}" class="text-decoration-none fw-bold">{{ s.code }}</a></td>
+                        <td><a href="{{ url_for('stock_in.detail', id=s.id) }}?from=list" class="text-decoration-none fw-bold">{{ s.code }}</a></td>
+                        {% if is_all_projects_mode %}<td><span class="badge bg-light text-dark">{{ s.project.name if s.project else '-' }}</span></td>{% endif %}
                         <td>{{ s.stock_in_date or '-' }}</td>
                         <td>
                             {% if s.stock_in_type == '采购入库' %}<span class="badge bg-primary">{{ s.stock_in_type }}</span>
@@ -132,7 +148,7 @@
                             {% elif s.stock_in_type == '调拨入库' %}<span class="badge bg-info">{{ s.stock_in_type }}</span>
                             {% else %}<span class="badge bg-success">{{ s.stock_in_type }}</span>{% endif %}
                         </td>
-                        <td>{% if s.contract %}<a href="{{ url_for('contract.detail', id=s.contract_id) }}">{{ s.contract.code }}</a>{% else %}-{% endif %}</td>
+                        <td>{% if s.contract %}<a href="{{ url_for('contract.detail', id=s.contract_id) }}?from=stock_in_list&from_id={{ s.id }}">{{ s.contract.code }}</a>{% else %}-{% endif %}</td>
                         <td>{{ s.supplier.name if s.supplier else '-' }}</td>
                         <td>{{ s.operator or '-' }}</td>
                         <td>
@@ -161,9 +177,9 @@
                         </td>
                         {% endif %}
                         <td class="text-end">
-                            <a href="{{ url_for('stock_in.detail', id=s.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('stock_in.detail', id=s.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                             <a href="{{ url_for('stock_in.print_stock_in', id=s.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="打印"><i class="bi bi-printer"></i></a>
-                            {% if current_user.can_edit() %}
+                            {% if current_user.can_edit() and can_edit_in_current_mode() %}
                             <a href="{{ url_for('stock_in.create', copy_from=s.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
                             {% if not s.is_reconciled %}
                             <a href="{{ url_for('stock_in.edit', id=s.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
@@ -173,11 +189,13 @@
                             {% else %}
                             <span class="badge bg-secondary" title="已对账，禁止修改">已对账</span>
                             {% endif %}
+                            {% elif current_user.can_edit() and not can_edit_in_current_mode() %}
+                            <span class="text-muted small" title="请切换到具体项目后操作"><i class="bi bi-lock"></i></span>
                             {% endif %}
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="{{ 13 if enable_quality_check else 12 }}" class="text-center text-muted">暂无数据</td></tr>
+                    <tr><td colspan="{{ (14 if enable_quality_check else 13) + (1 if is_all_projects_mode else 0) }}" class="text-center text-muted">暂无数据</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

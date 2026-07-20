@@ -12,7 +12,7 @@
                 {% endif %}
             </div>
             {% if current_user.can_edit() %}
-            <a href="{{ url_for('purchase_requisition.create') }}" class="btn btn-primary btn-sm ms-2"><i class="bi bi-plus-lg me-1"></i>新增申请</a>
+            <a href="{{ url_for('purchase_requisition.create') }}" class="btn btn-primary ms-2"><i class="bi bi-plus-lg me-1"></i>新增申请</a>
             {% endif %}
         </div>
     </div>
@@ -96,7 +96,7 @@
                         <td>
                             <input type="checkbox" class="form-check-input row-checkbox" data-id="{{ pr.id }}" onchange="updateSelection()">
                         </td>
-                        <td><a href="{{ url_for('purchase_requisition.detail', id=pr.id) }}" class="text-decoration-none fw-bold">{{ pr.pr_no }}</a></td>
+                        <td><a href="{{ url_for('purchase_requisition.detail', id=pr.id) }}?from=list" class="text-decoration-none fw-bold">{{ pr.pr_no }}</a></td>
                         <td>{{ pr.apply_dept or '-' }}</td>
                         <td>{{ pr.apply_user or '-' }}</td>
                         <td>{{ pr.apply_date or '-' }}</td>
@@ -112,7 +112,7 @@
                             {% endif %}
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('purchase_requisition.detail', id=pr.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('purchase_requisition.detail', id=pr.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                             {% if current_user.can_edit() %}
                             <a href="{{ url_for('purchase_requisition.create', copy_from=pr.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
                             {% if pr.status in ('draft', 'rejected') %}

@@ -2,12 +2,12 @@ import os
 import shutil
 from datetime import datetime
 from flask import (render_template, request, redirect, url_for, flash,
-                   send_file, session, current_app)
+                   send_file, session, current_app, jsonify)
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.admin import bp
 from app.decorators import admin_required, log_audit
-from app.models import User, SystemConfig, OperationLog, SysDept, SysRole
+from app.models import User, SystemConfig, OperationLog, SysDept, SysRole, Project, SysUserProject
 from app import db
 
 
@@ -18,9 +18,50 @@ from app import db
 @admin_required
 def users():
     users = User.query.order_by(User.created_at.desc()).all()
-    depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort).all()
+    depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
     return render_template('admin/users.html', users=users, depts=depts, roles=roles)
+
+
+@bp.route('/users/<int:id>/projects', methods=['GET', 'POST'])
+@login_required
+@admin_required
+@log_audit(module='admin', operation='配置用户项目权限')
+def user_projects(id):
+    """用户项目权限配置"""
+    user = User.query.get_or_404(id)
+    all_projects = Project.query.filter_by(is_archived=False).order_by(Project.created_at.desc()).all()
+    if request.method == 'POST':
+        project_ids = request.form.getlist('project_ids', type=int)
+        main_project_id = request.form.get('main_project_id', type=int)
+
+        # 全部数据权限用户不可配置（自动拥有所有项目）
+        if user.get_data_scope() == 'all' or user.is_admin():
+            flash('该用户拥有全部数据权限，自动可访问所有项目，无需单独配置', 'info')
+            return redirect(url_for('admin.user_projects', id=id))
+
+        # 删除旧关联
+        SysUserProject.query.filter_by(user_id=user.id).delete()
+        db.session.flush()
+
+        # 创建新关联
+        for pid in project_ids:
+            is_main = (pid == main_project_id)
+            up = SysUserProject(user_id=user.id, project_id=pid, is_main=is_main)
+            db.session.add(up)
+
+        db.session.commit()
+        flash('用户项目权限已更新', 'success')
+        return redirect(url_for('admin.user_projects', id=id))
+
+    user_project_ids = [up.project_id for up in user.user_projects]
+    user_main_project_id = None
+    for up in user.user_projects:
+        if up.is_main:
+            user_main_project_id = up.project_id
+            break
+    return render_template('admin/user_projects.html', user=user, all_projects=all_projects,
+                           user_project_ids=user_project_ids, user_main_project_id=user_main_project_id)
 
 
 @bp.route('/users/create', methods=['GET', 'POST'])
@@ -60,7 +101,7 @@ def create_user():
         flash('用户创建成功', 'success')
         return redirect(url_for('admin.users'))
 
-    depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort).all()
+    depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
     return render_template('admin/user_form.html', user=None, depts=depts, roles=roles)
 
@@ -92,7 +133,7 @@ def edit_user(id):
         flash('用户信息更新成功', 'success')
         return redirect(url_for('admin.users'))
 
-    depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort).all()
+    depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
     return render_template('admin/user_form.html', user=user, depts=depts, roles=roles)
 
@@ -671,7 +712,7 @@ def export_login_logs():
             log.fail_reason or '',
             log.logout_time.strftime('%Y-%m-%d %H:%M:%S') if log.logout_time else ''
         ])
-    data = export_to_excel('登录日志', headers, rows)
+    data = export_to_excel(headers, rows, '登录日志', 'login_logs.xlsx')
     return send_file(data, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                      as_attachment=True, download_name=f'登录日志_{datetime.now().strftime("%Y%m%d%H%M%S")}.xlsx')
 

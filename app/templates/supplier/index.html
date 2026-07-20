@@ -3,13 +3,19 @@
 {% block content %}
 <div class="card shadow-sm">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-truck me-2"></i>供应商管理</h5>
+        <div>
+            <h5 class="mb-0"><i class="bi bi-truck me-2"></i>常用供应商</h5>
+            <small class="text-muted">本项目常用供应商（来自公司主库引用 + 项目级临时供应商）</small>
+        </div>
         <div>
             {% if current_user.can_edit() %}
             <a href="{{ url_for('supplier.download_template') }}" class="btn btn-sm btn-outline-success"><i class="bi bi-download me-1"></i>模板</a>
             <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-1"></i>导入</button>
             <a href="{{ url_for('supplier.export') }}" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i>导出</a>
-            <a href="{{ url_for('supplier.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增供应商</a>
+            <a href="{{ url_for('supplier.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增供应商</a>
+            <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addSupplierFromMasterModal">
+                <i class="bi bi-cloud-arrow-down me-1"></i>从公司库添加
+            </button>
             {% endif %}
         </div>
     </div>
@@ -33,21 +39,16 @@
             </div>
         </form>
 
-        {% if current_user.can_edit() %}
-        <form method="POST" action="{{ url_for('supplier.batch_delete') }}" id="batchForm">
-        {% endif %}
         <div class="table-responsive">
             <table class="table table-striped table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        {% if current_user.can_edit() %}
-                        <th style="width:30px;"><input type="checkbox" id="checkAll"></th>
-                        {% endif %}
                         <th>供应商名称</th>
                         <th>编码</th>
                         <th>社会信用代码</th>
                         <th>联系人</th>
                         <th>电话</th>
+                        <th>来源</th>
                         <th>最新评级</th>
                         <th class="text-end">操作</th>
                     </tr>
@@ -55,14 +56,18 @@
                 <tbody>
                     {% for s in pagination.items %}
                     <tr>
-                        {% if current_user.can_edit() %}
-                        <td><input type="checkbox" name="ids" value="{{ s.id }}"></td>
-                        {% endif %}
-                        <td><a href="{{ url_for('supplier.detail', id=s.id) }}" class="text-decoration-none fw-bold">{{ s.name }}</a></td>
+                        <td><a href="{{ url_for('supplier.detail', id=s.id) }}?from=list" class="text-decoration-none fw-bold">{{ s.name }}</a></td>
                         <td>{{ s.code or '-' }}</td>
                         <td>{{ s.credit_code or '-' }}</td>
                         <td>{{ s.contact_person or '-' }}</td>
                         <td>{{ s.phone or '-' }}</td>
+                        <td>
+                            {% if s.source == 'company' %}
+                                <span class="badge bg-info" title="来自公司主库">公司库</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark" title="项目级临时供应商">项目级</span>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if s.latest_evaluation %}
                             {% if s.latest_evaluation.level == 'A' %}<span class="badge bg-success">A - 优秀</span>
@@ -76,27 +81,28 @@
                         </td>
                         <td class="text-end">
                             {% if current_user.can_edit() %}
-                            <a href="{{ url_for('supplier.edit', id=s.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            <a href="{{ url_for('supplier.detail', id=s.id) }}" class="btn btn-sm btn-outline-info" title="查看"><i class="bi bi-eye"></i></a>
+                            {% if s.source == 'project' %}
+                            {# 项目级供应商：可编辑、可删除 #}
+                            <a href="{{ url_for('supplier.edit', id=s.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
                             <form method="POST" action="{{ url_for('supplier.delete', id=s.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
                             </form>
+                            {% else %}
+                            {# 公司库供应商：不可删除，仅可移除常用 #}
+                            <form method="POST" action="{{ url_for('supplier.remove_from_project', supplier_id=s.id) }}" class="d-inline" onsubmit="return confirm('确定将该供应商从本项目常用移除？主库数据不受影响。');">
+                                <button type="submit" class="btn btn-sm btn-outline-warning" title="移除常用"><i class="bi bi-dash-circle"></i></button>
+                            </form>
+                            {% endif %}
                             {% endif %}
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted">暂无数据，可点击右上角"从公司库添加"或"新增供应商"。</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        {% if current_user.can_edit() and pagination.items %}
-        <div class="mb-3">
-            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('确定批量删除选中的供应商？');"><i class="bi bi-trash me-1"></i>批量删除</button>
-        </div>
-        {% endif %}
-        {% if current_user.can_edit() %}
-        </form>
-        {% endif %}
 
         {% if pagination.pages > 1 %}
         <nav>
@@ -146,11 +152,205 @@
         </div>
     </div>
 </div>
+
+{% if current_user.can_edit() %}
+<!-- 从公司库添加供应商 模态框 -->
+<div class="modal fade" id="addSupplierFromMasterModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-cloud-arrow-down me-2"></i>从公司库添加供应商</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <input type="text" class="form-control form-control-sm" id="supplierMasterSearchKeyword" placeholder="搜索供应商名称/编码">
+                    </div>
+                </div>
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width:40px;"><input type="checkbox" id="supplierMasterCheckAll"></th>
+                                <th>名称</th>
+                                <th>编码</th>
+                                <th>联系人</th>
+                                <th>电话</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierMasterTbody">
+                            <tr><td colspan="6" class="text-center text-muted">请输入关键字后搜索</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted" id="supplierMasterSearchInfo">共 0 条结果</small>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="supplierMasterPrevPage">上一页</button>
+                        <span class="mx-2 small" id="supplierMasterPageInfo">第 1 页</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="supplierMasterNextPage">下一页</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" id="batchAddSupplierToProjectBtn">
+                    <i class="bi bi-check2-circle me-1"></i>批量加入常用
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block extra_js %}
 <script>
-document.getElementById('checkAll')?.addEventListener('change', function() {
-    document.querySelectorAll('input[name="ids"]').forEach(cb => cb.checked = this.checked);
-});
+// ============== 从公司库添加供应商 模态框逻辑 ==============
+(function () {
+    var modalEl = document.getElementById('addSupplierFromMasterModal');
+    if (!modalEl) return;
+
+    var searchInput = document.getElementById('supplierMasterSearchKeyword');
+    var tbody = document.getElementById('supplierMasterTbody');
+    var infoEl = document.getElementById('supplierMasterSearchInfo');
+    var pageInfoEl = document.getElementById('supplierMasterPageInfo');
+    var prevBtn = document.getElementById('supplierMasterPrevPage');
+    var nextBtn = document.getElementById('supplierMasterNextPage');
+    var checkAll = document.getElementById('supplierMasterCheckAll');
+    var batchBtn = document.getElementById('batchAddSupplierToProjectBtn');
+
+    var MASTER_API = '{{ url_for("master.supplier_api_search") }}'.split('?')[0];
+    var ADD_API = '{{ url_for("supplier.api_add_to_project") }}';
+
+    var state = { page: 1, per_page: 10, total: 0, pages: 1, items: [], linkedIds: {} };
+
+    // 从模板注入本项目已添加的供应商ID集合
+    var LINKED_IDS = {{ linked_supplier_ids | tojson | safe if linked_supplier_ids else '[]' }};
+    LINKED_IDS.forEach(function (id) { state.linkedIds[id] = true; });
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function renderRows() {
+        if (!state.items.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">未找到匹配的供应商</td></tr>';
+            infoEl.textContent = '共 0 条结果';
+            return;
+        }
+        var html = '';
+        state.items.forEach(function (it) {
+            var isLinked = state.linkedIds[it.id] === true;
+            var checkedAttr = isLinked ? 'checked' : '';
+            var disabledAttr = isLinked ? 'disabled' : '';
+            var statusBadge = isLinked
+                ? '<span class="badge bg-success">已添加</span>'
+                : '<span class="badge bg-light text-dark">可添加</span>';
+            html += '<tr>'
+                + '<td><input type="checkbox" class="supplier-master-check" value="' + it.id + '" ' + checkedAttr + ' ' + disabledAttr + '></td>'
+                + '<td>' + escapeHtml(it.name) + '</td>'
+                + '<td>' + escapeHtml(it.code || '-') + '</td>'
+                + '<td>' + escapeHtml(it.contact_person || '-') + '</td>'
+                + '<td>' + escapeHtml(it.phone || '-') + '</td>'
+                + '<td>' + statusBadge + '</td>'
+                + '</tr>';
+        });
+        tbody.innerHTML = html;
+        infoEl.textContent = '共 ' + state.total + ' 条结果';
+        pageInfoEl.textContent = '第 ' + state.page + ' / ' + (state.pages || 1) + ' 页';
+        var available = tbody.querySelectorAll('input.supplier-master-check:not(:disabled)');
+        var allChecked = available.length > 0 && Array.prototype.every.call(available, function (cb) { return cb.checked; });
+        checkAll.checked = allChecked;
+    }
+
+    function fetchMaster() {
+        var params = new URLSearchParams();
+        params.set('page', state.page);
+        params.set('per_page', state.per_page);
+        var q = (searchInput.value || '').trim();
+        if (q) params.set('q', q);
+
+        fetch(MASTER_API + '?' + params.toString())
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                state.items = data.items || [];
+                state.total = data.total || 0;
+                state.pages = data.pages || 1;
+                renderRows();
+            })
+            .catch(function () {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">加载失败，请重试</td></tr>';
+            });
+    }
+
+    modalEl.addEventListener('shown.bs.modal', function () {
+        state.page = 1;
+        fetchMaster();
+    });
+
+    var debounceTimer = null;
+    searchInput.addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function () {
+            state.page = 1;
+            fetchMaster();
+        }, 350);
+    });
+
+    prevBtn.addEventListener('click', function () {
+        if (state.page > 1) {
+            state.page--;
+            fetchMaster();
+        }
+    });
+    nextBtn.addEventListener('click', function () {
+        if (state.page < state.pages) {
+            state.page++;
+            fetchMaster();
+        }
+    });
+
+    checkAll.addEventListener('change', function () {
+        var boxes = tbody.querySelectorAll('input.supplier-master-check:not(:disabled)');
+        boxes.forEach(function (cb) { cb.checked = checkAll.checked; });
+    });
+
+    batchBtn.addEventListener('click', function () {
+        var boxes = tbody.querySelectorAll('input.supplier-master-check:checked:not(:disabled)');
+        var ids = Array.prototype.map.call(boxes, function (cb) { return parseInt(cb.value, 10); });
+        if (!ids.length) {
+            alert('请勾选要加入常用的供应商');
+            return;
+        }
+        batchBtn.disabled = true;
+        batchBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>提交中...';
+        fetch(ADD_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ supplier_ids: ids })
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    alert('成功加入 ' + (data.added_count || 0) + ' 个供应商到常用');
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                    window.location.reload();
+                } else {
+                    alert(data.message || '加入失败');
+                }
+            })
+            .catch(function () { alert('网络错误，请重试'); })
+            .finally(function () {
+                batchBtn.disabled = false;
+                batchBtn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>批量加入常用';
+            });
+    });
+})();
 </script>
 {% endblock %}

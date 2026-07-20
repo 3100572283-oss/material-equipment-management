@@ -1,0 +1,160 @@
+{% extends "mobile/base.html" %}
+{% block title %}报废申请{% endblock %}
+{% block nav_title %}报废申请{% endblock %}
+
+{% block content %}
+<!-- 统计卡片 -->
+<div class="m-card" style="padding:12px 16px;">
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+        <a href="{{ url_for('mobile.scrap_list') }}?status=draft" class="m-stat-mini draft">
+            <div class="label">草稿</div>
+            <div class="value">{{ stats.draft }}</div>
+        </a>
+        <a href="{{ url_for('mobile.scrap_list') }}?status=pending" class="m-stat-mini pending">
+            <div class="label">待审批</div>
+            <div class="value">{{ stats.pending }}</div>
+        </a>
+        <a href="{{ url_for('mobile.scrap_list') }}?status=passed" class="m-stat-mini passed">
+            <div class="label">已通过</div>
+            <div class="value">{{ stats.passed }}</div>
+        </a>
+        <a href="{{ url_for('mobile.scrap_list') }}?status=rejected" class="m-stat-mini rejected">
+            <div class="label">已驳回</div>
+            <div class="value">{{ stats.rejected }}</div>
+        </a>
+    </div>
+</div>
+
+<!-- 状态筛选 -->
+<div class="m-card" style="padding:8px 12px;">
+    <div style="display:flex; gap:6px; overflow-x:auto; white-space:nowrap;">
+        <a href="{{ url_for('mobile.scrap_list') }}"
+           class="m-chip {% if not current_status %}active{% endif %}">全部</a>
+        <a href="{{ url_for('mobile.scrap_list') }}?status=draft"
+           class="m-chip {% if current_status == 'draft' %}active{% endif %}">草稿</a>
+        <a href="{{ url_for('mobile.scrap_list') }}?status=pending"
+           class="m-chip {% if current_status == 'pending' %}active{% endif %}">待审批</a>
+        <a href="{{ url_for('mobile.scrap_list') }}?status=passed"
+           class="m-chip {% if current_status == 'passed' %}active{% endif %}">已通过</a>
+        <a href="{{ url_for('mobile.scrap_list') }}?status=rejected"
+           class="m-chip {% if current_status == 'rejected' %}active{% endif %}">已驳回</a>
+    </div>
+</div>
+
+<!-- 列表 -->
+<div id="listContainer">
+    {% if scraps %}
+    <div class="m-list-summary">共 {{ scraps|length }} 条</div>
+    {% for s in scraps %}
+    <div class="m-record-card"
+         onclick="location.href='{{ url_for('mobile.scrap_detail', id=s.id) }}'"
+         style="cursor:pointer;">
+        <div class="header">
+            <span class="code">{{ s.code }}</span>
+            <span class="date">{{ s.scrap_date.strftime('%Y-%m-%d') if s.scrap_date else '-' }}</span>
+        </div>
+        <div class="party">
+            <i class="bi bi-trash3"></i>
+            <span class="m-status-tag
+                {% if s.reason == 'expired' %}pending
+                {% elif s.reason == 'damaged' %}rejected
+                {% elif s.reason == 'unqualified' %}draft
+                {% else %}info{% endif %}">
+                {{ reason_labels.get(s.reason, s.reason) }}
+            </span>
+            {% if s.applicant_name %}<span style="color:#6c757d;font-size:12px;"> · {{ s.applicant_name }}</span>{% endif %}
+        </div>
+        <div class="items-summary">
+            {% set item_list = s.items %}
+            {% if item_list %}
+            {% for it in item_list[:3] %}
+            <span class="item-tag">{{ it.material.name if it.material else '-' }} × {{ it.quantity }}</span>
+            {% endfor %}
+            {% if item_list|length > 3 %}
+            <span class="more">+{{ item_list|length - 3 }} 项</span>
+            {% endif %}
+            <div class="total">合计：{{ '%.3f'|format(s.total_quantity|float) }} 单位</div>
+            {% else %}
+            <div class="empty">无明细</div>
+            {% endif %}
+        </div>
+        <div class="footer">
+            <span class="status-tag
+                {% if s.approval_status == 'passed' %}passed
+                {% elif s.approval_status == 'pending' %}pending
+                {% elif s.approval_status == 'draft' %}draft
+                {% elif s.approval_status == 'rejected' %}rejected
+                {% endif %}">
+                {% if s.approval_status == 'passed' %}已通过
+                {% elif s.approval_status == 'pending' %}待审批
+                {% elif s.approval_status == 'draft' %}草稿
+                {% elif s.approval_status == 'rejected' %}已驳回
+                {% else %}{{ s.approval_status }}{% endif %}
+            </span>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-empty">
+        <i class="bi bi-trash3"></i>
+        <div>{% if current_status %}该状态下暂无报废申请{% else %}当前项目暂无报废申请{% endif %}</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 新增按钮 -->
+<a href="{{ url_for('mobile.scrap_create') }}" class="m-fab-btn danger">
+    <i class="bi bi-plus-lg"></i>
+</a>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done){
+            setTimeout(function(){ window.location.reload(); done(); }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}
+
+<style>
+.m-stat-mini {
+    display:block;
+    background:#f8f9fa;
+    border-radius:8px;
+    padding:8px 4px;
+    text-align:center;
+    text-decoration:none;
+}
+.m-stat-mini .label { font-size:11px; color:#6c757d; }
+.m-stat-mini .value { font-size:18px; font-weight:600; color:#212529; margin-top:2px; }
+.m-stat-mini.draft .value { color:#495057; }
+.m-stat-mini.pending .value { color:#f08c00; }
+.m-stat-mini.passed .value { color:#2b8a3e; }
+.m-stat-mini.rejected .value { color:#c92a2a; }
+.m-status-tag.info {
+    background:#cff4fc; color:#055160;
+}
+.m-chip {
+    display:inline-block;
+    padding:4px 12px;
+    border-radius:14px;
+    background:#f1f3f5;
+    color:#495057;
+    font-size:12px;
+    flex:0 0 auto;
+}
+.m-chip.active { background:#165DFF; color:#fff; }
+.m-fab-btn {
+    position:fixed; right:18px; bottom:70px;
+    width:52px; height:52px; border-radius:50%;
+    background:#dc3545; color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:24px; box-shadow:0 4px 12px rgba(220,53,69,0.4);
+    z-index:99;
+}
+.m-fab-btn.danger { background:#dc3545; box-shadow:0 4px 12px rgba(220,53,69,0.4); }
+</style>

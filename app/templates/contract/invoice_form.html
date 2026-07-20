@@ -9,6 +9,16 @@
                 <span class="badge bg-info">预留AI发票识别接口</span>
             </div>
             <div class="card-body">
+                {% if ai_vision_enabled %}
+                <div class="alert alert-info d-flex align-items-center">
+                    <i class="bi bi-camera-fill me-2"></i>
+                    <div class="flex-grow-1">支持上传发票图片自动识别发票信息</div>
+                    <button type="button" id="invoiceRecognizeBtn" class="btn btn-sm btn-info text-white">
+                        <i class="bi bi-camera me-1"></i>识别发票
+                    </button>
+                    <input type="file" id="invoiceInput" accept="image/jpeg,image/png" style="display:none">
+                </div>
+                {% endif %}
                 <form method="POST" enctype="multipart/form-data">
                     <div class="row g-3">
                         <div class="col-md-12">
@@ -22,15 +32,15 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">发票代码</label>
-                            <input type="text" class="form-control" name="invoice_code" value="{{ invoice.invoice_code if invoice else '' }}">
+                            <input type="text" class="form-control" name="invoice_code" id="invoice_code" value="{{ invoice.invoice_code if invoice else '' }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">发票号码</label>
-                            <input type="text" class="form-control" name="invoice_number" value="{{ invoice.invoice_number if invoice else '' }}">
+                            <input type="text" class="form-control" name="invoice_number" id="invoice_number" value="{{ invoice.invoice_number if invoice else '' }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">开票日期</label>
-                            <input type="date" class="form-control" name="invoice_date" value="{{ invoice.invoice_date if invoice else '' }}">
+                            <input type="date" class="form-control" name="invoice_date" id="invoice_date" value="{{ invoice.invoice_date if invoice else '' }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">含税金额 <span class="text-danger">*</span></label>
@@ -57,12 +67,12 @@
                         </div>
                         <div class="col-md-12">
                             <label class="form-label">备注</label>
-                            <textarea class="form-control" name="remark" rows="2">{{ invoice.remark if invoice else '' }}</textarea>
+                            <textarea class="form-control" name="remark" rows="2" id="remark">{{ invoice.remark if invoice else '' }}</textarea>
                         </div>
                     </div>
-                    <div class="mt-4">
+                    <div class="form-actions">
+                        <a href="{{ url_for('contract.invoices') }}" class="btn btn-secondary">返回</a>
                         <button type="submit" class="btn btn-primary">保存</button>
-                        <a href="{{ url_for('contract.invoices') }}" class="btn btn-secondary ms-2">返回</a>
                     </div>
                 </form>
             </div>
@@ -71,6 +81,7 @@
 </div>
 {% endblock %}
 {% block extra_js %}
+<script src="/static/js/ai_vision.js"></script>
 <script>
 function calc() {
     const awt = parseFloat(document.getElementById('amount_with_tax').value) || 0;
@@ -79,5 +90,54 @@ function calc() {
 }
 document.getElementById('amount_with_tax').addEventListener('input', calc);
 document.getElementById('tax_rate').addEventListener('change', calc);
+
+{% if ai_vision_enabled %}
+// 发票识别
+document.getElementById('invoiceRecognizeBtn').addEventListener('click', function() {
+    document.getElementById('invoiceInput').click();
+});
+
+document.getElementById('invoiceInput').addEventListener('change', function(e) {
+    if (!e.target.files || !e.target.files[0]) return;
+    var file = e.target.files[0];
+    var btn = document.getElementById('invoiceRecognizeBtn');
+    var originalHtml = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>识别中...';
+    btn.disabled = true;
+
+    AIVision.recognizeImage('invoice', file, function(success, data, message) {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+        e.target.value = '';
+
+        if (success && data) {
+            if (data.invoice_code) document.getElementById('invoice_code').value = data.invoice_code;
+            if (data.invoice_number) document.getElementById('invoice_number').value = data.invoice_number;
+            if (data.invoice_date) document.getElementById('invoice_date').value = data.invoice_date;
+            if (data.total_amount) {
+                document.getElementById('amount_with_tax').value = data.total_amount;
+                calc();
+            }
+            if (data.tax_rate) {
+                var rateSelect = document.getElementById('tax_rate');
+                for (var i = 0; i < rateSelect.options.length; i++) {
+                    if (rateSelect.options[i].value == data.tax_rate) {
+                        rateSelect.selectedIndex = i;
+                        break;
+                    }
+                }
+                calc();
+            }
+            if (data.seller_name) {
+                var remark = document.getElementById('remark');
+                remark.value = '销售方：' + data.seller_name + (remark.value ? '\n' + remark.value : '');
+            }
+            AIVision.showToast('发票识别成功，请核对信息', 'success');
+        } else {
+            AIVision.showToast(message || '识别失败，请手动录入', 'danger');
+        }
+    });
+});
+{% endif %}
 </script>
 {% endblock %}

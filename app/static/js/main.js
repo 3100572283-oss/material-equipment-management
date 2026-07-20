@@ -157,10 +157,19 @@ document.addEventListener('DOMContentLoaded', function() {
         // 绑定标题点击事件
         const title = group.querySelector('.sidebar-group-title');
         if (title) {
-            title.addEventListener('click', function(e) {
-                e.preventDefault();
-                toggleGroup(group);
-            });
+            const sysLink = group.dataset.sysLink;
+            if (sysLink) {
+                // 系统管理分组：点击跳转独立页面
+                title.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    window.location.href = sysLink;
+                });
+            } else {
+                title.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    toggleGroup(group);
+                });
+            }
         }
     });
 
@@ -180,6 +189,34 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (e) {}
     }
+
+    // ========== 激活菜单项自动滚动到可视区域 ==========
+    function scrollToActiveItem() {
+        if (!sidebarWrapper) return;
+        
+        const activeItem = document.querySelector('.sidebar-item.active');
+        if (!activeItem) return;
+
+        const wrapperRect = sidebarWrapper.getBoundingClientRect();
+        const itemRect = activeItem.getBoundingClientRect();
+
+        const itemTop = itemRect.top - wrapperRect.top;
+        const itemBottom = itemRect.bottom - wrapperRect.top;
+        const viewportHeight = wrapperRect.height;
+
+        const targetPosition = itemTop - viewportHeight * 0.3;
+
+        if (itemTop < 0 || itemBottom > viewportHeight) {
+            sidebarWrapper.scrollTo({
+                top: Math.max(0, targetPosition),
+                behavior: 'smooth'
+            });
+        }
+    }
+
+    setTimeout(function() {
+        scrollToActiveItem();
+    }, 100);
 
     // ========== 常用功能菜单 ==========
     const FAVORITES_KEY = 'sidebar_favorites';

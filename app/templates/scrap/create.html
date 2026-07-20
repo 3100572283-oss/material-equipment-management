@@ -54,11 +54,11 @@
                     </thead>
                     <tbody id="itemsBody"></tbody>
                     <tfoot>
-                        <tr class="table-primary">
-                            <td colspan="4" class="text-end fw-bold">合计</td>
-                            <td class="text-end fw-bold fs-5" id="totalQty">0</td>
+                        <tr class="table-total-row">
+                            <td colspan="4" class="text-end total-label">合计</td>
+                            <td class="text-end total-qty" id="totalQty">0</td>
                             <td></td>
-                            <td class="text-end fw-bold fs-5 text-primary" id="totalAmount">0.00</td>
+                            <td class="text-end total-value" id="totalAmount">0.00</td>
                             <td colspan="2"></td>
                         </tr>
                     </tfoot>
@@ -70,9 +70,20 @@
 
             <hr class="my-4">
 
-            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                <button type="submit" class="btn btn-primary">保存报废单</button>
+            <div class="mb-3">
+                <label class="form-label">现场照片（最多6张）</label>
+                <input type="file" class="form-control" name="photos[]" accept="image/*" multiple>
+                <small class="text-muted">支持多张照片上传，可记录现场情况</small>
+            </div>
+
+            <div class="form-actions">
                 <a href="{{ url_for('scrap.index') }}" class="btn btn-secondary">返回</a>
+                <button type="submit" class="btn btn-outline-primary" name="submit_type" value="save">
+                    <i class="bi bi-check-lg me-1"></i>仅保存
+                </button>
+                <button type="submit" class="btn btn-primary" name="submit_type" value="submit">
+                    <i class="bi bi-send me-1"></i>保存并提交审批
+                </button>
             </div>
         </form>
     </div>

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}项目权限 - {{ user.name or user.username }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('admin.users') }}">用户管理</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('admin.edit_user', id=user.id) }}">{{ user.name or user.username }}</a></li>
+            <li class="breadcrumb-item active">项目权限</li>
+        </ol>
+    </nav>
+    <a href="{{ url_for('admin.users') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>返回
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h6 class="mb-0">
+            <i class="bi bi-people me-2"></i>项目权限配置 - {{ user.name or user.username }}
+            <span class="badge bg-{% if user.get_data_scope() == 'all' %}danger{% else %}secondary{% endif %} ms-2">
+                数据权限：{{ user.role_obj.get_data_scope_display() if user.role_obj else '默认' }}
+            </span>
+        </h6>
+    </div>
+    <div class="card-body">
+        {% if user.get_data_scope() == 'all' or user.is_admin() %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-1"></i>该用户拥有<strong>全部数据</strong>权限，自动可访问所有项目，无需单独配置。
+        </div>
+        {% else %}
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-1"></i>勾选用户可访问的项目，并设置一个主项目（默认登录进入的项目）。
+        </div>
+        <form method="POST" action="">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:40px;">
+                                <input type="checkbox" class="form-check-input" id="selectAll"
+                                       onchange="toggleAll(this)">
+                            </th>
+                            <th>项目名称</th>
+                            <th>项目编码</th>
+                            <th>负责人</th>
+                            <th style="width:120px;">主项目</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in all_projects %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="form-check-input project-checkbox" name="project_ids" value="{{ p.id }}"
+                                       {% if p.id in user_project_ids %}checked{% endif %}
+                                       onchange="updateMainProjectOptions()">
+                            </td>
+                            <td>{{ p.name }}</td>
+                            <td><code>{{ p.code or '-' }}</code></td>
+                            <td>{{ p.manager or '-' }}</td>
+                            <td>
+                                <input type="radio" class="form-check-input main-project-radio" name="main_project_id" value="{{ p.id }}"
+                                       {% if p.id == user_main_project_id %}checked{% endif %}
+                                       {% if p.id not in user_project_ids %}disabled{% endif %}>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not all_projects %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">暂无项目</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="form-actions">
+                <a href="{{ url_for('admin.users') }}" class="btn btn-secondary" role="button">
+                    <i class="bi bi-x-lg me-1"></i>取消
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i>保存配置
+                </button>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function toggleAll(master) {
+    document.querySelectorAll('.project-checkbox').forEach(cb => {
+        cb.checked = master.checked;
+    });
+    updateMainProjectOptions();
+}
+
+function updateMainProjectOptions() {
+    document.querySelectorAll('.main-project-radio').forEach(radio => {
+        const checkbox = document.querySelector('.project-checkbox[value="' + radio.value + '"]');
+        radio.disabled = !checkbox.checked;
+        if (radio.disabled && radio.checked) {
+            radio.checked = false;
+        }
+    });
+}
+
+// 确保至少有一个主项目
+document.querySelector('form').addEventListener('submit', function(e) {
+    var checked = document.querySelectorAll('.project-checkbox:checked');
+    if (checked.length > 0) {
+        var mainSelected = document.querySelector('.main-project-radio:checked');
+        if (!mainSelected) {
+            // 自动选择第一个勾选的项目作为主项目
+            checked[0].closest('tr').querySelector('.main-project-radio').checked = true;
+        }
+    }
+});
+</script>
+{% endblock %}

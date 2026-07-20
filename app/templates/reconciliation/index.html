@@ -47,14 +47,14 @@
                 <tbody>
                     {% for r in pagination.items %}
                     <tr>
-                        <td><a href="{{ url_for('reconciliation.detail', id=r.id) }}" class="text-decoration-none fw-bold">{{ r.code }}</a></td>
+                        <td><a href="{{ url_for('reconciliation.detail', id=r.id) }}?from=list" class="text-decoration-none fw-bold">{{ r.code }}</a></td>
                         <td>{{ r.supplier.name if r.supplier else '-' }}</td>
-                        <td>{% if r.contract %}<a href="{{ url_for('contract.detail', id=r.contract_id) }}">{{ r.contract.code }}</a>{% else %}-{% endif %}</td>
+                        <td>{% if r.contract %}<a href="{{ url_for('contract.detail', id=r.contract_id) }}?from=reconciliation_list&from_id={{ r.id }}">{{ r.contract.code }}</a>{% else %}-{% endif %}</td>
                         <td>{{ r.start_date }} ~ {{ r.end_date }}</td>
                         <td>{% if r.status == '草稿' %}<span class="badge bg-secondary">{{ r.status }}</span>{% else %}<span class="badge bg-success">{{ r.status }}</span>{% endif %}</td>
                         <td class="text-end fw-bold">{{ '%.2f'|format(r.total_amount or 0) }}</td>
                         <td class="text-end">
-                            <a href="{{ url_for('reconciliation.detail', id=r.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('reconciliation.detail', id=r.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                             {% if r.status == '已确认' %}
                             <a href="{{ url_for('reconciliation.print_reconciliation', id=r.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-printer"></i></a>
                             {% endif %}

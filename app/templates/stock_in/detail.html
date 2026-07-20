@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}入库单详情 - {{ stock_in.code }}{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('stock_in.index') }}">入库管理</a></li>
+            <li class="breadcrumb-item active" aria-current="page">入库单详情 {{ stock_in.code }}</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -35,6 +46,7 @@
             {% if current_user.can_edit() and stock_in.approval_status == 'draft' %}
             {% if not enable_quality_check or stock_in.quality_status == 'passed' %}
             <form method="POST" action="{{ url_for('approval.submit', biz_type='stockin', biz_id=stock_in.id) }}" class="d-inline" onsubmit="return confirm('确定提交审批？提交后将进入审批流程。');">
+                <input type="hidden" name="project_id" value="{{ stock_in.project_id }}">
                 <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-send me-1"></i>提交审批</button>
             </form>
             {% elif enable_quality_check and stock_in.quality_status != 'passed' %}
@@ -42,10 +54,11 @@
             {% endif %}
             {% endif %}
             {% if stock_in.approval_status in ('pending', 'approving') and approval_instance %}
-            <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}" class="btn btn-sm btn-outline-info"><i class="bi bi-clipboard-check me-1"></i>查看审批</a>
+            <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}?from=stock_in_detail&from_id={{ stock_in.id }}" class="btn btn-sm btn-outline-info"><i class="bi bi-clipboard-check me-1"></i>查看审批</a>
             {% endif %}
             {% if current_user.can_edit() and stock_in.approval_status in ('rejected', 'withdrawn') %}
             <form method="POST" action="{{ url_for('approval.submit', biz_type='stockin', biz_id=stock_in.id) }}" class="d-inline" onsubmit="return confirm('确定重新提交审批？');">
+                <input type="hidden" name="project_id" value="{{ stock_in.project_id }}">
                 <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-arrow-repeat me-1"></i>重新提交审批</button>
             </form>
             {% endif %}
@@ -60,7 +73,7 @@
             {% endif %}
             {% endif %}
             {% if stock_in.is_reconciled %}<span class="badge bg-secondary me-2">已对账</span>{% endif %}
-            <a href="{{ url_for('stock_in.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+            <button onclick="goBack('{{ url_for('stock_in.index') }}', 'stock_in_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
         </div>
     </div>
     <div class="card-body">
@@ -71,8 +84,8 @@
                 {% elif stock_in.stock_in_type == '退货入库' %}<span class="badge bg-warning text-dark">{{ stock_in.stock_in_type }}</span>
                 {% else %}<span class="badge bg-info">{{ stock_in.stock_in_type }}</span>{% endif %}
             </div></div>
-            <div class="col-md-3"><div class="text-muted small">关联合同</div><div>{% if stock_in.contract %}<a href="{{ url_for('contract.detail', id=stock_in.contract_id) }}">{{ stock_in.contract.code }}</a>{% else %}-{% endif %}</div></div>
-            <div class="col-md-3"><div class="text-muted small">供应商</div><div>{{ stock_in.supplier.name if stock_in.supplier else '-' }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">关联合同</div><div>{% if stock_in.contract %}<a href="{{ url_for('contract.detail', id=stock_in.contract_id) }}?from=stock_in_detail&from_id={{ stock_in.id }}">{{ stock_in.contract.code }}</a>{% else %}-{% endif %}</div></div>
+            <div class="col-md-3"><div class="text-muted small">供应商</div><div>{% if stock_in.supplier %}<a href="{{ url_for('supplier.detail', id=stock_in.supplier_id) }}?from=stock_in_detail&from_id={{ stock_in.id }}">{{ stock_in.supplier.name }}</a>{% else %}-{% endif %}</div></div>
             <div class="col-md-3"><div class="text-muted small">经办人</div><div>{{ stock_in.operator or '-' }}</div></div>
             <div class="col-md-3"><div class="text-muted small">总数量</div><div class="fw-bold">{{ stock_in.total_quantity }}</div></div>
             <div class="col-md-3"><div class="text-muted small">总金额</div><div class="fw-bold text-end">{{ '%.2f'|format(stock_in.total_amount or 0) }}</div></div>
@@ -83,6 +96,28 @@
         </div>
     </div>
 </div>
+
+{% if stock_in.location_lat and stock_in.location_lng %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="bi bi-geo-alt me-2"></i>现场定位</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted small">纬度</div><div>{{ '%.6f'|format(stock_in.location_lat) }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">经度</div><div>{{ '%.6f'|format(stock_in.location_lng) }}</div></div>
+            <div class="col-md-3"><div class="text-muted small">定位精度</div><div>±{{ '%.1f'|format(stock_in.location_accuracy or 0) }} 米</div></div>
+            <div class="col-md-3"><div class="text-muted small">定位时间</div><div>{{ stock_in.location_time.strftime('%Y-%m-%d %H:%M:%S') if stock_in.location_time else '-' }}</div></div>
+            <div class="col-12">
+                <a href="https://uri.amap.com/marker?position={{ stock_in.location_lng }},{{ stock_in.location_lat }}&name=单据录入位置"
+                   target="_blank" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-map me-1"></i>在高德地图中查看
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% if enable_quality_check %}
 <div class="card shadow-sm mb-3">

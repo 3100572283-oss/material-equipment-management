@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}巡检任务列表 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-list-task me-2"></i>巡检任务列表</h5>
+        <div>
+            <a href="{{ url_for('equipment.inspection_list') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1"></i>返回计划列表
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="mb-3">
+            <div class="btn-group" role="group">
+                <a href="{{ url_for('equipment.inspection_tasks') }}" class="btn btn-sm {% if not current_status %}btn-primary{% else %}btn-outline-primary{% endif %}">全部</a>
+                <a href="{{ url_for('equipment.inspection_tasks', status='pending') }}" class="btn btn-sm {% if current_status == 'pending' %}btn-warning{% else %}btn-outline-warning{% endif %}">待巡检</a>
+                <a href="{{ url_for('equipment.inspection_tasks', status='overdue') }}" class="btn btn-sm {% if current_status == 'overdue' %}btn-danger{% else %}btn-outline-danger{% endif %}">已逾期</a>
+                <a href="{{ url_for('equipment.inspection_tasks', status='done') }}" class="btn btn-sm {% if current_status == 'done' %}btn-success{% else %}btn-outline-success{% endif %}">已完成</a>
+                <a href="{{ url_for('equipment.inspection_tasks', status='skipped') }}" class="btn btn-sm {% if current_status == 'skipped' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">已跳过</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>任务号</th>
+                        <th>设备</th>
+                        <th>计划日期</th>
+                        <th>巡检人</th>
+                        <th>状态</th>
+                        <th width="100">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in tasks %}
+                    <tr>
+                        <td><code>{{ t.task_no }}</code></td>
+                        <td>{{ t.equipment.name if t.equipment else '-' }}<br>
+                            <small class="text-muted">{{ t.equipment.code if t.equipment else '' }}</small></td>
+                        <td>{{ t.plan_inspect_date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ t.assignee_name or '-' }}</td>
+                        <td>
+                            {% if t.status == 'pending' %}<span class="badge bg-warning text-dark">待巡检</span>
+                            {% elif t.status == 'overdue' %}<span class="badge bg-danger">已逾期</span>
+                            {% elif t.status == 'done' %}<span class="badge bg-success">已完成</span>
+                            {% elif t.status == 'skipped' %}<span class="badge bg-secondary">已跳过</span>{% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('mobile.inspection_form', tid=t.id) }}" target="_blank"
+                               class="btn btn-sm btn-outline-primary" title="移动端录入">
+                                <i class="bi bi-phone"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">暂无任务</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

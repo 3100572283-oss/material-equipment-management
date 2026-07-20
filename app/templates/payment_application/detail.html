@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block title %}付款申请详情 - {{ application.application_code }}{% endblock %}
+{% block breadcrumb %}
+<div class="d-flex align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0" style="background:none;padding:0;">
+            <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('payment_application.index') }}">付款管理</a></li>
+            <li class="breadcrumb-item active" aria-current="page">付款申请详情 {{ application.application_code }}</li>
+        </ol>
+    </nav>
+</div>
+{% endblock %}
 {% block content %}
 <div class="card shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -7,9 +18,9 @@
         <div>
             {% set label, cls = STATUS_MAP.get(application.status, ('未知', 'secondary')) %}
             <span class="badge bg-{{ cls }} fs-6">{{ label }}</span>
-            <a href="{{ url_for('payment_application.index') }}" class="btn btn-sm btn-outline-secondary ms-2">
-                <i class="bi bi-arrow-left me-1"></i>返回列表
-            </a>
+            <button onclick="goBack('{{ url_for('payment_application.index') }}', 'payment_list')" class="btn btn-sm btn-outline-secondary ms-2">
+                <i class="bi bi-arrow-left me-1"></i>返回
+            </button>
         </div>
     </div>
     <div class="card-body">
@@ -32,11 +43,11 @@
             </div>
             <div class="col-md-3">
                 <div class="text-muted small">供应商</div>
-                <div>{{ application.supplier.name if application.supplier else '-' }}</div>
+                <div>{% if application.supplier %}<a href="{{ url_for('supplier.detail', id=application.supplier_id) }}?from=payment_detail&from_id={{ application.id }}">{{ application.supplier.name }}</a>{% else %}-{% endif %}</div>
             </div>
             <div class="col-md-3">
                 <div class="text-muted small">关联合同</div>
-                <div>{% if application.contract %}<a href="{{ url_for('contract.detail', id=application.contract.id) }}">{{ application.contract.code }}</a>{% else %}-{% endif %}</div>
+                <div>{% if application.contract %}<a href="{{ url_for('contract.detail', id=application.contract.id) }}?from=payment_detail&from_id={{ application.id }}">{{ application.contract.code }}</a>{% else %}-{% endif %}</div>
             </div>
             <div class="col-md-3">
                 <div class="text-muted small">付款方式</div>
@@ -94,7 +105,7 @@
                                 <td>{{ r.start_date }} ~ {{ r.end_date }}</td>
                                 <td>{{ r.contract.code if r.contract else '-' }}</td>
                                 <td class="text-end">{{ '%.2f'|format(r.total_amount or 0) }}</td>
-                                <td><a href="{{ url_for('reconciliation.detail', id=r.id) }}" target="_blank">查看</a></td>
+                                <td><a href="{{ url_for('reconciliation.detail', id=r.id) }}?from=payment_detail&from_id={{ application.id }}" target="_blank">查看</a></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -131,7 +142,7 @@
             </form>
             {% endif %}
             {% if approval_instance %}
-            <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}" class="btn btn-outline-info ms-auto">
+            <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}?from=payment_detail&from_id={{ application.id }}" class="btn btn-outline-info ms-auto">
                 <i class="bi bi-diagram-3 me-1"></i>查看审批流程
             </a>
             {% endif %}
@@ -151,7 +162,7 @@
             ('已驳回', 'danger') if approval_instance.status == 'rejected' else (
             ('已撤回', 'secondary') if approval_instance.status == 'withdrawn' else (approval_instance.status, 'secondary'))))) %}
         <div class="mb-3">当前状态：<span class="badge bg-{{ status_color }}">{{ status_label }}</span></div>
-        <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}" class="btn btn-sm btn-outline-primary">查看完整审批记录 →</a>
+        <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}?from=payment_detail&from_id={{ application.id }}" class="btn btn-sm btn-outline-primary">查看完整审批记录 →</a>
     </div>
 </div>
 {% endif %}

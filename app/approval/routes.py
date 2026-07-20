@@ -11,8 +11,9 @@ from app.approval.service import (
 )
 from app.decorators import admin_required, log_audit
 from app.models import (ApprovalFlow, ApprovalNode, ApprovalBranch,
-                        ApprovalInstance, ApprovalRecord, User)
+                        ApprovalInstance, ApprovalRecord, User, Project)
 from app import db
+import json
 
 
 # ============== 管理员配置部分 ==============
@@ -22,9 +23,32 @@ from app import db
 @admin_required
 def flows():
     """审批流程列表页"""
-    flows_list = ApprovalFlow.query.order_by(ApprovalFlow.biz_type, ApprovalFlow.id).all()
+    scope_filter = request.args.get('scope', 'all')
+    project_filter = request.args.get('project_id', None, type=int)
+    
+    query = ApprovalFlow.query
+    
+    if scope_filter == 'company':
+        query = query.filter_by(scope='company')
+    elif scope_filter == 'project':
+        query = query.filter_by(scope='project')
+    
+    if project_filter:
+        query = query.filter(ApprovalFlow.project_ids.like(f'%{project_filter}%'))
+    
+    flows_list = query.order_by(
+        ApprovalFlow.scope.desc(),
+        ApprovalFlow.is_default.desc(),
+        ApprovalFlow.biz_type,
+        ApprovalFlow.id
+    ).all()
+    
+    projects = Project.query.all()
+    
     return render_template('approval/flows.html',
-                           flows=flows_list, biz_names=BIZ_NAMES)
+                           flows=flows_list, biz_names=BIZ_NAMES,
+                           projects=projects, scope_filter=scope_filter,
+                           project_filter=project_filter)
 
 
 @bp.route('/admin/flows/create', methods=['GET', 'POST'])
@@ -38,7 +62,9 @@ def create_flow():
         flow_code = request.form.get('flow_code', '').strip()
         biz_type = request.form.get('biz_type', '').strip()
         description = request.form.get('description', '').strip()
-
+        scope = request.form.get('scope', 'company')
+        project_ids = request.form.getlist('project_ids')
+        
         if not flow_name or not biz_type:
             flash('流程名称和业务类型不能为空', 'error')
             return redirect(url_for('approval.create_flow'))
@@ -54,7 +80,12 @@ def create_flow():
             flash('流程编码已存在', 'error')
             return redirect(url_for('approval.create_flow'))
 
-        # 同一业务类型若已有启用流程，新建时默认禁用，避免冲突
+        if scope == 'project' and not project_ids:
+            flash('项目级流程必须选择至少一个项目', 'error')
+            return redirect(url_for('approval.create_flow'))
+
+        project_ids_json = json.dumps(project_ids) if project_ids else None
+
         existing_enabled = ApprovalFlow.query.filter_by(
             biz_type=biz_type, enabled=True).first()
 
@@ -63,15 +94,29 @@ def create_flow():
             flow_name=flow_name,
             biz_type=biz_type,
             enabled=not existing_enabled,
-            description=description or None
+            description=description or None,
+            scope=scope,
+            project_ids=project_ids_json,
+            is_default=scope == 'company' and not existing_enabled
         )
         db.session.add(flow)
         db.session.commit()
+        
+        if flow.is_default:
+            ApprovalFlow.query.filter(
+                ApprovalFlow.biz_type == biz_type,
+                ApprovalFlow.scope == 'company',
+                ApprovalFlow.id != flow.id
+            ).update({'is_default': False})
+            db.session.commit()
+        
         flash('流程创建成功，请配置审批节点', 'success')
         return redirect(url_for('approval.nodes', id=flow.id))
 
+    projects = Project.query.all()
     return render_template('approval/flow_form.html',
-                           flow=None, biz_names=BIZ_NAMES)
+                           flow=None, biz_names=BIZ_NAMES,
+                           projects=projects)
 
 
 @bp.route('/admin/flows/<int:id>/toggle', methods=['POST'])
@@ -82,7 +127,6 @@ def toggle_flow(id):
     """启用/禁用流程"""
     flow = ApprovalFlow.query.get_or_404(id)
     if not flow.enabled:
-        # 启用前检查：同业务类型是否已有其他启用流程
         existing = ApprovalFlow.query.filter_by(
             biz_type=flow.biz_type, enabled=True).first()
         if existing and existing.id != flow.id:
@@ -95,6 +139,30 @@ def toggle_flow(id):
     flow.enabled = not flow.enabled
     db.session.commit()
     flash(f'流程已{"启用" if flow.enabled else "禁用"}', 'success')
+    return redirect(url_for('approval.flows'))
+
+
+@bp.route('/admin/flows/<int:id>/set_default', methods=['POST'])
+@login_required
+@admin_required
+@log_audit(module='approval', operation='设为默认流程')
+def set_default_flow(id):
+    """设为默认流程"""
+    flow = ApprovalFlow.query.get_or_404(id)
+    if flow.scope != 'company':
+        flash('只有公司级流程可以设为默认', 'error')
+        return redirect(url_for('approval.flows'))
+    
+    ApprovalFlow.query.filter(
+        ApprovalFlow.biz_type == flow.biz_type,
+        ApprovalFlow.scope == 'company'
+    ).update({'is_default': False})
+    db.session.commit()
+    
+    flow.is_default = True
+    db.session.commit()
+    
+    flash('已设为默认流程，将作为所有未单独配置流程的项目的默认流程', 'success')
     return redirect(url_for('approval.flows'))
 
 
@@ -586,26 +654,36 @@ def delete_branch_node(id):
 @login_required
 def my_approvals():
     """我的审批页面（Tab：待我审批/我已审批）"""
-    pending_instances = get_my_pending_approvals(current_user.id)
+    project_filter = request.args.get('project_id', None, type=int)
 
-    # 我已审批的实例（有 approve/reject 记录）
+    pending_instances = get_my_pending_approvals(current_user.id)
+    if project_filter:
+        pending_instances = [inst for inst in pending_instances if inst.project_id == project_filter]
+
     approved_ids = db.session.query(ApprovalRecord.instance_id).filter(
         ApprovalRecord.approver_id == current_user.id,
         ApprovalRecord.action.in_(['approve', 'reject'])
     ).distinct().all()
     ids = [r[0] for r in approved_ids]
     if ids:
-        approved_instances = ApprovalInstance.query.filter(
+        approved_query = ApprovalInstance.query.filter(
             ApprovalInstance.id.in_(ids)
-        ).order_by(ApprovalInstance.submit_time.desc()).all()
+        )
+        if project_filter:
+            approved_query = approved_query.filter(ApprovalInstance.project_id == project_filter)
+        approved_instances = approved_query.order_by(ApprovalInstance.submit_time.desc()).all()
     else:
         approved_instances = []
+
+    projects = Project.query.all()
 
     return render_template('approval/my_approvals.html',
                            pending_instances=pending_instances,
                            approved_instances=approved_instances,
                            biz_names=BIZ_NAMES,
-                           status_map=STATUS_MAP)
+                           status_map=STATUS_MAP,
+                           projects=projects,
+                           project_filter=project_filter)
 
 
 @bp.route('/detail/<int:instance_id>')
@@ -758,7 +836,8 @@ def submit(biz_type, biz_id):
         return redirect(url_for('approval.my_approvals'))
 
     opinion = request.form.get('opinion', '').strip()
-    success, message, instance = submit_approval(biz_type, biz_id, opinion=opinion)
+    project_id = request.form.get('project_id', None, type=int)
+    success, message, instance = submit_approval(biz_type, biz_id, opinion=opinion, project_id=project_id)
 
     if success and instance:
         flash(message, 'success')

@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}项目成本构成{% endblock %}
 {% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0"><i class="bi bi-bar-chart-line text-warning me-2"></i>项目成本构成</h5>
+    <a href="{{ url_for('report.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>报表中心</a>
+</div>
 <div class="row g-4">
     <div class="col-md-6">
         <div class="card shadow-sm h-100">
