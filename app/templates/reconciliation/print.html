@@ -87,9 +87,12 @@
         {% set ns.total_wo = reconciliation.total_amount_without_tax if reconciliation.total_amount_without_tax else ns.wo_tax %}
         {% set ns.total_tax = reconciliation.total_tax_amount if reconciliation.total_tax_amount else ns.tax %}
         {% set ns.total_w = reconciliation.total_amount if reconciliation.total_amount else ns.w_tax %}
+        {% set total_qty = items|sum(attribute='quantity') or 0 %}
         <tfoot>
             <tr>
-                <td colspan="8" style="text-align:right;"><strong>合计</strong></td>
+                <td colspan="6" style="text-align:right;"><strong>合计</strong></td>
+                <td><strong>{{ '%.4f'|format(total_qty) }}</strong></td>
+                <td>-</td>
                 <td><strong>{{ '%.2f'|format(ns.total_wo) }}</strong></td>
                 <td><strong>{{ '%.2f'|format(ns.total_tax) }}</strong></td>
                 <td><strong>{{ '%.2f'|format(ns.total_w) }}</strong></td>

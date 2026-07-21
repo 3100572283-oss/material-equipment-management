@@ -61,6 +61,9 @@
                         <td class="text-end">
                             <a href="{{ url_for('admin.user_projects', id=u.id) }}" class="btn btn-sm btn-outline-success" title="项目权限"><i class="bi bi-people"></i></a>
                             <a href="{{ url_for('admin.edit_user', id=u.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
+                            <button type="button" class="btn btn-sm btn-outline-warning" title="重置密码" data-bs-toggle="modal" data-bs-target="#resetPwdModal" data-user-id="{{ u.id }}" data-username="{{ u.username }}" data-name="{{ u.name or '' }}">
+                                <i class="bi bi-key"></i>
+                            </button>
                             {% if u.id != current_user.id %}
                             <form method="POST" action="{{ url_for('admin.delete_user', id=u.id) }}" class="d-inline" onsubmit="return confirm('确定删除用户 {{ u.username }}？');">
                                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
@@ -76,4 +79,129 @@
         </div>
     </div>
 </div>
+
+<!-- 重置密码弹窗 -->
+<div class="modal fade" id="resetPwdModal" tabindex="-1" aria-labelledby="resetPwdModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="resetPwdModalLabel"><i class="bi bi-key me-2"></i>重置密码</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="resetPwdForm" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">当前用户</label>
+                        <div class="form-control bg-light" id="resetPwdUserDisplay" style="border: 1px solid #e5e6eb;">-</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="resetPwdNew" class="form-label">新密码 <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="resetPwdNew" name="new_password" required minlength="6" placeholder="请输入新密码（至少6位）">
+                            <button class="btn btn-outline-secondary" type="button" id="toggleNewPwd" title="显示/隐藏密码">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                        <div class="form-text">建议包含字母和数字，提高安全性</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="resetPwdConfirm" class="form-label">确认密码 <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="resetPwdConfirm" name="confirm_password" required minlength="6" placeholder="请再次输入新密码">
+                            <button class="btn btn-outline-secondary" type="button" id="toggleConfirmPwd" title="显示/隐藏密码">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-3 d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-info" id="useDefaultPwd">
+                            <i class="bi bi-magic me-1"></i>使用默认密码
+                        </button>
+                        <span class="text-muted small" id="defaultPwdHint" style="display:none;">默认密码：<code id="defaultPwdVal"></code></span>
+                    </div>
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" id="forceChangePwd" name="force_change" value="1" checked>
+                        <label class="form-check-label" for="forceChangePwd">
+                            用户下次登录必须修改密码
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="height:30px;padding:0 16px;font-size:13px;">取消</button>
+                    <button type="submit" class="btn btn-primary" style="height:30px;padding:0 16px;font-size:13px;">确认重置</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var modal = document.getElementById('resetPwdModal');
+    var form = document.getElementById('resetPwdForm');
+    var userDisplay = document.getElementById('resetPwdUserDisplay');
+    var newPwd = document.getElementById('resetPwdNew');
+    var confirmPwd = document.getElementById('resetPwdConfirm');
+    var defaultPwd = "{{ default_password|default('Abc@123456') }}";
+    var defaultPwdVal = document.getElementById('defaultPwdVal');
+    var defaultPwdHint = document.getElementById('defaultPwdHint');
+    if (defaultPwdVal) defaultPwdVal.textContent = defaultPwd;
+
+    // 弹窗显示时填充用户信息
+    modal.addEventListener('show.bs.modal', function(e) {
+        var btn = e.relatedTarget;
+        var userId = btn.getAttribute('data-user-id');
+        var username = btn.getAttribute('data-username');
+        var name = btn.getAttribute('data-name');
+        userDisplay.textContent = username + (name ? '（' + name + '）' : '');
+        form.action = '/admin/users/' + userId + '/reset_password';
+        newPwd.value = '';
+        confirmPwd.value = '';
+        document.getElementById('forceChangePwd').checked = true;
+        if (defaultPwdHint) defaultPwdHint.style.display = 'none';
+    });
+
+    // 密码显隐切换
+    function setupToggle(btnId, inputId) {
+        var btn = document.getElementById(btnId);
+        var input = document.getElementById(inputId);
+        var icon = btn.querySelector('i');
+        btn.addEventListener('click', function() {
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'bi bi-eye-slash';
+            } else {
+                input.type = 'password';
+                icon.className = 'bi bi-eye';
+            }
+        });
+    }
+    setupToggle('toggleNewPwd', 'resetPwdNew');
+    setupToggle('toggleConfirmPwd', 'resetPwdConfirm');
+
+    // 使用默认密码
+    document.getElementById('useDefaultPwd').addEventListener('click', function() {
+        newPwd.value = defaultPwd;
+        confirmPwd.value = defaultPwd;
+        if (defaultPwdHint) defaultPwdHint.style.display = 'inline';
+    });
+
+    // 提交校验
+    form.addEventListener('submit', function(e) {
+        if (newPwd.value.length < 6) {
+            e.preventDefault();
+            alert('密码长度不能少于6位');
+            return;
+        }
+        if (newPwd.value !== confirmPwd.value) {
+            e.preventDefault();
+            alert('两次输入的密码不一致');
+            return;
+        }
+    });
+})();
+</script>
 {% endblock %}

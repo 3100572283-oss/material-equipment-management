@@ -11,7 +11,7 @@ def _reorder_dict_items(dict_type_id):
     """删除字典项后重新整理排序号"""
     items = SysDictItem.query.filter_by(dict_type_id=dict_type_id).order_by(
         SysDictItem.sort_order, SysDictItem.id).all()
-    for index, item in enumerate(items):
+    for index, item in enumerate(items, 1):
         if item.sort_order != index:
             item.sort_order = index
     db.session.commit()

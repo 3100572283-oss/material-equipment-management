@@ -22,6 +22,14 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="contract_id">
+                    <option value="">全部合同</option>
+                    {% for c in contracts %}
+                    <option value="{{ c.id }}" {% if contract_id == c.id|string %}selected{% endif %}>{{ c.code }} - {{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <div class="col-md-2">
                 <select class="form-select form-select-sm" name="strength_grade">
                     <option value="">全部等级</option>
@@ -58,6 +66,7 @@
                     <tr>
                         <th>小票号</th>
                         <th>供应商</th>
+                        <th>关联合同</th>
                         <th>强度等级</th>
                         <th>浇筑部位</th>
                         <th class="text-end">车次</th>
@@ -74,6 +83,7 @@
                     <tr>
                         <td class="fw-bold">{{ t.ticket_no }}</td>
                         <td>{{ t.supplier_name or (t.supplier.name if t.supplier else '-') }}</td>
+                        <td>{{ (t.contract.code + ' - ' + t.contract.name) if t.contract else '-' }}</td>
                         <td>{% if t.strength_grade %}<span class="badge bg-info">{{ t.strength_grade }}</span>{% else %}-{% endif %}</td>
                         <td>{{ t.pour_part or '-' }}</td>
                         <td class="text-end">{{ t.vehicle_count or 0 }}</td>

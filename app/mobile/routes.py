@@ -425,7 +425,7 @@ def _record_login_log(user, status, fail_reason=None):
     log = LoginLog(
         user_id=user.id if user and status == 'success' else None,
         username=user.username if user else request.form.get('username', ''),
-        login_time=datetime.utcnow(),
+        login_time=datetime.now(),
         ip_address=request.remote_addr,
         user_agent=user_agent[:512] if user_agent else None,
         browser=browser,
@@ -470,15 +470,15 @@ def login():
 
         user = User.query.filter_by(username=username).first()
 
-        if user and user.locked_until and user.locked_until > datetime.utcnow():
+        if user and user.locked_until and user.locked_until > datetime.now():
             _record_login_log(user, 'failed', fail_reason='账号已锁定')
-            remaining = int((user.locked_until - datetime.utcnow()).total_seconds() / 60)
+            remaining = int((user.locked_until - datetime.now()).total_seconds() / 60)
             flash(f'账号已被锁定，请 {remaining} 分钟后再试。', 'danger')
             return render_template('mobile/login.html')
 
         if user and check_password_hash(user.password_hash, password):
             login_user(user, remember=remember)
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = datetime.now()
             user.last_login_ip = request.remote_addr
             user.failed_login_count = 0
             user.locked_until = None
@@ -499,7 +499,7 @@ def login():
             if user:
                 user.failed_login_count = (user.failed_login_count or 0) + 1
                 if user.failed_login_count >= 5:
-                    user.locked_until = datetime.utcnow() + timedelta(minutes=30)
+                    user.locked_until = datetime.now() + timedelta(minutes=30)
                     _record_login_log(user, 'failed', fail_reason='连续失败5次，账号锁定30分钟')
                     db.session.commit()
                     flash('连续登录失败5次，账号已锁定30分钟。', 'danger')
@@ -523,7 +523,7 @@ def logout():
     if log_id:
         log = LoginLog.query.get(log_id)
         if log:
-            log.logout_time = datetime.utcnow()
+            log.logout_time = datetime.now()
             db.session.commit()
     log_operation('退出', module='系统', description=f'用户 {current_user.username} 移动端退出')
     logout_user()
@@ -2554,7 +2554,17 @@ def _save_concrete_ticket(project_id, data, files=None):
     except (TypeError, ValueError):
         supplier_id = None
     supplier_name = (data.get('supplier_name', '') or '').strip() or None
+    contract_id = data.get('contract_id')
+    try:
+        contract_id = int(contract_id) if contract_id not in (None, '') else None
+    except (TypeError, ValueError):
+        contract_id = None
     strength_grade = (data.get('strength_grade', '') or '').strip() or None
+    material_id = data.get('material_id')
+    try:
+        material_id = int(material_id) if material_id not in (None, '') else None
+    except (TypeError, ValueError):
+        material_id = None
     pour_part = (data.get('pour_part', '') or '').strip() or None
     work_number_id = data.get('work_number_id')
     try:
@@ -2613,7 +2623,9 @@ def _save_concrete_ticket(project_id, data, files=None):
     ticket = ConcreteTicket(
         project_id=project_id, ticket_no=ticket_no,
         supplier_id=supplier_id, supplier_name=supplier_name,
-        strength_grade=strength_grade, pour_part=pour_part,
+        contract_id=contract_id,
+        strength_grade=strength_grade, material_id=material_id,
+        pour_part=pour_part,
         work_number_id=work_number_id, vehicle_count=vehicle_count,
         volume=volume, arrival_time=arrival_time,
         vehicle_no=vehicle_no, driver_name=driver_name,
@@ -3353,3 +3365,80 @@ def api_pr_materials():
         'id': m.id, 'name': m.name, 'code': m.code or '',
         'spec': m.specification or '', 'unit': m.unit or ''
     } for m in materials])
+
+
+# ========== 公告相关 ==========
+from app.models import SysAnnouncement, SysAnnouncementRead
+
+@bp.context_processor
+def inject_announcements():
+    """注入公告数据到移动端所有模板"""
+    if not current_user.is_authenticated:
+        return {'mobile_announcements': [], 'unread_announcement_count': 0}
+    
+    now = datetime.now()
+    query = SysAnnouncement.query.filter(
+        SysAnnouncement.status == True,
+        SysAnnouncement.is_popup == True,
+        SysAnnouncement.publish_time <= now,
+        or_(SysAnnouncement.expire_time == None, SysAnnouncement.expire_time >= now)
+    ).order_by(SysAnnouncement.created_at.desc())
+    
+    all_active = query.all()
+    
+    user_role_id = str(current_user.role_id) if current_user.role_id else ''
+    user_dept_id = str(current_user.dept_id) if current_user.dept_id else ''
+    
+    def is_visible(ann):
+        if not ann.visible_scope or ann.visible_scope == 'all':
+            return True
+        elif ann.visible_scope == 'role' and ann.visible_roles:
+            try:
+                role_ids = json.loads(ann.visible_roles)
+                return user_role_id in role_ids
+            except:
+                return False
+        elif ann.visible_scope == 'dept' and ann.visible_depts:
+            try:
+                dept_ids = json.loads(ann.visible_depts)
+                return user_dept_id in dept_ids
+            except:
+                return False
+        return True
+    
+    all_active = [a for a in all_active if is_visible(a)]
+    
+    read_ids = [r.announcement_id for r in SysAnnouncementRead.query.filter_by(user_id=current_user.id).all()]
+    unread_count = sum(1 for a in all_active if a.id not in read_ids)
+    
+    serialized = []
+    for ann in all_active:
+        serialized.append({
+            'id': ann.id,
+            'title': ann.title,
+            'content': ann.content,
+            'is_read': ann.id in read_ids,
+            'publish_time': ann.publish_time.strftime('%Y-%m-%d %H:%M:%S') if ann.publish_time else '',
+        })
+    
+    return {
+        'mobile_announcements': serialized,
+        'unread_announcement_count': unread_count
+    }
+
+
+@bp.route('/api/announcement/<int:id>/read', methods=['POST'])
+@login_required
+def mark_announcement_read(id):
+    """标记公告已读"""
+    existing = SysAnnouncementRead.query.filter_by(
+        user_id=current_user.id, announcement_id=id
+    ).first()
+    if not existing:
+        read = SysAnnouncementRead(
+            user_id=current_user.id,
+            announcement_id=id
+        )
+        db.session.add(read)
+        db.session.commit()
+    return jsonify({'success': True})

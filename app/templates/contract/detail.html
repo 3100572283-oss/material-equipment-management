@@ -88,12 +88,21 @@
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>合同详情 - {{ contract.code }}</h5>
         <div>
+            {% if contract.is_deleted %}
+            <span class="badge bg-secondary me-2">已作废</span>
+            {% if current_user.can_edit() %}
+            <form method="POST" action="{{ url_for('contract.restore', id=contract.id) }}" class="d-inline" onsubmit="return confirm('确定恢复此合同？');">
+                <button type="submit" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise me-1"></i>恢复</button>
+            </form>
+            {% endif %}
+            {% else %}
             {% if current_user.can_edit() %}
             <a href="{{ url_for('contract.create', copy_from=contract.id) }}" class="btn btn-sm btn-outline-success"><i class="bi bi-files me-1"></i>复制新增</a>
             <a href="{{ url_for('contract.edit', id=contract.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
-            <form method="POST" action="{{ url_for('contract.delete', id=contract.id) }}" class="d-inline" onsubmit="return confirm('确定删除此合同？');">
-                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
+            <form method="POST" action="{{ url_for('contract.delete', id=contract.id) }}" class="d-inline" onsubmit="return confirm('确定作废此合同？关联数据将保留但不再参与业务统计。');">
+                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>作废</button>
             </form>
+            {% endif %}
             {% endif %}
             <button onclick="goBack('{{ url_for('contract.index') }}', 'contract_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
         </div>

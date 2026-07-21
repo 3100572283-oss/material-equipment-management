@@ -8,6 +8,16 @@
             <small class="text-muted">公司级统一维护的供应商基础数据，所有项目共用</small>
         </div>
         <div>
+            <a href="{{ url_for('master.supplier_export', keyword=keyword or '', status=status or '') }}"
+               class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-download me-1"></i>导出
+            </a>
+            <a href="{{ url_for('master.supplier_template') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i>下载模板
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#importModal">
+                <i class="bi bi-upload me-1"></i>批量导入
+            </button>
             <a href="{{ url_for('master.supplier_create') }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-plus-lg me-1"></i>新增供应商
             </a>
@@ -89,7 +99,39 @@
             </table>
         </div>
 
-        {% include '_pagination.html' %}
+        {% include '_pagination.html' %}</div>
+    </div>
+</div>
+
+<!-- 批量导入弹窗 -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('master.supplier_import') }}" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="importModalLabel"><i class="bi bi-upload me-2"></i>批量导入供应商</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        请先 <a href="{{ url_for('master.supplier_template') }}" class="alert-link">下载导入模板</a>，
+                        按模板格式填写后上传。供应商编码选填，不填则自动生成。
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">选择Excel文件 <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control form-control-sm" name="file" accept=".xlsx,.xls" required>
+                        <div class="form-text">支持 .xlsx 格式，单次最多 1000 条</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-sm btn-primary">
+                        <i class="bi bi-upload me-1"></i>开始导入
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 

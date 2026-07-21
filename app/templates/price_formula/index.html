@@ -15,8 +15,8 @@
                         <th>适用供应商</th>
                         <th>适用分类</th>
                         <th>基准价类型</th>
-                        <th>下浮方式</th>
-                        <th>下浮值</th>
+                        <th>浮动方式</th>
+                        <th>浮动值</th>
                         <th>服务费率</th>
                         <th>资金费率</th>
                         <th>税率</th>
@@ -32,11 +32,21 @@
                         <td>{{ f.material_category.name if f.material_category else '-' }}</td>
                         <td><span class="badge bg-secondary">{{ f.base_price_type }}</span></td>
                         <td>
-                            {% if f.discount_type == '比例' %}<span class="badge bg-info">比例</span>
-                            {% elif f.discount_type == '金额' %}<span class="badge bg-warning text-dark">金额</span>
-                            {% else %}<span class="badge bg-light text-dark">不下浮</span>{% endif %}
+                            {% if f.float_type == 'ratio' %}<span class="badge bg-info">比例浮动</span>
+                            {% elif f.float_type == 'amount' %}<span class="badge bg-warning text-dark">金额浮动</span>
+                            {% else %}<span class="badge bg-light text-dark">不浮动</span>{% endif %}
                         </td>
-                        <td>{{ '%.2f'|format(f.discount_value or 0) }}{% if f.discount_type == '比例' %}%{% endif %}</td>
+                        <td>
+                            {% if f.float_type == 'ratio' %}
+                                {% set val = (f.float_value or 0)|float %}
+                                {% if val == 0 %}-{% else %}{{ '+' if val > 0 else '' }}{{ '%.2f'|format(val) }}%{% endif %}
+                            {% elif f.float_type == 'amount' %}
+                                {% set val = (f.float_value or 0)|float %}
+                                {% if val == 0 %}-{% else %}¥{{ '+' if val > 0 else '' }}{{ '%.2f'|format(val) }}{% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
                         <td>{{ '%.2f'|format(f.service_fee_rate or 0) }}%</td>
                         <td>{{ '%.2f'|format(f.capital_fee_rate or 0) }}%</td>
                         <td>{{ '%.0f'|format(f.tax_rate or 0) }}%</td>

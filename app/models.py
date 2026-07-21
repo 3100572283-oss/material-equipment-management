@@ -27,11 +27,12 @@ class User(UserMixin, db.Model):
     can_view_amount = db.Column(db.Boolean, default=True)  # 是否可查看金额
     notify_channels = db.Column(db.Text, nullable=True)  # JSON，通知渠道偏好
     per_page = db.Column(db.Integer, default=10)  # 每页显示条数偏好
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
     last_login_at = db.Column(db.DateTime, nullable=True)
     failed_login_count = db.Column(db.Integer, default=0)
     locked_until = db.Column(db.DateTime, nullable=True)
     last_login_ip = db.Column(db.String(64), nullable=True)
+    must_change_password = db.Column(db.Boolean, default=False)
 
     dept = db.relationship('SysDept', backref='users')
     role_obj = db.relationship('SysRole', backref='users')
@@ -39,9 +40,17 @@ class User(UserMixin, db.Model):
     def is_admin(self):
         if self.role_obj and self.role_obj.role_code == 'super_admin':
             return True
+        # 兜底：兼容老数据/role 字段被清空的情况
+        if not self.role_obj and self.role:
+            return self.role == 'admin'
         return self.role == 'admin'
 
     def is_editor(self):
+        if self.role_obj:
+            editable_codes = ('super_admin', 'material_admin', 'material_manager',
+                              'finance_user', 'finance', 'admin', 'editor')
+            if self.role_obj.role_code in editable_codes:
+                return True
         return self.role in ('admin', 'editor')
 
     def is_viewer(self):
@@ -49,9 +58,8 @@ class User(UserMixin, db.Model):
 
     def can_edit(self):
         if self.role_obj:
-            # 兼容所有可编辑角色代码(包括历史命名变体)
             editable_codes = ('super_admin', 'material_admin', 'material_manager',
-                             'finance_user', 'finance', 'admin')
+                             'finance_user', 'finance', 'admin', 'editor', 'material_staff')
             return self.role_obj.role_code in editable_codes
         return self.role in ('admin', 'editor')
 
@@ -181,7 +189,7 @@ class SysDept(db.Model):
     sort = db.Column(db.Integer, default=0)
     status = db.Column(db.Boolean, default=True)
     remark = db.Column(db.String(256), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     children = db.relationship('SysDept', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
     project = db.relationship('Project', backref='depts')
@@ -233,12 +241,15 @@ class SysAnnouncement(db.Model):
     content = db.Column(db.Text, nullable=True)
     type = db.Column(db.String(16), default='notice')  # notice/maintenance/important
     is_popup = db.Column(db.Boolean, default=False)
-    publish_time = db.Column(db.DateTime, default=datetime.utcnow)
+    publish_time = db.Column(db.DateTime, default=datetime.now)
     expire_time = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.Boolean, default=True)
     created_by = db.Column(db.String(64), nullable=True)
     created_by_id = db.Column(db.Integer, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    visible_scope = db.Column(db.String(16), default='all')  # all/role/dept
+    visible_roles = db.Column(db.Text, nullable=True)  # JSON数组，角色ID列表
+    visible_depts = db.Column(db.Text, nullable=True)  # JSON数组，部门ID列表
 
 class SysAnnouncementRead(db.Model):
     """公告已读记录表"""
@@ -246,7 +257,7 @@ class SysAnnouncementRead(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     announcement_id = db.Column(db.Integer, db.ForeignKey('sys_announcement.id'), nullable=False)
     user_id = db.Column(db.Integer, nullable=False)
-    read_at = db.Column(db.DateTime, default=datetime.utcnow)
+    read_at = db.Column(db.DateTime, default=datetime.now)
 
     __table_args__ = (
         db.UniqueConstraint('announcement_id', 'user_id', name='uq_announcement_user'),
@@ -263,7 +274,7 @@ class SysRole(db.Model):
     status = db.Column(db.Boolean, default=True)
     sort = db.Column(db.Integer, default=0)
     remark = db.Column(db.String(256), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     _DATA_SCOPE_MAP = {
         'all': '全部数据',
@@ -292,7 +303,7 @@ class SysMenu(db.Model):
     status = db.Column(db.Boolean, default=True)
     permission = db.Column(db.String(128), nullable=True)  # 权限标识
     remark = db.Column(db.String(256), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     children = db.relationship('SysMenu', backref=db.backref('parent_menu', remote_side=[id]), lazy='dynamic')
 
@@ -338,7 +349,7 @@ class Project(db.Model):
     project_type = db.Column(db.String(32), nullable=True)  # 项目类型（字典 project_type）
     is_archived = db.Column(db.Boolean, default=False)
     module_config = db.Column(db.Text, nullable=True)  # JSON格式存储模块开关配置
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     # Relationships
     materials = db.relationship('Material', backref='project', lazy='dynamic', cascade='all, delete-orphan')
@@ -435,7 +446,7 @@ class Supplier(db.Model):
     source = db.Column(db.String(16), default='project')  # company 公司级主库 / project 项目级
     status = db.Column(db.String(16), default='qualified')  # qualified 合格 / unqualified 不合格 / blacklist 黑名单
     create_dept = db.Column(db.Integer, nullable=True)  # 创建部门
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 class Category(db.Model):
@@ -451,7 +462,7 @@ class Category(db.Model):
     batch_management = db.Column(db.Boolean, default=False)  # 是否启用批次管理
     # 主数据统一改造：公司级统一分类（source=company 时全公司共享）
     source = db.Column(db.String(16), default='project')  # company 公司级 / project 项目级
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     materials = db.relationship('Material', backref='category', lazy='dynamic')
     children = db.relationship('Category', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
@@ -471,7 +482,7 @@ class Material(db.Model):
     source = db.Column(db.String(16), default='project')  # company 公司级主库 / project 项目级
     status = db.Column(db.String(16), default='active')  # active 启用 / inactive 停用
     create_dept = db.Column(db.Integer, nullable=True)  # 创建部门
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 # 主数据统一改造：项目常用物资关联表
@@ -484,7 +495,7 @@ class ProjectMaterial(db.Model):
     material_id = db.Column(db.Integer, db.ForeignKey('materials.id'), nullable=False)
     is_common = db.Column(db.Boolean, default=True)  # 是否常用
     sort = db.Column(db.Integer, default=0)  # 项目内排序
-    create_time = db.Column(db.DateTime, default=datetime.utcnow)
+    create_time = db.Column(db.DateTime, default=datetime.now)
 
     project = db.relationship('Project', backref='project_materials')
     material = db.relationship('Material', backref='project_links')
@@ -500,7 +511,7 @@ class ProjectSupplier(db.Model):
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
     is_common = db.Column(db.Boolean, default=True)  # 是否常用
     sort = db.Column(db.Integer, default=0)  # 项目内排序
-    create_time = db.Column(db.DateTime, default=datetime.utcnow)
+    create_time = db.Column(db.DateTime, default=datetime.now)
 
     project = db.relationship('Project', backref='project_suppliers')
     supplier = db.relationship('Supplier', backref='project_links')
@@ -517,7 +528,7 @@ class UsageUnit(db.Model):
     auth_file = db.Column(db.String(256), nullable=True)
     is_subcontractor = db.Column(db.Boolean, default=False)  # 是否分包单位
     subcontract_contract = db.Column(db.String(128), nullable=True)  # 关联分包合同
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     teams = db.relationship('UnitTeam', backref='unit', lazy='dynamic', cascade='all, delete-orphan')
 
@@ -529,7 +540,7 @@ class UnitTeam(db.Model):
     team_name = db.Column(db.String(128), nullable=False)
     picker_name = db.Column(db.String(64), nullable=True)
     phone = db.Column(db.String(32), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 class WorkNumber(db.Model):
@@ -541,7 +552,7 @@ class WorkNumber(db.Model):
     item_name = db.Column(db.String(128), nullable=True)
     team_name = db.Column(db.String(128), nullable=True)
     picker = db.Column(db.String(64), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     quotas = db.relationship('MaterialQuota', backref='work_number', lazy='dynamic', cascade='all, delete-orphan')
 
@@ -555,8 +566,8 @@ class MaterialQuota(db.Model):
     quota_type = db.Column(db.String(16), default='quantity')  # quantity / amount
     quota_quantity = db.Column(db.Numeric(18, 4), default=0)
     quota_amount = db.Column(db.Numeric(18, 2), default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     material = db.relationship('Material')
 
@@ -582,10 +593,11 @@ class Contract(db.Model):
     status = db.Column(db.String(32), default='正常履约')  # 正常履约/履约异常/已终止/已结算
     approval_status = db.Column(db.String(16), default='passed')  # draft/pending/approving/passed/rejected/withdrawn
     is_final_settled = db.Column(db.Boolean, default=False)
+    is_deleted = db.Column(db.Boolean, default=False)
     is_litigated = db.Column(db.Boolean, default=False)
     attachment = db.Column(db.String(256), nullable=True)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     # Relationships
     items = db.relationship('ContractItem', backref='contract', lazy='dynamic', cascade='all, delete-orphan')
@@ -634,7 +646,7 @@ class Invoice(db.Model):
     amount_without_tax = db.Column(db.Numeric(18, 2), default=0)
     file_path = db.Column(db.String(256), nullable=True)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 class Payment(db.Model):
@@ -652,7 +664,7 @@ class Payment(db.Model):
     amount_without_tax = db.Column(db.Numeric(18, 2), default=0)
     tax_amount = db.Column(db.Numeric(18, 2), default=0)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 class PaymentApplication(db.Model):
@@ -677,8 +689,8 @@ class PaymentApplication(db.Model):
     payment_id = db.Column(db.Integer, db.ForeignKey('payments.id'), nullable=True)
     change_reason = db.Column(db.String(256), nullable=True)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     supplier = db.relationship('Supplier', backref=db.backref('payment_applications', lazy='dynamic'))
     contract = db.relationship('Contract', backref=db.backref('payment_applications', lazy='dynamic'))
@@ -708,12 +720,13 @@ class StockIn(db.Model):
     quality_status = db.Column(db.String(16), default='draft')  # draft/pending/passed/rejected
     quality_checker = db.Column(db.String(64), nullable=True)
     quality_check_time = db.Column(db.DateTime, nullable=True)
+    is_deleted = db.Column(db.Boolean, default=False)
     quality_remark = db.Column(db.Text, nullable=True)
     location_lat = db.Column(db.Float, nullable=True)
     location_lng = db.Column(db.Float, nullable=True)
     location_accuracy = db.Column(db.Float, nullable=True)
     location_time = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     items = db.relationship('StockInItem', backref='stock_in', lazy='dynamic', cascade='all, delete-orphan')
     supplier = db.relationship('Supplier', backref=db.backref('stock_ins', lazy='dynamic'))
@@ -748,7 +761,7 @@ class Inventory(db.Model):
     in_transit_qty = db.Column(db.Numeric(18, 4), default=0)  # 在途数量
     estimated_amount = db.Column(db.Numeric(18, 2), default=0)
     actual_amount = db.Column(db.Numeric(18, 2), default=0)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     __table_args__ = (
         db.UniqueConstraint('project_id', 'material_id', name='uq_project_material'),
@@ -775,11 +788,12 @@ class StockOut(db.Model):
     total_amount = db.Column(db.Numeric(18, 2), default=0)
     is_reconciled = db.Column(db.Boolean, default=False)
     approval_status = db.Column(db.String(16), default='passed')
+    is_deleted = db.Column(db.Boolean, default=False)
     location_lat = db.Column(db.Float, nullable=True)
     location_lng = db.Column(db.Float, nullable=True)
     location_accuracy = db.Column(db.Float, nullable=True)
     location_time = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     items = db.relationship('StockOutItem', backref='stock_out', lazy='dynamic', cascade='all, delete-orphan')
     usage_unit = db.relationship('UsageUnit', backref='stock_outs')
@@ -819,8 +833,8 @@ class PriceFormula(db.Model):
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=True)  # 为空则通用
     material_category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
     base_price_type = db.Column(db.String(16), default='手动输入')  # 信息价/合同价/手动输入
-    discount_type = db.Column(db.String(16), default='不下浮')  # 比例/金额/不下浮
-    discount_value = db.Column(db.Numeric(18, 4), default=0)
+    float_type = db.Column(db.String(16), default='none')  # ratio(比例浮动)/amount(金额浮动)/none(不浮动)
+    float_value = db.Column(db.Numeric(18, 4), default=0)  # 正数=上浮，负数=下浮，0=不浮动
     service_fee_rate = db.Column(db.Numeric(18, 4), default=0)  # 服务费率(%)
     service_fee_fixed = db.Column(db.Numeric(18, 4), default=0)  # 服务费固定金额
     capital_fee_rate = db.Column(db.Numeric(18, 4), default=0)  # 资金使用费率(月息%)
@@ -829,9 +843,21 @@ class PriceFormula(db.Model):
     tax_included = db.Column(db.Boolean, default=True)  # 计算结果是否含税
     status = db.Column(db.String(16), default='启用')  # 启用/禁用
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     supplier = db.relationship('Supplier', backref=db.backref('price_formulas', lazy='dynamic'))
+
+    @property
+    def discount_type(self):
+        if self.float_type == 'ratio':
+            return '比例'
+        elif self.float_type == 'amount':
+            return '金额'
+        return '不下浮'
+
+    @property
+    def discount_value(self):
+        return abs(float(self.float_value or 0))
 
 
 class Reconciliation(db.Model):
@@ -850,7 +876,7 @@ class Reconciliation(db.Model):
     total_tax_amount = db.Column(db.Numeric(18, 2), default=0)  # 税额合计
     approval_status = db.Column(db.String(16), default='passed')
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
     confirmed_at = db.Column(db.DateTime, nullable=True)
     confirmed_by = db.Column(db.String(64), nullable=True)
 
@@ -889,7 +915,7 @@ class SystemConfig(db.Model):
     config_key = db.Column(db.String(64), unique=True, nullable=False, index=True)
     config_value = db.Column(db.String(256), nullable=True)
     description = db.Column(db.String(256), nullable=True)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
 
 class OperationLog(db.Model):
@@ -901,7 +927,7 @@ class OperationLog(db.Model):
     module = db.Column(db.String(64), nullable=True)
     description = db.Column(db.Text, nullable=True)
     ip_address = db.Column(db.String(64), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     user = db.relationship('User', backref='operation_logs')
 
@@ -913,7 +939,7 @@ class SysDictType(db.Model):
     dict_name = db.Column(db.String(128), nullable=False)
     remark = db.Column(db.String(256), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     items = db.relationship('SysDictItem', backref='dict_type_ref', lazy='dynamic', cascade='all, delete-orphan')
 
@@ -926,7 +952,7 @@ class SysDictItem(db.Model):
     item_value = db.Column(db.String(128), nullable=False)  # 存储值
     sort_order = db.Column(db.Integer, default=0)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 # ========== AI助手 ==========
@@ -945,7 +971,7 @@ class AICallLog(db.Model):
     cost_time = db.Column(db.Integer, default=0)
     success = db.Column(db.Boolean, default=True)
     error_msg = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 # ========== 审批流程引擎 ==========
@@ -963,8 +989,8 @@ class ApprovalFlow(db.Model):
     scope = db.Column(db.String(16), default='company', index=True)  # company/project
     project_ids = db.Column(db.Text, nullable=True)  # JSON数组 ["1", "2"]
     is_default = db.Column(db.Boolean, default=False)  # 是否公司默认流程
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     nodes = db.relationship('ApprovalNode', backref='flow', lazy='dynamic',
                             cascade='all, delete-orphan', order_by='ApprovalNode.node_order')
@@ -999,7 +1025,7 @@ class ApprovalBranch(db.Model):
     condition_logic = db.Column(db.String(16), default='AND')  # AND/OR 多条件组合关系
     is_default = db.Column(db.Boolean, default=False)
     priority = db.Column(db.Integer, default=1)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     branch_nodes = db.relationship('ApprovalNode', backref='branch', lazy='dynamic',
                                    cascade='all, delete-orphan', order_by='ApprovalNode.node_order')
@@ -1070,11 +1096,11 @@ class ApprovalInstance(db.Model):
     biz_title = db.Column(db.String(256), nullable=True)
     applicant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True, index=True)
-    submit_time = db.Column(db.DateTime, default=datetime.utcnow)
+    submit_time = db.Column(db.DateTime, default=datetime.now)
     status = db.Column(db.String(16), default='draft', index=True)  # draft/pending/approving/passed/rejected/withdrawn
     current_node_id = db.Column(db.Integer, db.ForeignKey('approval_node.id'), nullable=True)
     reject_reason = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     applicant = db.relationship('User', foreign_keys=[applicant_id], backref='submitted_approvals')
     current_node = db.relationship('ApprovalNode', foreign_keys=[current_node_id])
@@ -1093,7 +1119,7 @@ class ApprovalRecord(db.Model):
     approver_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     action = db.Column(db.String(16), nullable=False)  # approve/reject/withdraw/skip
     opinion = db.Column(db.Text, nullable=True)
-    approve_time = db.Column(db.DateTime, default=datetime.utcnow)
+    approve_time = db.Column(db.DateTime, default=datetime.now)
 
     approver = db.relationship('User', foreign_keys=[approver_id])
     node = db.relationship('ApprovalNode', foreign_keys=[node_id])
@@ -1113,7 +1139,7 @@ class StockCheck(db.Model):
     status = db.Column(db.String(16), default='draft')  # draft/ongoing/confirmed/cancelled
     checker = db.Column(db.String(64), nullable=True)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     items = db.relationship('StockCheckItem', backref='stock_check', lazy='dynamic',
                             cascade='all, delete-orphan')
@@ -1166,7 +1192,7 @@ class PurchaseRequisition(db.Model):
     status = db.Column(db.String(16), default='draft')
     approval_instance_id = db.Column(db.Integer, db.ForeignKey('approval_instance.id'), nullable=True)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     items = db.relationship('PurchaseRequisitionItem', backref='purchase_requisition', lazy='dynamic', cascade='all, delete-orphan')
 
@@ -1214,7 +1240,7 @@ class MaterialTransfer(db.Model):
     handler = db.Column(db.String(64), nullable=True)
     remark = db.Column(db.Text, nullable=True)
     approval_instance_id = db.Column(db.Integer, db.ForeignKey('approval_instance.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     items = db.relationship('MaterialTransferItem', backref='material_transfer', lazy='dynamic', cascade='all, delete-orphan')
     from_project = db.relationship('Project', foreign_keys=[from_project_id])
@@ -1254,7 +1280,7 @@ class SupplierEvaluation(db.Model):
     total_score = db.Column(db.Numeric(5, 2), default=0)
     level = db.Column(db.String(16), nullable=True)
     comment = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     supplier = db.relationship('Supplier')
 
@@ -1278,7 +1304,7 @@ class TurnoverMaterial(db.Model):
     amortize_months = db.Column(db.Integer, default=0)
     status = db.Column(db.String(16), default='active')
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 class TurnoverInventory(db.Model):
@@ -1310,7 +1336,7 @@ class TurnoverRecord(db.Model):
     status = db.Column(db.String(16), default='in_use')  # in_use在用/returned已归还/partial部分归还
     rent_fee = db.Column(db.Numeric(18, 2), default=0)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     material = db.relationship('TurnoverMaterial')
 
@@ -1367,7 +1393,7 @@ class Equipment(db.Model):
     remark = db.Column(db.Text, nullable=True)
     is_deleted = db.Column(db.Boolean, default=False)
     deleted_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     supplier = db.relationship('Supplier', foreign_keys=[supplier_id])
 
@@ -1418,7 +1444,7 @@ class EquipmentStatusLog(db.Model):
     operator_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     operator_name = db.Column(db.String(64), nullable=True)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     equipment = db.relationship('Equipment', backref='status_logs')
     operator = db.relationship('User', foreign_keys=[operator_id])
@@ -1442,7 +1468,7 @@ class EquipmentRentSettle(db.Model):
     total_amount = db.Column(db.Numeric(18, 2), default=0)  # 结算总金额
     status = db.Column(db.String(16), default='draft')  # draft草稿/confirmed已确认/invoiced已开票/paid已付款
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     equipment = db.relationship('Equipment', backref='rent_settles')
     supplier = db.relationship('Supplier')
@@ -1461,7 +1487,7 @@ class EquipmentMaintenance(db.Model):
     next_maintain_date = db.Column(db.Date, nullable=True)
     operator = db.Column(db.String(64), nullable=True)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     equipment = db.relationship('Equipment')
 
@@ -1485,7 +1511,7 @@ class EquipmentInspection(db.Model):
     next_inspect_date = db.Column(db.Date, nullable=True)
     status = db.Column(db.String(16), default='active')  # active/inactive
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     project = db.relationship('Project')
     responsible = db.relationship('User', foreign_keys=[responsible_id])
@@ -1504,7 +1530,7 @@ class EquipmentInspectionTask(db.Model):
     assignee_name = db.Column(db.String(64), nullable=True)
     status = db.Column(db.String(16), default='pending')  # pending/done/skipped/overdue
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     inspection = db.relationship('EquipmentInspection', backref='tasks')
     equipment = db.relationship('Equipment')
@@ -1527,7 +1553,7 @@ class EquipmentInspectionRecord(db.Model):
     issue_desc = db.Column(db.Text, nullable=True)  # 异常描述
     auto_maintenance = db.Column(db.Boolean, default=False)  # 是否已自动生成维修工单
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     equipment = db.relationship('Equipment')
     inspector = db.relationship('User', foreign_keys=[inspector_id])
@@ -1544,7 +1570,7 @@ class MaterialQrCode(db.Model):
     qr_code = db.Column(db.String(256), nullable=False, unique=True)
     batch_no = db.Column(db.String(64), nullable=True)
     print_count = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 # ========== 审计日志（增强版） ==========
@@ -1563,7 +1589,7 @@ class SysOperationLog(db.Model):
     params = db.Column(db.Text, nullable=True)
     ip_address = db.Column(db.String(64), nullable=True)
     user_agent = db.Column(db.String(256), nullable=True)
-    operation_time = db.Column(db.DateTime, default=datetime.utcnow)
+    operation_time = db.Column(db.DateTime, default=datetime.now)
     cost_time = db.Column(db.Integer, default=0)
     status = db.Column(db.String(16), default='success')
     error_msg = db.Column(db.Text, nullable=True)
@@ -1578,7 +1604,7 @@ class LoginLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, nullable=True, index=True)
     username = db.Column(db.String(64), nullable=True, index=True)
-    login_time = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    login_time = db.Column(db.DateTime, default=datetime.now, index=True)
     logout_time = db.Column(db.DateTime, nullable=True)
     last_active_at = db.Column(db.DateTime, nullable=True)
     ip_address = db.Column(db.String(64), nullable=True)
@@ -1596,7 +1622,7 @@ class ErrorLog(db.Model):
     """错误日志"""
     __tablename__ = 'error_logs'
     id = db.Column(db.Integer, primary_key=True)
-    error_time = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    error_time = db.Column(db.DateTime, default=datetime.now, index=True)
     error_type = db.Column(db.String(128), nullable=True)
     error_message = db.Column(db.Text, nullable=True)
     stack_trace = db.Column(db.Text, nullable=True)
@@ -1630,7 +1656,7 @@ class Attachment(db.Model):
     mime_type = db.Column(db.String(128), nullable=True)
     uploaded_by = db.Column(db.String(64), nullable=True)
     uploaded_by_id = db.Column(db.Integer, nullable=True)
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_at = db.Column(db.DateTime, default=datetime.now)
     is_deleted = db.Column(db.Boolean, default=False)
     deleted_at = db.Column(db.DateTime, nullable=True)
 
@@ -1649,7 +1675,7 @@ class NotificationLog(db.Model):
     recipients = db.Column(db.String(512), nullable=True)
     status = db.Column(db.String(16), default='pending')  # pending/success/failed
     error_msg = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 class Message(db.Model):
@@ -1664,7 +1690,7 @@ class Message(db.Model):
     biz_id = db.Column(db.Integer, nullable=True)
     url = db.Column(db.String(256), nullable=True)
     is_read = db.Column(db.Boolean, default=False, index=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     user = db.relationship('User', backref=db.backref('messages', cascade='all, delete-orphan'))
 
@@ -1685,7 +1711,7 @@ class DataChangeLog(db.Model):
     new_value = db.Column(db.Text, nullable=True)
     changed_by = db.Column(db.String(64), nullable=True)
     changed_by_id = db.Column(db.Integer, nullable=True)
-    changed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    changed_at = db.Column(db.DateTime, default=datetime.now)
     ip_address = db.Column(db.String(64), nullable=True)
     reason = db.Column(db.String(256), nullable=True)
 
@@ -1704,7 +1730,7 @@ class PeriodClose(db.Model):
     reopen_at = db.Column(db.DateTime, nullable=True)
     reopen_by = db.Column(db.String(64), nullable=True)
     reopen_reason = db.Column(db.String(256), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     __table_args__ = (
         db.UniqueConstraint('project_id', 'period', name='uq_project_period'),
@@ -1726,7 +1752,7 @@ class MovementSnapshot(db.Model):
     out_amount = db.Column(db.Numeric(18, 2), default=0)
     end_qty = db.Column(db.Numeric(18, 4), default=0)
     end_amount = db.Column(db.Numeric(18, 2), default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     material = db.relationship('Material')
 
@@ -1750,8 +1776,8 @@ class InventoryBatch(db.Model):
     quantity = db.Column(db.Numeric(18, 4), default=0)
     unit_price = db.Column(db.Numeric(18, 4), default=0)
     stock_in_date = db.Column(db.Date, nullable=True)  # 入库日期（用于先进先出排序）
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     material = db.relationship('Material', backref='inventory_batches')
 
@@ -1783,7 +1809,7 @@ class MaterialScrap(db.Model):
     location_lng = db.Column(db.Float, nullable=True)  # 现场定位-经度
     location_accuracy = db.Column(db.Float, nullable=True)  # 定位精度（米）
     location_time = db.Column(db.DateTime, nullable=True)  # 定位时间
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     items = db.relationship('MaterialScrapItem', backref='scrap', cascade='all, delete-orphan')
     usage_unit = db.relationship('UsageUnit', backref='scraps')
@@ -1815,7 +1841,9 @@ class ConcreteTicket(db.Model):
     ticket_no = db.Column(db.String(64), nullable=False)  # 小票号（自动生成 CT-{pid}-{YYYYMMDD}-{seq}，可修改）
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=True)
     supplier_name = db.Column(db.String(128), nullable=True)
+    contract_id = db.Column(db.Integer, db.ForeignKey('contracts.id'), nullable=True)
     strength_grade = db.Column(db.String(32), nullable=True)  # 强度等级 C30/C40
+    material_id = db.Column(db.Integer, db.ForeignKey('materials.id'), nullable=True)  # 关联项目常用物资（商砼类）
     pour_part = db.Column(db.String(128), nullable=True)  # 浇筑部位
     work_number_id = db.Column(db.Integer, db.ForeignKey('work_numbers.id'), nullable=True)  # 关联工号
     vehicle_count = db.Column(db.Integer, default=1)  # 车次
@@ -1833,10 +1861,12 @@ class ConcreteTicket(db.Model):
     location_accuracy = db.Column(db.Float, nullable=True)
     location_time = db.Column(db.DateTime, nullable=True)
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     project = db.relationship('Project')
     supplier = db.relationship('Supplier')
+    contract = db.relationship('Contract')
+    material = db.relationship('Material')
     work_number = db.relationship('WorkNumber')
 
 
@@ -1853,8 +1883,8 @@ class SubcontractDeduction(db.Model):
     total_amount = db.Column(db.Numeric(18, 2), default=0)
     status = db.Column(db.String(16), default='draft')  # draft/confirmed/paid
     remark = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     usage_unit = db.relationship('UsageUnit')
     __table_args__ = (
@@ -1889,5 +1919,5 @@ class BarcodeLabel(db.Model):
     unit = db.Column(db.String(32), nullable=True)
     label_size = db.Column(db.String(32), default='40x30')  # 40x30 / 60x40
     quantity = db.Column(db.Integer, default=1)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)

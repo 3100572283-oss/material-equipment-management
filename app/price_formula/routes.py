@@ -31,14 +31,18 @@ def create():
         return redirect(url_for('main.index'))
 
     if request.method == 'POST':
+        float_type_map = {'不下浮': 'none', '比例': 'ratio', '金额': 'amount'}
+        float_type = float_type_map.get(request.form.get('discount_type', '不下浮'), 'none')
+        float_value = request.form.get('discount_value', type=float) or 0
+        
         formula = PriceFormula(
             project_id=project_id,
             formula_name=request.form.get('formula_name', '').strip(),
             supplier_id=request.form.get('supplier_id', type=int) or None,
             material_category_id=request.form.get('material_category_id', type=int) or None,
             base_price_type=request.form.get('base_price_type', '手动输入'),
-            discount_type=request.form.get('discount_type', '不下浮'),
-            discount_value=request.form.get('discount_value', type=float) or 0,
+            float_type=float_type,
+            float_value=float_value,
             service_fee_rate=request.form.get('service_fee_rate', type=float) or 0,
             service_fee_fixed=request.form.get('service_fee_fixed', type=float) or 0,
             capital_fee_rate=request.form.get('capital_fee_rate', type=float) or 0,
@@ -65,12 +69,15 @@ def create():
 def edit(id):
     formula = PriceFormula.query.get_or_404(id)
     if request.method == 'POST':
+        float_type_map = {'不下浮': 'none', '比例': 'ratio', '金额': 'amount'}
+        float_type = float_type_map.get(request.form.get('discount_type', '不下浮'), 'none')
+        
         formula.formula_name = request.form.get('formula_name', '').strip()
         formula.supplier_id = request.form.get('supplier_id', type=int) or None
         formula.material_category_id = request.form.get('material_category_id', type=int) or None
         formula.base_price_type = request.form.get('base_price_type', '手动输入')
-        formula.discount_type = request.form.get('discount_type', '不下浮')
-        formula.discount_value = request.form.get('discount_value', type=float) or 0
+        formula.float_type = float_type
+        formula.float_value = request.form.get('discount_value', type=float) or 0
         formula.service_fee_rate = request.form.get('service_fee_rate', type=float) or 0
         formula.service_fee_fixed = request.form.get('service_fee_fixed', type=float) or 0
         formula.capital_fee_rate = request.form.get('capital_fee_rate', type=float) or 0
@@ -120,8 +127,8 @@ def api_by_supplier(supplier_id):
         'id': f.id,
         'formula_name': f.formula_name,
         'base_price_type': f.base_price_type,
-        'discount_type': f.discount_type,
-        'discount_value': float(f.discount_value or 0),
+        'float_type': f.float_type,
+        'float_value': float(f.float_value or 0),
         'service_fee_rate': float(f.service_fee_rate or 0),
         'service_fee_fixed': float(f.service_fee_fixed or 0),
         'capital_fee_rate': float(f.capital_fee_rate or 0),

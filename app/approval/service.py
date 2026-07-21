@@ -251,7 +251,7 @@ def submit_approval(biz_type, biz_id, applicant_id=None, opinion='', project_id=
         biz_title=get_biz_title(biz_type, biz_id),
         applicant_id=applicant_id,
         project_id=project_id,
-        submit_time=datetime.utcnow(),
+        submit_time=datetime.now(),
         status='pending',
         current_node_id=first_node.id
     )
@@ -266,7 +266,7 @@ def submit_approval(biz_type, biz_id, applicant_id=None, opinion='', project_id=
         approver_id=applicant_id,
         action='submit',
         opinion=opinion or '提交审批',
-        approve_time=datetime.utcnow()
+        approve_time=datetime.now()
     )
     db.session.add(record)
 
@@ -321,7 +321,7 @@ def approve(instance_id, approver_id=None, opinion=''):
         approver_id=approver_id,
         action='approve',
         opinion=opinion or '同意',
-        approve_time=datetime.utcnow()
+        approve_time=datetime.now()
     )
     db.session.add(record)
 
@@ -373,7 +373,7 @@ def approve(instance_id, approver_id=None, opinion=''):
                     approver_id=pending_id,
                     action='skip',
                     opinion='无需审批（或签）',
-                    approve_time=datetime.utcnow()
+                    approve_time=datetime.now()
                 )
                 db.session.add(skip_rec)
 
@@ -458,7 +458,7 @@ def reject(instance_id, approver_id=None, reason=''):
         approver_id=approver_id,
         action='reject',
         opinion=reason,
-        approve_time=datetime.utcnow()
+        approve_time=datetime.now()
     )
     db.session.add(record)
 
@@ -482,7 +482,7 @@ def reject(instance_id, approver_id=None, reason=''):
                     approver_id=pending_id,
                     action='skip',
                     opinion='已被驳回',
-                    approve_time=datetime.utcnow()
+                    approve_time=datetime.now()
                 )
                 db.session.add(skip_rec)
 
@@ -530,7 +530,7 @@ def withdraw(instance_id, applicant_id=None, reason=''):
         approver_id=applicant_id,
         action='withdraw',
         opinion=reason or '撤回审批',
-        approve_time=datetime.utcnow()
+        approve_time=datetime.now()
     )
     db.session.add(record)
 

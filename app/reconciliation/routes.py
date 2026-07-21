@@ -498,8 +498,20 @@ def cancel_confirm(id):
         flash('只有已确认状态的对账单才能撤销。', 'danger')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
-    if not current_user.is_admin():
-        flash('只有管理员才能撤销已确认的对账单。', 'danger')
+    from app.models import Invoice, Payment
+    has_invoice = Invoice.query.filter_by(contract_id=reconciliation.contract_id).count() > 0
+    has_payment = Payment.query.filter_by(contract_id=reconciliation.contract_id).count() > 0
+    if has_invoice or has_payment:
+        flash('已关联发票或付款记录，无法撤销对账。', 'danger')
+        return redirect(url_for('reconciliation.detail', id=reconciliation.id))
+
+    has_permission = current_user.is_admin() or \
+                     current_user.get_role_code() in ['project_admin', 'material_manager', 'finance_manager'] or \
+                     current_user.has_permission('reconciliation:cancel') or \
+                     (reconciliation.confirmed_by == current_user.name or reconciliation.confirmed_by == current_user.username)
+    
+    if not has_permission:
+        flash('您没有权限撤销此对账单。', 'danger')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
     reconciliation.status = '草稿'

@@ -47,7 +47,7 @@ def _record_login_log(user, status, fail_reason=None):
     log = LoginLog(
         user_id=user.id if user and status == 'success' else None,
         username=user.username if user else request.form.get('username', ''),
-        login_time=datetime.utcnow(),
+        login_time=datetime.now(),
         ip_address=request.remote_addr,
         user_agent=user_agent[:512] if user_agent else None,
         browser=browser,
@@ -74,15 +74,15 @@ def login():
 
         user = User.query.filter_by(username=username).first()
 
-        if user and user.locked_until and user.locked_until > datetime.utcnow():
+        if user and user.locked_until and user.locked_until > datetime.now():
             _record_login_log(user, 'failed', fail_reason='账号已锁定')
-            remaining = int((user.locked_until - datetime.utcnow()).total_seconds() / 60)
+            remaining = int((user.locked_until - datetime.now()).total_seconds() / 60)
             flash(f'账号已被锁定，请 {remaining} 分钟后再试。', 'danger')
             return render_template('auth/login.html')
 
         if user and check_password_hash(user.password_hash, password):
             login_user(user, remember=remember)
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = datetime.now()
             user.last_login_ip = request.remote_addr
             user.failed_login_count = 0
             user.locked_until = None
@@ -90,6 +90,10 @@ def login():
             flask_session['login_log_id'] = log_id
             db.session.commit()
             log_operation('登录', module='系统', description=f'用户 {username} 登录系统')
+            # 强制修改密码拦截
+            if user.must_change_password:
+                flash('为了账户安全，请先修改密码。', 'warning')
+                return redirect(url_for('auth.change_password', forced='1'))
             next_page = request.args.get('next')
             flash('登录成功！', 'success')
             return redirect(next_page if next_page else url_for('main.index'))
@@ -97,7 +101,7 @@ def login():
             if user:
                 user.failed_login_count = (user.failed_login_count or 0) + 1
                 if user.failed_login_count >= 5:
-                    user.locked_until = datetime.utcnow() + timedelta(minutes=30)
+                    user.locked_until = datetime.now() + timedelta(minutes=30)
                     _record_login_log(user, 'failed', fail_reason='连续失败5次，账号锁定30分钟')
                     db.session.commit()
                     flash('连续登录失败5次，账号已锁定30分钟。', 'danger')
@@ -121,7 +125,7 @@ def logout():
     if log_id:
         log = LoginLog.query.get(log_id)
         if log:
-            log.logout_time = datetime.utcnow()
+            log.logout_time = datetime.now()
             db.session.commit()
     log_operation('退出', module='系统', description=f'用户 {current_user.username} 退出系统')
     logout_user()
@@ -136,6 +140,8 @@ def logout():
 @login_required
 @log_audit(module='auth', operation='修改密码')
 def change_password():
+    forced = request.args.get('forced') == '1'
+
     if request.method == 'POST':
         old_password = request.form.get('old_password', '')
         new_password = request.form.get('new_password', '')
@@ -147,12 +153,17 @@ def change_password():
             flash('两次输入的新密码不一致。', 'danger')
         elif len(new_password) < 6:
             flash('新密码长度不能少于6位。', 'danger')
+        elif new_password == old_password:
+            flash('新密码不能与原密码相同。', 'danger')
         else:
             current_user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
+            current_user.must_change_password = False
             db.session.commit()
-            log_operation('修改', module='系统', description=f'用户 {current_user.username} 修改密码')
-            flash('密码修改成功，请重新登录。', 'success')
+            log_operation('修改密码', module='系统', description=f'用户 {current_user.username} 修改密码')
+            flash('密码修改成功。', 'success')
+            if forced:
+                return redirect(url_for('main.index'))
             logout_user()
             return redirect(url_for('auth.login'))
 
-    return render_template('auth/change_password.html')
+    return render_template('auth/change_password.html', forced=forced)

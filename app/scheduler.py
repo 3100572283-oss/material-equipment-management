@@ -37,7 +37,7 @@ def init_scheduler(app):
             from app.utils import get_config
             from datetime import timedelta
             retention = int(get_config('audit_log_retention_days', '365'))
-            cutoff = datetime.utcnow() - timedelta(days=retention)
+            cutoff = datetime.now() - timedelta(days=retention)
             SysOperationLog.query.filter(SysOperationLog.operation_time < cutoff).delete()
             db.session.commit()
             print(f"[Scheduler] Audit logs older than {retention} days cleaned at {datetime.now()}")
@@ -57,7 +57,7 @@ def init_scheduler(app):
             from datetime import timedelta
             from sqlalchemy import text
             retention = int(get_config('recycle_bin_retention_days', '30'))
-            cutoff = datetime.utcnow() - timedelta(days=retention)
+            cutoff = datetime.now() - timedelta(days=retention)
             tables = ['contracts', 'stock_ins', 'stock_outs', 'suppliers', 'materials',
                       'payments', 'reconciliations', 'equipment', 'turnover_material']
             for tbl in tables:

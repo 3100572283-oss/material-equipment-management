@@ -305,9 +305,12 @@
             },
             function (err) {
                 console.warn('定位失败：', err.message);
+                if (window.M && M.toast) {
+                    M.toast('无法获取位置，请检查定位权限', 'warning');
+                }
                 resolve(null);
             },
-            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
         );
     }
 

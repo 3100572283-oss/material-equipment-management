@@ -538,6 +538,35 @@ def init_steel_specs():
     print("Steel specs initialized")
 
 
+def init_default_users():
+    """初始化默认管理员账号（首次启动时）"""
+    from app.models import User
+    if User.query.count() > 0:
+        return
+
+    from werkzeug.security import generate_password_hash
+    from flask import current_app
+
+    default_pwd = current_app.config.get('ADMIN_DEFAULT_PASSWORD', 'Admin@2024')
+    pwd_hash = generate_password_hash(default_pwd, method='pbkdf2:sha256')
+
+    users = [
+        User(username='admin', password_hash=pwd_hash, role='admin',
+             name='系统管理员', can_view_amount=True, per_page=10,
+             data_scope='project'),
+        User(username='editor', password_hash=pwd_hash, role='editor',
+             name='数据录入员', can_view_amount=True, per_page=10,
+             data_scope='project'),
+        User(username='viewer', password_hash=pwd_hash, role='viewer',
+             name='查看员', can_view_amount=False, per_page=10,
+             data_scope='project'),
+    ]
+    for u in users:
+        db.session.add(u)
+    db.session.commit()
+    print("Default users initialized (admin/editor/viewer)")
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -972,6 +1001,8 @@ def create_app(config_class=Config):
         # 主数据统一改造：建立项目常用关联
         from app.utils import init_master_data_unification
         init_master_data_unification()
+        # 初始化默认管理员账号
+        init_default_users()
 
     # 拦截禁用菜单的访问 & 模块开关拦截 & 更新用户活跃时间 & 初始化向导
     @app.before_request
@@ -1016,7 +1047,7 @@ def create_app(config_class=Config):
         # 更新用户最后活跃时间（60秒更新一次，减轻数据库压力）
         if current_user.is_authenticated:
             last_update = session.get('_last_active_update')
-            now = datetime.utcnow()
+            now = datetime.now()
             if not last_update or (now - datetime.fromisoformat(last_update)).total_seconds() > 60:
                 session['_last_active_update'] = now.isoformat()
                 # 更新LoginLog中最新的成功登录记录
@@ -1029,6 +1060,15 @@ def create_app(config_class=Config):
                         _db.session.commit()
                 except Exception:
                     _db.session.rollback()
+
+            # 强制修改密码拦截：must_change_password=True 的用户只能访问修改密码页、登出、静态资源
+            if current_user.must_change_password and endpoint:
+                allowed_endpoints = (
+                    'auth.change_password', 'auth.logout', 'static',
+                    'main.set_theme',
+                )
+                if endpoint not in allowed_endpoints and not endpoint.startswith('static'):
+                    return redirect(url_for('auth.change_password', forced='1'))
 
             # 登录后自动设置默认项目（主项目），不默认进入汇总视图
             if 'current_project_id' not in session:
@@ -1101,7 +1141,7 @@ def create_app(config_class=Config):
 
         try:
             err = ErrorLog(
-                error_time=datetime.utcnow(),
+                error_time=datetime.now(),
                 error_type=type(e).__name__,
                 error_message=str(e),
                 stack_trace=traceback.format_exc(),

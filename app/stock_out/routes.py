@@ -438,19 +438,31 @@ def edit(id):
 @bp.route('/<int:id>/delete', methods=['POST'])
 @login_required
 @editor_required
-@log_audit(module='stock_out', operation='删除')
+@log_audit(module='stock_out', operation='作废')
 def delete(id):
     stock_out = StockOut.query.get_or_404(id)
     if stock_out.is_reconciled:
-        flash('已对账的出库单禁止删除。', 'danger')
+        flash('已对账的出库单禁止作废。', 'danger')
         return redirect(url_for('stock_out.detail', id=stock_out.id))
 
     for item in stock_out.items:
         _apply_stock(stock_out.project_id, item.material_id, float(item.quantity))
 
-    db.session.delete(stock_out)
+    stock_out.is_deleted = True
     db.session.commit()
-    flash('出库单已删除，库存已回加。', 'success')
+    flash('出库单已作废，库存已回加。', 'success')
+    return redirect(url_for('stock_out.index'))
+
+
+@bp.route('/<int:id>/restore', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='stock_out', operation='恢复')
+def restore(id):
+    stock_out = StockOut.query.get_or_404(id)
+    stock_out.is_deleted = False
+    db.session.commit()
+    flash('出库单已恢复。', 'success')
     return redirect(url_for('stock_out.index'))
 
 
@@ -564,13 +576,13 @@ def api_unit_teams(unit_id):
 @bp.route('/batch_delete', methods=['POST'])
 @login_required
 @editor_required
-@log_audit(module='stock_out', operation='批量删除')
+@log_audit(module='stock_out', operation='批量作废')
 def batch_delete():
     project_id = session.get('current_project_id')
     ids = request.form.get('ids', '')
     id_list = [int(x) for x in ids.split(',') if x.strip().isdigit()]
     if not id_list:
-        flash('请选择要删除的出库单。', 'warning')
+        flash('请选择要作废的出库单。', 'warning')
         return redirect(url_for('stock_out.index'))
 
     success_count = 0
@@ -586,9 +598,7 @@ def batch_delete():
         try:
             for item in stock_out.items:
                 _apply_stock(stock_out.project_id, item.material_id, float(item.quantity))
-            for item in stock_out.items:
-                db.session.delete(item)
-            db.session.delete(stock_out)
+            stock_out.is_deleted = True
             success_count += 1
         except Exception:
             db.session.rollback()
@@ -596,9 +606,9 @@ def batch_delete():
 
     db.session.commit()
     if fail_count > 0:
-        flash(f'批量删除完成：成功{success_count}条，失败{fail_count}条（可能已对账）。', 'warning')
+        flash(f'批量作废完成：成功{success_count}条，失败{fail_count}条（可能已对账）。', 'warning')
     else:
-        flash(f'批量删除成功，共{success_count}条。', 'success')
+        flash(f'批量作废成功，共{success_count}条。', 'success')
     return redirect(url_for('stock_out.index'))
 
 

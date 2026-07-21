@@ -1,0 +1,597 @@
+/* ===== 统一日期选择器样式 ===== */
+/* 关键布局样式加 !important 防止被 Bootstrap 等全局 CSS 覆盖导致面板样式错乱 */
+
+.dtp-wrapper {
+    position: relative !important;
+    display: inline-block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.dtp-icon {
+    position: absolute !important;
+    right: 8px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    pointer-events: none !important;
+    color: #6c757d !important;
+    font-size: 14px !important;
+    z-index: 3 !important;
+}
+
+/* 日历面板：使用 fixed 定位脱离父级流，避免被父容器 overflow/flex 等影响 */
+.dtp-panel {
+    position: fixed !important;
+    z-index: 9999 !important;
+    background: #fff !important;
+    border: 1px solid #e5e6eb !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+    width: 280px !important;
+    max-width: calc(100vw - 16px) !important;
+    padding: 8px !important;
+    font-size: 13px !important;
+    box-sizing: border-box !important;
+    user-select: none !important;
+    display: none !important;
+}
+
+.dtp-panel[style*="display: block"],
+.dtp-panel[style*="display:block"] {
+    display: block !important;
+}
+
+/* 头部 */
+.dtp-header {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 4px 4px 8px !important;
+    border-bottom: 1px solid #f0f0f0 !important;
+    margin-bottom: 4px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+}
+
+.dtp-nav-btn {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    border: none !important;
+    background: transparent !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    color: #606266 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 12px !important;
+    transition: background 0.2s !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+}
+
+.dtp-nav-btn:hover {
+    background: #ecf5ff !important;
+    color: #409eff !important;
+}
+
+.dtp-title {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 6px !important;
+    align-items: center !important;
+    flex: 1 !important;
+    justify-content: center !important;
+}
+
+.dtp-year-select,
+.dtp-month-select {
+    border: 1px solid #dcdfe6 !important;
+    border-radius: 4px !important;
+    padding: 2px 6px !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    background: #fff !important;
+    color: #303133 !important;
+    outline: none !important;
+    height: 24px !important;
+    box-sizing: border-box !important;
+    -webkit-appearance: auto !important;
+    appearance: auto !important;
+}
+
+.dtp-year-select:hover,
+.dtp-month-select:hover {
+    border-color: #409eff !important;
+}
+
+.dtp-year-select:focus,
+.dtp-month-select:focus {
+    border-color: #409eff !important;
+}
+
+/* 日期网格容器 */
+.dtp-body {
+    padding: 4px 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* 星期标题网格：7 列 */
+.dtp-weekdays {
+    display: grid !important;
+    grid-template-columns: repeat(7, 1fr) !important;
+    gap: 2px !important;
+    margin-bottom: 4px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.dtp-weekday {
+    text-align: center !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: #909399 !important;
+    padding: 6px 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* 日期网格：7 列 */
+.dtp-days {
+    display: grid !important;
+    grid-template-columns: repeat(7, 1fr) !important;
+    gap: 2px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.dtp-day {
+    text-align: center !important;
+    padding: 8px 0 !important;
+    cursor: pointer !important;
+    border-radius: 4px !important;
+    font-size: 13px !important;
+    color: #303133 !important;
+    transition: all 0.15s !important;
+    box-sizing: border-box !important;
+    line-height: 1.4 !important;
+    border: none !important;
+    background: transparent !important;
+    margin: 0 !important;
+    width: auto !important;
+    min-height: 32px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.dtp-day:hover {
+    background: #ecf5ff !important;
+    color: #409eff !important;
+}
+
+.dtp-day.dtp-other-month {
+    color: #c0c4cc !important;
+}
+
+.dtp-day.dtp-today {
+    color: #409eff !important;
+    font-weight: 600 !important;
+}
+
+.dtp-day.dtp-today::after {
+    content: '' !important;
+    display: block !important;
+    width: 4px !important;
+    height: 4px !important;
+    background: #409eff !important;
+    border-radius: 50% !important;
+    margin: 2px auto 0 !important;
+}
+
+.dtp-day.dtp-selected {
+    background: #409eff !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+}
+
+.dtp-day.dtp-selected.dtp-today::after {
+    background: #fff !important;
+}
+
+.dtp-day.dtp-weekend {
+    color: #f56c6c !important;
+}
+
+.dtp-day.dtp-weekend.dtp-other-month {
+    color: #f8d7da !important;
+}
+
+/* 底部 */
+.dtp-footer {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    padding: 8px 4px 0 !important;
+    border-top: 1px solid #f0f0f0 !important;
+    margin-top: 4px !important;
+    gap: 8px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* 时间选择器 */
+.dtp-time {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 8px 4px !important;
+    border-top: 1px solid #f0f0f0 !important;
+    margin-top: 4px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.dtp-hour-select,
+.dtp-minute-select {
+    border: 1px solid #dcdfe6 !important;
+    border-radius: 4px !important;
+    padding: 4px 6px !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    background: #fff !important;
+    color: #303133 !important;
+    outline: none !important;
+    height: 28px !important;
+    box-sizing: border-box !important;
+    -webkit-appearance: auto !important;
+    appearance: auto !important;
+}
+
+.dtp-hour-select:hover,
+.dtp-minute-select:hover {
+    border-color: #409eff !important;
+}
+
+.dtp-time-colon {
+    font-size: 14px !important;
+    color: #606266 !important;
+    font-weight: 600 !important;
+    display: inline-block !important;
+}
+
+.dtp-btn-now {
+    padding: 4px 10px !important;
+    border: 1px solid #409eff !important;
+    background: #ecf5ff !important;
+    color: #409eff !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-size: 12px !important;
+    transition: all 0.2s !important;
+    height: 28px !important;
+    box-sizing: border-box !important;
+    line-height: 1 !important;
+}
+
+.dtp-btn-now:hover {
+    background: #409eff !important;
+    color: #fff !important;
+}
+
+.dtp-btn-today,
+.dtp-btn-clear {
+    flex: 1 !important;
+    padding: 5px 0 !important;
+    border: 1px solid #dcdfe6 !important;
+    background: #fff !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-size: 12px !important;
+    color: #606266 !important;
+    transition: all 0.2s !important;
+    height: 30px !important;
+    box-sizing: border-box !important;
+    line-height: 1.2 !important;
+}
+
+.dtp-btn-today:hover {
+    border-color: #409eff !important;
+    color: #409eff !important;
+    background: #ecf5ff !important;
+}
+
+.dtp-btn-clear:hover {
+    border-color: #f56c6c !important;
+    color: #f56c6c !important;
+    background: #fef0f0 !important;
+}
+
+/* ===== 深色模式（PC端 data-theme="dark"） ===== */
+[data-theme="dark"] .dtp-panel {
+    background: #1d1e1f !important;
+    border-color: #3a3a3c !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .dtp-header {
+    border-bottom-color: #3a3a3c !important;
+}
+
+[data-theme="dark"] .dtp-nav-btn {
+    color: #a1a1aa !important;
+}
+
+[data-theme="dark"] .dtp-nav-btn:hover {
+    background: #2a3950 !important;
+    color: #409eff !important;
+}
+
+[data-theme="dark"] .dtp-year-select,
+[data-theme="dark"] .dtp-month-select {
+    background: #2c2c2e !important;
+    border-color: #48484a !important;
+    color: #e5e5e7 !important;
+}
+
+[data-theme="dark"] .dtp-year-select:hover,
+[data-theme="dark"] .dtp-month-select:hover,
+[data-theme="dark"] .dtp-year-select:focus,
+[data-theme="dark"] .dtp-month-select:focus {
+    border-color: #409eff !important;
+}
+
+[data-theme="dark"] .dtp-weekday {
+    color: #86868b !important;
+}
+
+[data-theme="dark"] .dtp-day {
+    color: #e5e5e7 !important;
+    background: transparent !important;
+}
+
+[data-theme="dark"] .dtp-day:hover {
+    background: #2a3950 !important;
+    color: #409eff !important;
+}
+
+[data-theme="dark"] .dtp-day.dtp-other-month {
+    color: #48484a !important;
+}
+
+[data-theme="dark"] .dtp-day.dtp-today {
+    color: #409eff !important;
+}
+
+[data-theme="dark"] .dtp-day.dtp-weekend {
+    color: #f56c6c !important;
+}
+
+[data-theme="dark"] .dtp-day.dtp-weekend.dtp-other-month {
+    color: #5c2e2e !important;
+}
+
+[data-theme="dark"] .dtp-footer {
+    border-top-color: #3a3a3c !important;
+}
+
+[data-theme="dark"] .dtp-btn-today,
+[data-theme="dark"] .dtp-btn-clear {
+    background: #2c2c2e !important;
+    border-color: #48484a !important;
+    color: #a1a1aa !important;
+}
+
+[data-theme="dark"] .dtp-btn-today:hover {
+    border-color: #409eff !important;
+    color: #409eff !important;
+    background: #2a3950 !important;
+}
+
+[data-theme="dark"] .dtp-btn-clear:hover {
+    border-color: #f56c6c !important;
+    color: #f56c6c !important;
+    background: #3d2323 !important;
+}
+
+[data-theme="dark"] .dtp-icon {
+    color: #86868b !important;
+}
+
+[data-theme="dark"] .dtp-time {
+    border-top-color: #3a3a3c !important;
+}
+
+[data-theme="dark"] .dtp-hour-select,
+[data-theme="dark"] .dtp-minute-select {
+    background: #2c2c2e !important;
+    border-color: #48484a !important;
+    color: #e5e5e7 !important;
+}
+
+[data-theme="dark"] .dtp-hour-select:hover,
+[data-theme="dark"] .dtp-minute-select:hover,
+[data-theme="dark"] .dtp-hour-select:focus,
+[data-theme="dark"] .dtp-minute-select:focus {
+    border-color: #409eff !important;
+}
+
+[data-theme="dark"] .dtp-time-colon {
+    color: #a1a1aa !important;
+}
+
+[data-theme="dark"] .dtp-btn-now {
+    background: #2a3950 !important;
+    border-color: #409eff !important;
+    color: #409eff !important;
+}
+
+[data-theme="dark"] .dtp-btn-now:hover {
+    background: #409eff !important;
+    color: #fff !important;
+}
+
+/* ===== 移动端 body.dark-mode 适配（与 PC 端等价） ===== */
+body.dark-mode .dtp-panel {
+    background: #1d1e1f !important;
+    border-color: #3a3a3c !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+body.dark-mode .dtp-header {
+    border-bottom-color: #3a3a3c !important;
+}
+
+body.dark-mode .dtp-nav-btn {
+    color: #a1a1aa !important;
+}
+
+body.dark-mode .dtp-nav-btn:hover {
+    background: #2a3950 !important;
+    color: #409eff !important;
+}
+
+body.dark-mode .dtp-year-select,
+body.dark-mode .dtp-month-select {
+    background: #2c2c2e !important;
+    border-color: #48484a !important;
+    color: #e5e5e7 !important;
+}
+
+body.dark-mode .dtp-year-select:hover,
+body.dark-mode .dtp-month-select:hover,
+body.dark-mode .dtp-year-select:focus,
+body.dark-mode .dtp-month-select:focus {
+    border-color: #409eff !important;
+}
+
+body.dark-mode .dtp-weekday {
+    color: #86868b !important;
+}
+
+body.dark-mode .dtp-day {
+    color: #e5e5e7 !important;
+    background: transparent !important;
+}
+
+body.dark-mode .dtp-day:hover {
+    background: #2a3950 !important;
+    color: #409eff !important;
+}
+
+body.dark-mode .dtp-day.dtp-other-month {
+    color: #48484a !important;
+}
+
+body.dark-mode .dtp-day.dtp-today {
+    color: #409eff !important;
+}
+
+body.dark-mode .dtp-day.dtp-weekend {
+    color: #f56c6c !important;
+}
+
+body.dark-mode .dtp-day.dtp-weekend.dtp-other-month {
+    color: #5c2e2e !important;
+}
+
+body.dark-mode .dtp-footer {
+    border-top-color: #3a3a3c !important;
+}
+
+body.dark-mode .dtp-btn-today,
+body.dark-mode .dtp-btn-clear {
+    background: #2c2c2e !important;
+    border-color: #48484a !important;
+    color: #a1a1aa !important;
+}
+
+body.dark-mode .dtp-btn-today:hover {
+    border-color: #409eff !important;
+    color: #409eff !important;
+    background: #2a3950 !important;
+}
+
+body.dark-mode .dtp-btn-clear:hover {
+    border-color: #f56c6c !important;
+    color: #f56c6c !important;
+    background: #3d2323 !important;
+}
+
+body.dark-mode .dtp-icon {
+    color: #86868b !important;
+}
+
+body.dark-mode .dtp-time {
+    border-top-color: #3a3a3c !important;
+}
+
+body.dark-mode .dtp-hour-select,
+body.dark-mode .dtp-minute-select {
+    background: #2c2c2e !important;
+    border-color: #48484a !important;
+    color: #e5e5e7 !important;
+}
+
+body.dark-mode .dtp-hour-select:hover,
+body.dark-mode .dtp-minute-select:hover,
+body.dark-mode .dtp-hour-select:focus,
+body.dark-mode .dtp-minute-select:focus {
+    border-color: #409eff !important;
+}
+
+body.dark-mode .dtp-time-colon {
+    color: #a1a1aa !important;
+}
+
+body.dark-mode .dtp-btn-now {
+    background: #2a3950 !important;
+    border-color: #409eff !important;
+    color: #409eff !important;
+}
+
+body.dark-mode .dtp-btn-now:hover {
+    background: #409eff !important;
+    color: #fff !important;
+}
+
+/* ===== 输入框样式统一 ===== */
+.dtp-wrapper input[type="date"],
+.dtp-wrapper input[type="month"],
+.dtp-wrapper input[type="datetime-local"],
+.dtp-wrapper input[type="time"] {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+.dtp-wrapper input[type="date"]::-webkit-calendar-picker-indicator,
+.dtp-wrapper input[type="month"]::-webkit-calendar-picker-indicator,
+.dtp-wrapper input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.dtp-wrapper input[type="time"]::-webkit-calendar-picker-indicator {
+    position: absolute !important;
+    right: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    opacity: 0 !important;
+    cursor: pointer !important;
+    z-index: 2 !important;
+}
+
+/* ===== 移动端面板宽度自适应 ===== */
+@media (max-width: 430px) {
+    .dtp-panel {
+        width: calc(100vw - 24px) !important;
+        max-width: 320px !important;
+    }
+    .dtp-day {
+        padding: 10px 0 !important;
+        min-height: 36px !important;
+    }
+}

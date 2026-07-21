@@ -82,8 +82,8 @@
             <div class="row mb-3">
                 <label class="col-sm-2 col-form-label">排序号</label>
                 <div class="col-sm-10">
-                    <input type="number" class="form-control" name="sort" min="0"
-                           value="{{ menu.sort if menu else 0 }}" placeholder="数字越小越靠前">
+                    <input type="number" class="form-control" name="sort" min="1"
+                           value="{{ menu.sort if menu else (default_sort or 1) }}" placeholder="自动编号">
                 </div>
             </div>
             <div class="row mb-3">

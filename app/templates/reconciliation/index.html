@@ -57,6 +57,9 @@
                             <a href="{{ url_for('reconciliation.detail', id=r.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                             {% if r.status == '已确认' %}
                             <a href="{{ url_for('reconciliation.print_reconciliation', id=r.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-printer"></i></a>
+                            <form method="POST" action="{{ url_for('reconciliation.cancel_confirm', id=r.id) }}" class="d-inline" onsubmit="return confirm('确定撤销此对账单？撤销后关联入库单将恢复为未对账状态。');">
+                                <button type="submit" class="btn btn-sm btn-outline-warning"><i class="bi bi-arrow-counterclockwise"></i></button>
+                            </form>
                             {% endif %}
                         </td>
                     </tr>

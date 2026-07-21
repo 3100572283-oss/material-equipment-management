@@ -9,9 +9,10 @@ from werkzeug.utils import secure_filename
 from app.concrete import bp
 from app import db
 from app.models import (ConcreteTicket, Project, Supplier, WorkNumber,
-                       StockIn, StockInItem, Material, Inventory)
+                       StockIn, StockInItem, Material, Inventory, Contract,
+                       ProjectMaterial)
 from app.decorators import log_audit
-from app.utils import to_decimal, gen_stock_in_code, apply_data_scope
+from app.utils import to_decimal, gen_stock_in_code, apply_data_scope, get_project_materials
 
 
 STRENGTH_GRADES = ['C15', 'C20', 'C25', 'C30', 'C35', 'C40', 'C45', 'C50']
@@ -51,6 +52,106 @@ def api_gen_ticket_no():
     return jsonify({'success': True, 'ticket_no': _gen_ticket_no(project_id)})
 
 
+@bp.route('/api/supplier_contracts')
+@login_required
+def api_supplier_contracts():
+    """获取供应商的有效合同列表（按供应商过滤）"""
+    project_id = session.get('current_project_id')
+    supplier_id = request.args.get('supplier_id', type=int)
+    
+    if not project_id:
+        return jsonify([])
+    
+    query = Contract.query.filter(
+        Contract.project_id == project_id,
+        Contract.status == '正常履约',
+        Contract.is_deleted == False
+    )
+    
+    if supplier_id:
+        query = query.filter(Contract.supplier_id == supplier_id)
+    
+    contracts = query.order_by(Contract.code.desc()).all()
+    
+    result = [{
+        'id': c.id,
+        'code': c.code,
+        'name': c.name,
+        'contract_type': c.contract_type,
+        'business_type': c.business_type
+    } for c in contracts]
+    
+    return jsonify(result)
+
+
+@bp.route('/api/contract_progress')
+@login_required
+def api_contract_progress():
+    """获取合同供货进度：合同总量、已供货量、剩余量
+
+    已供货量 = 该合同下所有有效小票方量之和（含未对账、已对账，不含作废）
+    合同总量取合同 amount_with_tax 字段（数值，按方量口径）
+    """
+    contract_id = request.args.get('contract_id', type=int)
+    if not contract_id:
+        return jsonify({'success': False, 'message': '缺少 contract_id'}), 400
+
+    contract = Contract.query.get(contract_id)
+    if not contract:
+        return jsonify({'success': False, 'message': '合同不存在'}), 404
+
+    total_amount = float(contract.amount_with_tax or 0)
+    tickets = ConcreteTicket.query.filter_by(contract_id=contract_id).all()
+    supplied = sum(float(t.volume or 0) for t in tickets)
+    remaining = round(total_amount - supplied, 2)
+    percent = (supplied / total_amount * 100) if total_amount > 0 else 0
+
+    return jsonify({
+        'success': True,
+        'total': round(total_amount, 2),
+        'supplied': round(supplied, 2),
+        'remaining': remaining,
+        'percent': round(percent, 2),
+        'exceeded': remaining < 0
+    })
+
+
+@bp.route('/api/project_concrete_materials')
+@login_required
+def api_project_concrete_materials():
+    """获取项目常用材料表中的商砼/混凝土物资
+
+    用于小票标号选择，与入库/出库物资选择规则一致。
+    """
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify([])
+
+    keyword = (request.args.get('keyword') or '').strip()
+
+    # 查询项目常用物资中商砼/混凝土分类的物资
+    query = get_project_materials(project_id, common_only=True).filter(
+        or_(
+            Material.name.like('%商砼%'),
+            Material.name.like('%混凝土%'),
+            Material.name.like('%砼%'),
+        )
+    )
+    if keyword:
+        query = query.filter(
+            or_(Material.name.like(f'%{keyword}%'), Material.code.like(f'%{keyword}%'))
+        )
+    materials = query.all()
+
+    return jsonify([{
+        'id': m.id,
+        'code': m.code or '',
+        'name': m.name,
+        'specification': m.specification or '',
+        'unit': m.unit or '',
+    } for m in materials])
+
+
 @bp.route('/api/mark_reconciled', methods=['POST'])
 @login_required
 def api_mark_reconciled():
@@ -87,6 +188,7 @@ def index():
 
     page = request.args.get('page', 1, type=int)
     supplier_id = request.args.get('supplier_id', '', type=str)
+    contract_id = request.args.get('contract_id', '', type=str)
     strength_grade = request.args.get('strength_grade', '', type=str)
     pour_part = request.args.get('pour_part', '', type=str).strip()
     start_date = request.args.get('start_date', '', type=str)
@@ -99,6 +201,8 @@ def index():
     query = apply_data_scope(query, ConcreteTicket)
     if supplier_id:
         query = query.filter(ConcreteTicket.supplier_id == int(supplier_id))
+    if contract_id:
+        query = query.filter(ConcreteTicket.contract_id == int(contract_id))
     if strength_grade:
         query = query.filter(ConcreteTicket.strength_grade == strength_grade)
     if pour_part:
@@ -121,9 +225,16 @@ def index():
         page=page, per_page=20, error_out=False)
 
     suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
+    contracts = Contract.query.filter(
+        Contract.project_id == project_id,
+        Contract.status == '正常履约',
+        Contract.is_deleted == False
+    ).order_by(Contract.code.desc()).all()
     return render_template('concrete/list.html', pagination=pagination,
-                           suppliers=suppliers, strength_grades=STRENGTH_GRADES,
-                           supplier_id=supplier_id, strength_grade=strength_grade,
+                           suppliers=suppliers, contracts=contracts,
+                           strength_grades=STRENGTH_GRADES,
+                           supplier_id=supplier_id, contract_id=contract_id,
+                           strength_grade=strength_grade,
                            pour_part=pour_part, start_date=start_date, end_date=end_date,
                            is_reconciled=is_reconciled)
 
@@ -146,7 +257,9 @@ def create():
 
         supplier_id = request.form.get('supplier_id', type=int) or None
         supplier_name = request.form.get('supplier_name', '').strip() or None
+        contract_id = request.form.get('contract_id', type=int) or None
         strength_grade = request.form.get('strength_grade', '').strip() or None
+        material_id = request.form.get('material_id', type=int) or None
         pour_part = request.form.get('pour_part', '').strip() or None
         work_number_id = request.form.get('work_number_id', type=int) or None
         vehicle_count = request.form.get('vehicle_count', type=int) or 1
@@ -175,7 +288,9 @@ def create():
             ticket_no=ticket_no,
             supplier_id=supplier_id,
             supplier_name=supplier_name,
+            contract_id=contract_id,
             strength_grade=strength_grade,
+            material_id=material_id,
             pour_part=pour_part,
             work_number_id=work_number_id,
             vehicle_count=vehicle_count,
@@ -220,7 +335,9 @@ def edit(id):
         ticket.ticket_no = ticket_no
         ticket.supplier_id = request.form.get('supplier_id', type=int) or None
         ticket.supplier_name = request.form.get('supplier_name', '').strip() or None
+        ticket.contract_id = request.form.get('contract_id', type=int) or None
         ticket.strength_grade = request.form.get('strength_grade', '').strip() or None
+        ticket.material_id = request.form.get('material_id', type=int) or None
         ticket.pour_part = request.form.get('pour_part', '').strip() or None
         ticket.work_number_id = request.form.get('work_number_id', type=int) or None
         ticket.vehicle_count = request.form.get('vehicle_count', type=int) or 1
@@ -345,22 +462,25 @@ def transfer(id):
         flash('该小票已转入库单，请勿重复操作。', 'warning')
         return redirect(url_for('concrete.index'))
 
-    # 查找或创建商砼物资（名称包含"商砼"或"混凝土"+强度等级）
+    # 查找或创建商砼物资：优先使用小票已关联的 material_id，否则按强度等级匹配
     grade = ticket.strength_grade or ''
-    material = Material.query.filter(
-        Material.project_id == ticket.project_id,
-        or_(Material.name.like('%商砼%'), Material.name.like('%混凝土%')),
-    ).all()
     target = None
-    for m in material:
-        if grade and grade in (m.name or ''):
-            target = m
-            break
-        if grade and grade in (m.specification or ''):
-            target = m
-            break
-    if target is None and material:
-        target = material[0]
+    if ticket.material_id:
+        target = Material.query.get(ticket.material_id)
+    if target is None:
+        material = Material.query.filter(
+            Material.project_id == ticket.project_id,
+            or_(Material.name.like('%商砼%'), Material.name.like('%混凝土%')),
+        ).all()
+        for m in material:
+            if grade and grade in (m.name or ''):
+                target = m
+                break
+            if grade and grade in (m.specification or ''):
+                target = m
+                break
+        if target is None and material:
+            target = material[0]
 
     if target is None:
         # 创建新物资
@@ -382,6 +502,7 @@ def transfer(id):
         stock_in_date=ticket.arrival_time.date() if ticket.arrival_time else date.today(),
         stock_in_type='商砼入库',
         supplier_id=ticket.supplier_id,
+        contract_id=ticket.contract_id,
         operator=current_user.name or current_user.username,
         remark=f'商砼小票转入库：{ticket.ticket_no}',
         total_quantity=to_decimal(ticket.volume or 0),

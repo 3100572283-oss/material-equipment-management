@@ -37,6 +37,13 @@
 </div>
 {% endfor %}
 
+{% if not entry_groups %}
+<div class="m-empty">
+    <i class="bi bi-shield-lock"></i>
+    <div class="text">暂无录入权限，请联系管理员</div>
+</div>
+{% endif %}
+
 <!-- 最近使用 -->
 <div id="recentSection" style="display:none;" class="m-entry-section">
     <div class="m-entry-section-title">

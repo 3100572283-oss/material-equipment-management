@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+{% block title %}操作手册 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-md-3 mb-4">
+        <div class="list-group">
+            <a href="{{ url_for('help.index') }}" class="list-group-item list-group-item-action">
+                <i class="bi bi-house me-2"></i>系统概述
+            </a>
+            <a href="{{ url_for('help.guide') }}" class="list-group-item list-group-item-action">
+                <i class="bi bi-book me-2"></i>使用指南
+            </a>
+            <a href="{{ url_for('help.manual') }}" class="list-group-item list-group-item-action active">
+                <i class="bi bi-journal-text me-2"></i>操作手册
+            </a>
+            <a href="{{ url_for('help.faq') }}" class="list-group-item list-group-item-action">
+                <i class="bi bi-question-circle me-2"></i>常见问题
+            </a>
+        </div>
+    </div>
+
+    <div class="col-md-9">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>物资设备管理系统 - 详细操作手册</h5>
+            </div>
+            <div class="card-body">
+
+                <!-- 目录 -->
+                <div class="alert alert-light border">
+                    <h6 class="fw-bold mb-2">目录</h6>
+                    <div class="row small">
+                        <div class="col-md-6">
+                            <ol class="mb-0">
+                                <li><a href="#section1">系统概述与架构</a></li>
+                                <li><a href="#section2">核心业务流程</a></li>
+                                <li><a href="#section3">基础数据管理</a></li>
+                                <li><a href="#section4">采购管理</a></li>
+                                <li><a href="#section5">入库管理</a></li>
+                                <li><a href="#section6">出库管理</a></li>
+                                <li><a href="#section7">库存管理</a></li>
+                            </ol>
+                        </div>
+                        <div class="col-md-6">
+                            <ol class="mb-0" start="8">
+                                <li><a href="#section8">对账与财务</a></li>
+                                <li><a href="#section9">设备管理</a></li>
+                                <li><a href="#section10">周转材管理</a></li>
+                                <li><a href="#section11">审批流程</a></li>
+                                <li><a href="#section12">数据权限</a></li>
+                                <li><a href="#section13">期末结账</a></li>
+                                <li><a href="#section14">系统管理</a></li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-4">
+
+                <!-- 1. 系统概述 -->
+                <h4 id="section1" class="text-primary"><i class="bi bi-1-circle me-2"></i>系统概述与架构</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">1.1 系统定位</h6>
+                    <p>本系统是一款面向建筑施工企业的物资设备综合管理平台，覆盖物资采购、入库、出库、库存、对账、付款、设备管理、周转材管理等全业务流程。采用"公司级主数据统一 + 项目级数据隔离"的架构，支持多项目并行管理。</p>
+
+                    <h6 class="fw-bold">1.2 组织架构模型</h6>
+                    <pre class="bg-light p-2 rounded small">
+总公司
+  ├── 总公司机关（物资管理部、财务管理部、综合办公室）
+  ├── 分公司A
+  │     ├── 项目部1（物资组、工程组、财务组）
+  │     └── 项目部2（物资组、工程组）
+  └── 分公司B
+        └── 项目部3（物资组、设备组）</pre>
+
+                    <h6 class="fw-bold">1.3 数据层级</h6>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light"><tr><th>数据类型</th><th>层级</th><th>说明</th></tr></thead>
+                        <tbody>
+                            <tr><td>物资分类、物资主库、供应商主库、字典项</td><td>公司级</td><td>所有项目共享，统一维护</td></tr>
+                            <tr><td>常用物资、常用供应商、用料单位、班组、工号</td><td>项目级</td><td>各项目独立，互不可见</td></tr>
+                            <tr><td>合同、入库单、出库单、对账单、发票、付款</td><td>项目级</td><td>严格按项目隔离</td></tr>
+                            <tr><td>设备台账、周转材台账</td><td>项目级</td><td>按项目模块开关控制是否启用</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h6 class="fw-bold">1.4 模块开关配置</h6>
+                    <p>每个项目可独立配置启用/关闭以下模块：</p>
+                    <ul>
+                        <li><strong>周转材模块</strong>：管理模板、脚手架等可重复使用材料</li>
+                        <li><strong>设备管理模块</strong>：管理自有/租赁设备台账、维修、折旧</li>
+                        <li><strong>审批流程模块</strong>：开启后单据需审批才生效，关闭则直接生效</li>
+                        <li><strong>批次保质期模块</strong>：对有保质期要求的物资进行批次跟踪</li>
+                        <li><strong>质检流程</strong>：入库时增加待检/合格状态流转</li>
+                        <li><strong>AI 功能</strong>：OCR 识别、智能补全等 AI 辅助功能</li>
+                    </ul>
+                </div>
+
+                <!-- 2. 核心业务流程 -->
+                <h4 id="section2" class="text-primary"><i class="bi bi-2-circle me-2"></i>核心业务流程</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">2.1 标准采购业务流</h6>
+                    <div class="bg-light p-3 rounded">
+                        <p class="mb-1 fw-bold">流程：采购申请 → 采购合同 → 入库单 → 对账单 → 发票 → 付款申请 → 付款台账</p>
+                        <div class="small text-muted">
+                            ① 采购申请：项目部提出物资需求，填写物资名称、规格、数量、需求日期<br>
+                            ② 采购合同：根据采购申请与供应商签订合同，约定单价、数量、税率<br>
+                            ③ 入库单：物资到货后录入入库单，关联合同后自动带入单价<br>
+                            ④ 对账单：按月/按期间与供应商核对入库数量与金额<br>
+                            ⑤ 发票：收到供应商发票后录入，与合同关联<br>
+                            ⑥ 付款申请：根据对账结果申请付款<br>
+                            ⑦ 付款台账：记录实际付款信息
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold mt-3">2.2 库存管理业务流</h6>
+                    <div class="bg-light p-3 rounded">
+                        <p class="mb-1 fw-bold">流程：期初库存 → 入库 (+) → 出库 (-) → 盘点调整 → 期末结账</p>
+                        <div class="small text-muted">
+                            ① 期初库存：系统初始化或新项目上账时录入期初库存<br>
+                            ② 入库：采购入库（+）、调拨入库（+）、盘盈入库（+）<br>
+                            ③ 出库：工程领用（-）、调拨出库（-）、盘亏出库（-）、报废出库（-）<br>
+                            ④ 盘点：定期盘点，实盘数量与系统库存差异自动生成盘盈/盘亏单<br>
+                            ⑤ 期末结账：月度/季度末进行结账，生成库存快照，结账后期间单据锁定
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold mt-3">2.3 设备管理业务流</h6>
+                    <div class="bg-light p-3 rounded">
+                        <p class="mb-1 fw-bold">流程：设备台账 → 维修记录 → 租赁结算 → 折旧计算</p>
+                        <div class="small text-muted">
+                            ① 设备台账：登记设备基本信息（名称、型号、购置日期、原值）<br>
+                            ② 维修记录：记录设备维修保养信息<br>
+                            ③ 租赁结算：租赁设备按月/按期间生成结算单<br>
+                            ④ 折旧计算：自有设备按直线法自动计算月度折旧
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold mt-3">2.4 周转材管理业务流</h6>
+                    <div class="bg-light p-3 rounded">
+                        <p class="mb-1 fw-bold">流程：周转材台账 → 领用 → 归还 → 租赁费结算</p>
+                        <div class="small text-muted">
+                            ① 周转材台账：登记钢管、模板、脚手架等周转材料<br>
+                            ② 领用：记录领用数量、领用单位、预计归还日期<br>
+                            ③ 归还：记录实际归还数量，计算损耗<br>
+                            ④ 租赁费结算：按租赁期间和单价生成结算单
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 基础数据管理 -->
+                <h4 id="section3" class="text-primary"><i class="bi bi-3-circle me-2"></i>基础数据管理</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">3.1 物资分类管理</h6>
+                    <p>采用三级分类结构，编码规则如下：</p>
+                    <ul>
+                        <li>一级分类：MC01、MC02、MC03...（MC + 2位序号）</li>
+                        <li>二级分类：MC0101、MC0102...（父级编码 + 2位序号）</li>
+                        <li>三级分类：MC010101、MC010102...（父级编码 + 2位序号）</li>
+                    </ul>
+                    <p><strong>关键约束：</strong>只有三级分类（末级）才能关联物资；已有物资关联的末级分类禁止删除；有子分类的一级/二级分类需先删除所有子分类才能删除。</p>
+
+                    <h6 class="fw-bold">3.2 物资主库管理</h6>
+                    <p>物资编码自动生成规则：<strong>所属三级分类编码 + 3位流水号</strong>，如 MC010101001。</p>
+                    <p>物资信息包括：名称、规格型号、单位、所属分类、备注。支持 Excel 批量导入。</p>
+
+                    <h6 class="fw-bold">3.3 供应商管理</h6>
+                    <p>供应商评价维度（四维评分，满分100）：</p>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light"><tr><th>维度</th><th>权重</th><th>说明</th></tr></thead>
+                        <tbody>
+                            <tr><td>质量</td><td>30%</td><td>物资质量合格率</td></tr>
+                            <tr><td>价格</td><td>25%</td><td>价格竞争力</td></tr>
+                            <tr><td>交货期</td><td>25%</td><td>按时交货率</td></tr>
+                            <tr><td>服务</td><td>20%</td><td>售后服务质量</td></tr>
+                        </tbody>
+                    </table>
+                    <p>等级划分：A(>=85分)、B(70-84分)、C(60-69分)、D(<60分)。D级供应商新增合同时会弹出风险提示。</p>
+
+                    <h6 class="fw-bold">3.4 用料单位与工号</h6>
+                    <p><strong>用料单位</strong>：分为内部班组和外部分包商两类。出库单需选择领料单位，用于成本归集。每个用料单位下可设置多个领用小组，记录领料人姓名和电话。</p>
+                    <p><strong>工号</strong>：编码规则 GH + 年月日 + 3位序号。出库单可关联工号，便于按工号统计用料成本。</p>
+                </div>
+
+                <!-- 4. 采购管理 -->
+                <h4 id="section4" class="text-primary"><i class="bi bi-4-circle me-2"></i>采购管理</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">4.1 采购申请</h6>
+                    <p><strong>操作步骤：</strong></p>
+                    <ol>
+                        <li>进入"采购申请"菜单，点击"新增申请"</li>
+                        <li>填写申请部门、申请人、需求日期</li>
+                        <li>添加物资明细：选择物资、填写申请数量、备注</li>
+                        <li>保存并提交（如审批模块开启，则进入审批流程）</li>
+                    </ol>
+                    <p><strong>业务规则：</strong></p>
+                    <ul>
+                        <li>支持部分转合同：一份采购申请可多次转合同，直到申请量用完</li>
+                        <li>已转合同的申请标记为"已完成"状态</li>
+                        <li>普通用户仅能查看自己的采购申请，管理员可查看全部</li>
+                    </ul>
+
+                    <h6 class="fw-bold">4.2 采购合同</h6>
+                    <p><strong>操作步骤：</strong></p>
+                    <ol>
+                        <li>进入"合同台账"菜单，点击"新增合同"</li>
+                        <li>填写合同基本信息：合同编号、名称、供应商、签订日期、税率</li>
+                        <li>添加合同明细：选择物资、填写数量、含税单价、单价类型（固定/浮动）</li>
+                        <li>系统自动计算：不含税单价 = 含税单价 / (1 + 税率/100)</li>
+                        <li>保存合同</li>
+                    </ol>
+                    <p><strong>业务规则：</strong></p>
+                    <ul>
+                        <li>合同金额 = SUM(数量 × 含税单价)</li>
+                        <li>合同明细显示"入库进度"：已入库量 / 合同量，超量时进度条变红</li>
+                        <li>支持关联查看来源采购申请单</li>
+                        <li>合同可关联发票和付款记录，自动统计开票金额和付款金额</li>
+                    </ul>
+                </div>
+
+                <!-- 5. 入库管理 -->
+                <h4 id="section5" class="text-primary"><i class="bi bi-5-circle me-2"></i>入库管理</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">5.1 入库类型</h6>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light"><tr><th>入库类型</th><th>业务场景</th><th>库存影响</th></tr></thead>
+                        <tbody>
+                            <tr><td>采购入库</td><td>正常采购到货入库</td><td>增加库存</td></tr>
+                            <tr><td>调拨入库</td><td>其他项目调拨入库</td><td>增加库存</td></tr>
+                            <tr><td>盘盈入库</td><td>盘点发现实物多于账面</td><td>增加库存</td></tr>
+                            <tr><td>退货入库</td><td>供应商退货重新入库</td><td>增加库存</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h6 class="fw-bold">5.2 操作步骤</h6>
+                    <ol>
+                        <li>进入"入库管理"，点击"新增入库单"</li>
+                        <li>选择入库类型、供应商、合同（如有）</li>
+                        <li>填写入库日期、经办人、车牌号等信息</li>
+                        <li>添加物资明细：选择物资、填写数量、单价</li>
+                        <li>关联合同时，系统会自动带入合同约定的单价</li>
+                        <li>保存并提交审批</li>
+                    </ol>
+
+                    <h6 class="fw-bold">5.3 超量入库控制</h6>
+                    <p>当入库数量超过合同剩余量时，系统会弹出警告：</p>
+                    <ul>
+                        <li><strong>调整数量</strong>：自动将数量调整为合同剩余量</li>
+                        <li><strong>强制提交</strong>：保留原数量提交，需管理员权限</li>
+                    </ul>
+                    <p>超量比例阈值在"系统配置"中设置（contract_over_ratio），默认 0% 即不允许超量。</p>
+
+                    <h6 class="fw-bold">5.4 质检流程（如模块开启）</h6>
+                    <p>入库单状态流转：草稿 → 待检 → 合格/不合格 → 审批 → 通过/驳回</p>
+                    <ul>
+                        <li>提交后先进入"待检"状态</li>
+                        <li>质检员检验后标记"合格"或"不合格"</li>
+                        <li>合格后才进入审批流程</li>
+                        <li>审批通过后库存才真正增加</li>
+                    </ul>
+                </div>
+
+                <!-- 6. 出库管理 -->
+                <h4 id="section6" class="text-primary"><i class="bi bi-6-circle me-2"></i>出库管理</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">6.1 出库类型</h6>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light"><tr><th>出库类型</th><th>业务场景</th><th>库存影响</th></tr></thead>
+                        <tbody>
+                            <tr><td>工程领用</td><td>班组/分包商领用物资</td><td>减少库存</td></tr>
+                            <tr><td>调拨出库</td><td>调拨给其他项目</td><td>减少库存</td></tr>
+                            <tr><td>退货出库</td><td>退回给供应商</td><td>减少库存</td></tr>
+                            <tr><td>报废出库</td><td>物资报废处理</td><td>减少库存</td></tr>
+                            <tr><td>盘亏出库</td><td>盘点发现实物少于账面</td><td>减少库存</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h6 class="fw-bold">6.2 操作步骤</h6>
+                    <ol>
+                        <li>进入"出库管理"，点击"新增出库单"</li>
+                        <li>选择出库类型、领料单位、工号（工程领用时）</li>
+                        <li>填写出库日期、领料人等信息</li>
+                        <li>添加物资明细：选择物资、填写数量</li>
+                        <li>系统实时校验库存，库存不足时提示（可配置是否允许负库存）</li>
+                        <li>保存并提交审批</li>
+                    </ol>
+
+                    <h6 class="fw-bold">6.3 退库入库</h6>
+                    <p>领用物资退回时，创建"退库入库单"：</p>
+                    <ul>
+                        <li>选择原出库单关联，系统带入原出库物资信息</li>
+                        <li>填写实际退库数量（可少于原领用数量）</li>
+                        <li>退库入库单审批通过后，库存增加</li>
+                    </ul>
+                </div>
+
+                <!-- 7. 库存管理 -->
+                <h4 id="section7" class="text-primary"><i class="bi bi-7-circle me-2"></i>库存管理</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">7.1 库存查询</h6>
+                    <p>实时查看各物资的当前库存数量，支持按物资名称、规格、分类筛选。库存不足的物资以红色背景警示。点击"流水"按钮可查看该物资的所有出入库历史记录。</p>
+
+                    <h6 class="fw-bold">7.2 库存盘点</h6>
+                    <p><strong>操作步骤：</strong></p>
+                    <ol>
+                        <li>进入"盘点管理"，点击"新增盘点单"</li>
+                        <li>选择盘点范围（全库或按分类）</li>
+                        <li>系统带出当前库存数量作为账面数</li>
+                        <li>录入实盘数量</li>
+                        <li>系统自动计算差异：差异 = 实盘 - 账面</li>
+                        <li>确认盘点后，系统自动生成盘盈入库单或盘亏出库单</li>
+                    </ol>
+                    <p><strong>状态流转：</strong>草稿 → 盘点中 → 已确认/已作废</p>
+                    <p><strong>注意：</strong>仅草稿状态可删除；已确认盘点单作废时需同时冲销生成的出入库单。</p>
+
+                    <h6 class="fw-bold">7.3 项目调拨</h6>
+                    <p><strong>操作流程：</strong></p>
+                    <ol>
+                        <li>调出项目创建调拨单，选择调入项目、物资、数量</li>
+                        <li>提交审批（如开启审批模块）</li>
+                        <li>审批通过后，调出方确认出库（扣减库存）</li>
+                        <li>调入方确认入库（增加库存，可修改实际入库数量）</li>
+                    </ol>
+                    <p><strong>差异处理：</strong>入库量小于出库量时，差异部分记录为运输损耗。</p>
+                    <p><strong>状态流转：</strong>草稿/待出库 → 已出库 → 待入库 → 已完成/已取消</p>
+                </div>
+
+                <!-- 8. 对账与财务 -->
+                <h4 id="section8" class="text-primary"><i class="bi bi-8-circle me-2"></i>对账与财务</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">8.1 对账管理</h6>
+                    <p><strong>操作步骤：</strong></p>
+                    <ol>
+                        <li>进入"对账管理"，点击"新增对账单"</li>
+                        <li>选择供应商、对账期间</li>
+                        <li>点击"拉取数据"，系统自动获取该期间内未对账的入库记录</li>
+                        <li>核对数量，如需调整可修改单价</li>
+                        <li>确认对账后，入库单标记为"已对账"</li>
+                        <li>可打印标准对账单供双方签字存档</li>
+                    </ol>
+                    <p><strong>业务规则：</strong>已对账的入库单不能删除，如需删除请先撤销对账。</p>
+
+                    <h6 class="fw-bold">8.2 发票管理</h6>
+                    <p>在合同详情页"关联发票"标签下新增发票：</p>
+                    <ul>
+                        <li>填写发票代码、发票号码、开票日期、含税金额、税率</li>
+                        <li>系统自动计算不含税金额</li>
+                        <li>可上传发票扫描件</li>
+                    </ul>
+
+                    <h6 class="fw-bold">8.3 付款管理</h6>
+                    <p><strong>付款申请：</strong>填写申请金额、付款方式、关联合同，提交审批。</p>
+                    <p><strong>付款台账：</strong>记录实际付款信息，包括付款日期、金额、方式、备注。</p>
+                </div>
+
+                <!-- 9. 设备管理 -->
+                <h4 id="section9" class="text-primary"><i class="bi bi-9-circle me-2"></i>设备管理</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">9.1 设备台账</h6>
+                    <p><strong>设备编码：</strong>SB + 序号，自动生成。</p>
+                    <p><strong>设备分类：</strong>自有设备 / 租赁设备</p>
+                    <p><strong>信息字段：</strong>名称、型号、规格、购置日期、原值、使用部门、存放位置、状态（在用/闲置/维修中/报废）</p>
+
+                    <h6 class="fw-bold">9.2 维修记录</h6>
+                    <p>记录设备故障、维修内容、维修费用、维修日期、维修后状态。</p>
+
+                    <h6 class="fw-bold">9.3 租赁结算</h6>
+                    <p>租赁设备按月/按期间生成结算单，计算租赁费用。</p>
+
+                    <h6 class="fw-bold">9.4 折旧计算</h6>
+                    <p>自有设备按<strong>直线法</strong>自动计算月度折旧：</p>
+                    <pre class="bg-light p-2 rounded small">月折旧额 = (原值 - 预计净残值) / (使用年限 × 12)</pre>
+                </div>
+
+                <!-- 10. 周转材管理 -->
+                <h4 id="section10" class="text-primary"><i class="bi bi-10-circle me-2"></i>周转材管理</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">10.1 周转材台账</h6>
+                    <p>管理可重复使用的周转材料，如钢管、模板、脚手架等。记录名称、规格、单位、初始数量、当前数量。</p>
+
+                    <h6 class="fw-bold">10.2 领用与归还</h6>
+                    <p><strong>领用：</strong>记录领用数量、领用单位、预计归还日期。</p>
+                    <p><strong>归还：</strong>记录实际归还数量，系统计算损耗数量 = 领用 - 归还。</p>
+
+                    <h6 class="fw-bold">10.3 租赁费结算</h6>
+                    <p>按租赁期间和单价生成结算单，支持按天/按月计算。</p>
+                </div>
+
+                <!-- 11. 审批流程 -->
+                <h4 id="section11" class="text-primary"><i class="bi bi-11-circle me-2"></i>审批流程</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">11.1 流程配置</h6>
+                    <p>管理员在"审批流程管理"中配置各业务类型的审批流程：</p>
+                    <ul>
+                        <li>支持多节点审批</li>
+                        <li>每个节点可设置审批角色或指定审批人</li>
+                        <li>支持会签（需全部通过）和或签（任一通过）</li>
+                        <li>支持条件分支（如金额大于某值需额外审批）</li>
+                    </ul>
+
+                    <h6 class="fw-bold">11.2 分级审批</h6>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light"><tr><th>级别</th><th>配置方式</th><th>说明</th></tr></thead>
+                        <tbody>
+                            <tr><td>公司级默认</td><td>管理员统一配置</td><td>所有项目默认沿用</td></tr>
+                            <tr><td>项目级自定义</td><td>项目经理配置</td><td>仅覆盖本项目的对应流程</td></tr>
+                            <tr><td>关闭审批</td><td>模块开关关闭</td><td>单据提交后直接生效</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h6 class="fw-bold">11.3 审批操作</h6>
+                    <p><strong>提交人：</strong>可撤回待审批的单据。</p>
+                    <p><strong>审批人：</strong>可审批通过或驳回，不能审批自己提交的单据。</p>
+                    <p><strong>状态流转：</strong>草稿 → 待审批 → 审批中 → 已通过/已驳回 → 已撤回</p>
+                    <p><strong>数据影响：</strong>审批通过后单据正式生效（影响库存、金额统计等），驳回/撤回后相关数据回滚。</p>
+                </div>
+
+                <!-- 12. 数据权限 -->
+                <h4 id="section12" class="text-primary"><i class="bi bi-12-circle me-2"></i>数据权限</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">12.1 权限层级</h6>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light"><tr><th>数据权限</th><th>可见范围</th><th>适用角色</th></tr></thead>
+                        <tbody>
+                            <tr><td>全部数据</td><td>所有项目数据</td><td>超级管理员、公司物资部长、财务主管</td></tr>
+                            <tr><td>本部门及下级</td><td>本部门及子部门数据</td><td>项目经理</td></tr>
+                            <tr><td>本部门数据</td><td>仅本部门数据</td><td>项目物资员</td></tr>
+                            <tr><td>仅本人</td><td>仅自己创建的数据</td><td>普通录入员</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h6 class="fw-bold">12.2 全部项目模式</h6>
+                    <p>拥有"全部数据"权限的用户可切换至"全部项目"模式，此时列表会显示"所属项目"列，可查看所有项目的数据汇总。</p>
+
+                    <h6 class="fw-bold">12.3 多项目兼职</h6>
+                    <p>一个用户可关联多个项目，其中一个是主项目。切换项目时，数据自动按当前项目过滤。</p>
+                </div>
+
+                <!-- 13. 期末结账 -->
+                <h4 id="section13" class="text-primary"><i class="bi bi-13-circle me-2"></i>期末结账</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">13.1 结账前检查</h6>
+                    <p>系统在执行结账前自动检查以下条件：</p>
+                    <ul>
+                        <li>是否存在未审核通过的入库单</li>
+                        <li>是否存在未对账的入库单</li>
+                        <li>是否存在未审核通过的出库单</li>
+                        <li>是否存在库存为负的物资</li>
+                    </ul>
+                    <p>如有以上问题，系统会列出并阻止结账，需处理完毕后才能继续。</p>
+
+                    <h6 class="fw-bold">13.2 结账操作</h6>
+                    <ol>
+                        <li>进入"期末结账"菜单</li>
+                        <li>选择要结账的期间（格式：YYYY-MM）</li>
+                        <li>点击"检查"按钮，查看是否存在问题</li>
+                        <li>检查通过后，点击"执行结账"</li>
+                        <li>系统自动生成该期间所有物资的库存快照（期初、入库、出库、期末）</li>
+                    </ol>
+
+                    <h6 class="fw-bold">13.3 结账后限制</h6>
+                    <p>已结账期间：</p>
+                    <ul>
+                        <li>禁止新增/修改该期间的出入库单据</li>
+                        <li>禁止删除该期间的相关单据</li>
+                        <li>可作为下一期间的期初数据依据</li>
+                    </ul>
+
+                    <h6 class="fw-bold">13.4 反结账</h6>
+                    <p>如需修改已结账期间的数据，需先执行反结账：</p>
+                    <ol>
+                        <li>选择已结账期间</li>
+                        <li>填写反结账原因</li>
+                        <li>确认反结账后，该期间数据恢复可编辑状态</li>
+                        <li>反结账会删除该期间的库存快照</li>
+                    </ol>
+                </div>
+
+                <!-- 14. 系统管理 -->
+                <h4 id="section14" class="text-primary"><i class="bi bi-14-circle me-2"></i>系统管理</h4>
+                <div class="ps-4 mb-4">
+                    <h6 class="fw-bold">14.1 用户管理</h6>
+                    <p>管理员可添加用户、分配角色、设置数据权限、分配项目。支持禁用/启用用户账号。</p>
+
+                    <h6 class="fw-bold">14.2 数据备份</h6>
+                    <p>支持手动备份数据库，备份文件存储在项目的 backups 目录中。支持从备份文件恢复数据。</p>
+
+                    <h6 class="fw-bold">14.3 系统配置</h6>
+                    <p>关键配置参数：</p>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light"><tr><th>参数名</th><th>说明</th><th>默认值</th></tr></thead>
+                        <tbody>
+                            <tr><td>contract_over_ratio</td><td>允许超量入库比例（%）</td><td>0</td></tr>
+                            <tr><td>enable_negative_stock</td><td>是否允许负库存出库</td><td>false</td></tr>
+                            <tr><td>backup_retention_days</td><td>备份保留天数</td><td>30</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h6 class="fw-bold">14.4 操作日志</h6>
+                    <p>系统自动记录所有操作日志，包括操作人、时间、模块、操作类型、请求参数、执行结果等。支持按条件查询和导出。</p>
+                </div>
+
+                <hr class="my-4">
+                <div class="text-center text-muted small">
+                    <p class="mb-1">物资设备管理系统 - 操作手册</p>
+                    <p>如有疑问，请联系系统管理员</p>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -69,7 +69,6 @@ def _gen_unique_code(model, project_id, prefix, field_name='code'):
 def index():
     from flask import session
     project_id = session.get('current_project_id')
-    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
         if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
             flash('请先选择项目。', 'warning')
@@ -79,11 +78,18 @@ def index():
     keyword = request.args.get('keyword', '', type=str)
     supplier_id = request.args.get('supplier_id', 0, type=int)
     status = request.args.get('status', '', type=str)
+    deleted_filter = request.args.get('deleted', 'normal', type=str)
 
     query = Contract.query
     if project_id:
         query = query.filter_by(project_id=project_id)
     query = apply_data_scope(query, Contract)
+    
+    if deleted_filter == 'normal':
+        query = query.filter_by(is_deleted=False)
+    elif deleted_filter == 'deleted':
+        query = query.filter_by(is_deleted=True)
+    
     if keyword:
         query = query.filter(or_(Contract.code.contains(keyword), Contract.name.contains(keyword)))
     if supplier_id:
@@ -231,12 +237,35 @@ def detail(id):
 @bp.route('/<int:id>/delete', methods=['POST'])
 @login_required
 @editor_required
-@log_audit(module='contract', operation='删除')
+@log_audit(module='contract', operation='作废')
 def delete(id):
     contract = Contract.query.get_or_404(id)
-    db.session.delete(contract)
+    
+    has_related = False
+    if contract.items.count() > 0 or contract.invoices.count() > 0 or contract.payments.count() > 0:
+        has_related = True
+    
+    contract.is_deleted = True
+    contract.status = '已作废'
     db.session.commit()
-    flash('合同已删除。', 'success')
+    
+    if has_related:
+        flash('合同已作废，关联数据保留但不再参与业务统计。', 'success')
+    else:
+        flash('合同已作废。', 'success')
+    return redirect(url_for('contract.index'))
+
+
+@bp.route('/<int:id>/restore', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='contract', operation='恢复')
+def restore(id):
+    contract = Contract.query.get_or_404(id)
+    contract.is_deleted = False
+    contract.status = '正常履约'
+    db.session.commit()
+    flash('合同已恢复正常状态。', 'success')
     return redirect(url_for('contract.index'))
 
 
@@ -609,13 +638,13 @@ def api_materials_by_category(category_id):
 @bp.route('/batch_delete', methods=['POST'])
 @login_required
 @editor_required
-@log_audit(module='contract', operation='批量删除')
+@log_audit(module='contract', operation='批量作废')
 def batch_delete():
     project_id = session.get('current_project_id')
     ids = request.form.get('ids', '')
     id_list = [int(x) for x in ids.split(',') if x.strip().isdigit()]
     if not id_list:
-        flash('请选择要删除的合同。', 'warning')
+        flash('请选择要作废的合同。', 'warning')
         return redirect(url_for('contract.index'))
 
     success_count = 0
@@ -626,13 +655,8 @@ def batch_delete():
             fail_count += 1
             continue
         try:
-            for item in contract.items:
-                db.session.delete(item)
-            for invoice in contract.invoices:
-                db.session.delete(invoice)
-            for payment in contract.payments:
-                db.session.delete(payment)
-            db.session.delete(contract)
+            contract.is_deleted = True
+            contract.status = '已作废'
             success_count += 1
         except Exception:
             db.session.rollback()

@@ -1,127 +1,239 @@
-# 物资设备管理系统 - 第一阶段
+# 物资设备管理系统
 
-建筑施工行业专用的物资设备管理系统，基于 Python + Flask + SQLite + Bootstrap 技术栈开发。
+基于 Flask + SQLAlchemy + Bootstrap 构建的工程施工物资设备全生命周期管理平台。
 
-## 技术栈
+## 项目介绍
 
-- 后端：Python 3.9+ / Flask 3.0.3 / SQLAlchemy ORM
-- 数据库：SQLite（file-based，便于本地部署）
-- 前端：Bootstrap 5 + Jinja2 模板引擎
-- 认证：Flask-Login / werkzeug 密码加密
+本系统面向建筑工程施工企业，提供从采购计划、合同管理、入库验收、库存管理、出库调拨到周转材管理的完整物资管理闭环，同时支持设备台账、巡检保养、结算管理等设备管理功能。
 
-## 项目结构
+### 技术栈
 
+| 层级 | 技术 |
+|------|------|
+| 后端框架 | Flask 3.0 + Flask-SQLAlchemy + Flask-Login |
+| 数据库 | SQLite（开发）/ MySQL（生产） |
+| ORM | SQLAlchemy 2.0 |
+| 前端 | Bootstrap 5 + Jinja2 + Vanilla JS |
+| 定时任务 | APScheduler |
+| 导出 | openpyxl（Excel） |
+| 二维码 | qrcode + Pillow |
+
+## 环境要求
+
+- Python 3.10+
+- pip 21+
+- 支持系统：macOS / Linux / Windows
+
+## 快速启动
+
+### 1. 克隆代码
+
+```bash
+git clone <仓库地址>
+cd 物资设备管理系统
 ```
-├── app/
-│   ├── __init__.py          # 应用工厂、蓝图注册
-│   ├── models.py            # 数据库模型
-│   ├── decorators.py        # 权限装饰器
-│   ├── auth/                # 认证模块（登录、改密）
-│   ├── main/                # 主页、项目切换
-│   ├── project/             # 项目管理
-│   ├── supplier/            # 供应商管理
-│   ├── category/            # 物资分类
-│   ├── material/            # 常用材料表
-│   ├── unit/                # 用料单位
-│   ├── work_number/         # 工号管理
-│   ├── templates/           # Jinja2 模板
-│   └── static/              # CSS/JS/上传文件
-├── config.py                # 配置文件
-├── requirements.txt         # 依赖清单
-├── init_db.py               # 数据库初始化脚本
-└── run.py                   # 启动脚本
+
+### 2. 创建虚拟环境
+
+```bash
+# macOS / Linux
+python3 -m venv venv
+source venv/bin/activate
+
+# Windows
+python -m venv venv
+venv\Scripts\activate
 ```
 
-## 安装与启动
-
-### 1. 安装依赖
+### 3. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 初始化数据库
+### 4. 配置环境变量
 
 ```bash
+# 复制示例配置文件
+cp .env.example .env
+
+# 编辑 .env 文件，设置 SECRET_KEY（必填）
+# 生成密钥：
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+或者手动设置环境变量：
+
+```bash
+export SECRET_KEY="your-secret-key-here"
+```
+
+### 5. 初始化数据库（首次运行自动完成）
+
+```bash
+# 方式一：直接启动（自动建表 + 初始化基础数据）
+python run.py
+
+# 方式二：手动初始化（可选）
 python init_db.py
 ```
 
-该脚本会自动创建 SQLite 数据库文件，并生成三个默认账号：
+### 6. 访问系统
 
-| 账号   | 密码         | 角色   | 权限说明           |
-|--------|-------------|--------|-------------------|
-| admin  | Admin@2024  | 管理员 | 全部功能权限       |
-| editor | Editor@2024 | 录入员 | 业务数据增删改     |
-| viewer | Viewer@2024 | 查看员 | 仅查看，无编辑按钮 |
+- 访问地址：http://127.0.0.1:5001
+- 默认管理员账号：`admin`
+- 默认密码：`Admin@2024`
+- 其他默认账号：`editor` / `viewer`（密码同上）
 
-### 3. 启动服务
+> 生产环境部署后，请务必修改默认管理员密码。
+
+## 功能模块列表
+
+### 工作台
+- 待办事项、通知公告、快捷入口
+- 库存查询、合同预警、本月入库统计
+
+### 主数据管理
+- 物资分类管理（多级分类）
+- 供应商管理（资质有效期预警）
+- 物资编码管理（支持条码/二维码生成）
+- 项目档案管理
+
+### 采购合同
+- 采购合同台账
+- 合同明细管理
+- 合同结算与付款管理
+- 供应商对账
+
+### 库存管理
+- 入库管理（采购入库、调拨入库等）
+- 出库管理（领用出库、调拨出库等）
+- 库存查询与预警
+- 库存盘点
+- 物资调拨
+- 物资报废
+- 库存流水查询
+
+### 周转材管理
+- 周转材台账
+- 周转材领用/归还
+- 周转材库存
+- 租金结算
+
+### 设备管理
+- 设备台账
+- 设备巡检
+- 设备保养
+- 设备租赁结算
+- 设备报废
+
+### 统计报表
+- 入库统计
+- 出库统计
+- 库存报表
+- 混凝土小票统计
+- 钢材重量自动换算
+
+### 系统管理
+- 用户管理（含密码重置、强制修改密码）
+- 角色与权限（RBAC）
+- 菜单管理
+- 组织架构（部门/项目部）
+- 数据字典
+- 审批流程配置
+- 系统配置
+- 操作日志 / 登录日志
+- 数据备份与恢复
+
+## 部署方式
+
+### 本地开发启动
 
 ```bash
+# 默认端口 5001，debug 模式
 python run.py
 ```
 
-服务默认运行在 http://127.0.0.1:5001
+### 生产部署建议
 
-如需修改端口，请编辑 `run.py` 中的 `port` 参数。
+1. **更换数据库**：将 SQLite 替换为 MySQL/PostgreSQL
+   ```bash
+   # .env 中设置
+   DATABASE_URL=mysql+pymysql://user:password@localhost/material_mgmt
+   ```
 
-## 功能模块
+2. **设置强密钥**：
+   ```bash
+   export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+   ```
 
-### 一、系统布局框架
-- 左侧可折叠侧边栏导航
-- 顶部导航栏：项目切换、日期显示、用户菜单
-- 通用列表页：搜索筛选、数据表格、分页
-- 通用弹窗表单：新增/编辑使用 Bootstrap Modal
+3. **使用生产 WSGI 服务器**：
+   ```bash
+   pip install gunicorn
+   gunicorn -w 4 -b 0.0.0.0:5001 "app:create_app()"
+   ```
 
-### 二、用户认证与权限
-- 登录页面（记住我选项）
-- 三种角色：管理员 / 录入员 / 查看员
-- 修改密码功能
-- 基于角色的页面和接口权限控制
+4. **配置反向代理**（Nginx/Apache）
 
-### 三、项目管理
-- 项目列表、新增、编辑、删除
-- 字段：名称、编号、地址、开工日期、计划完工日期、项目经理、电话
-- 顶部栏项目切换，切换后所有业务数据跟随当前项目
+5. **设置文件上传目录权限**：
+   ```bash
+   mkdir -p /var/www/uploads
+   chmod 755 /var/www/uploads
+   ```
 
-### 四、供应商管理
-- 供应商列表（搜索、分页）
-- 字段：名称、编码、社会信用代码、联系人、电话、法人、地址、开户行、银行账号
-- 支持上传营业执照图片（预留 AI 识别接口位置）
+## 目录结构
 
-### 五、物资分类
-- 分类列表展示
-- 新增、批量新增（换行分隔）、编辑、删除
-- 已有物资关联的分类禁止删除
+```
+.
+├── app/                    # 应用主目录
+│   ├── __init__.py         # Flask 应用工厂
+│   ├── models.py           # 数据模型
+│   ├── auth/               # 认证模块（登录/密码管理）
+│   ├── admin/              # 系统管理（用户/角色/菜单）
+│   ├── system/             # RBAC + 组织架构
+│   ├── dict_mgr/           # 数据字典
+│   ├── contracts/          # 合同管理
+│   ├── stock/              # 出入库管理
+│   ├── inventory/          # 库存管理
+│   ├── equipment/          # 设备管理
+│   ├── concrete/           # 混凝土管理
+│   ├── reports/            # 统计报表
+│   ├── api/                # API 接口
+│   ├── ai/                 # AI 助手
+│   ├── static/             # 静态资源
+│   │   ├── uploads/        # 上传文件
+│   │   └── qr_codes/       # 生成的二维码
+│   └── templates/          # Jinja2 模板
+├── config.py               # 应用配置（敏感信息从环境变量读取）
+├── config.example.py       # 配置示例文件
+├── .env.example            # 环境变量示例
+├── requirements.txt        # Python 依赖
+├── run.py                  # 启动入口
+├── init_db.py              # 数据库初始化脚本
+├── test_data.sql           # 演示测试数据（可选导入）
+└── README.md               # 本文件
+```
 
-### 六、常用材料表
-- 材料列表（按分类筛选、关键词搜索）
-- 字段：物资名称、编码、规格型号、分类、单位、备注
-- Excel 批量导入功能（提供标准模板下载）
+## 测试数据导入（可选）
 
-### 七、用料单位管理
-- 单位列表、新增、编辑、删除
-- 字段：单位名称、编码、负责人、联系电话
-- 支持上传授权文件图片
+如需导入演示数据以体验完整功能：
 
-### 八、工号管理
-- 工号列表、新增、编辑、删除
-- 字段：工号编码、分部分项工程名称、分项工程名称、班组名称、领料人
+```bash
+# 先确保数据库已初始化并运行过至少一次
+sqlite3 material_mgmt.db < test_data.sql
+```
 
-## 数据关联关系
+> 注意：test_data.sql 包含大量业务测试数据，仅用于演示，不建议在生产环境使用。
 
-- 所有业务数据均关联 `project_id`
-- `Material` 关联 `Category`
-- 其他基础表独立存在，供业务模块下拉选择
+## 更新日志
 
-## UI 风格
+- 角色管理排序号自动化（新增自动+1，删除自动重排）
+- 管理员重置用户密码（支持默认密码填充、强制下次登录修改）
+- 数据回收站与物理删除机制
+- 审批流程可视化设计器
+- 周转材全生命周期管理
+- 设备台账与巡检保养
 
-- 专业企业管理系统风格，主色调蓝色系 `#165DFF`
-- 表格使用 Bootstrap Table 风格，斑马纹、hover 效果
-- 按钮统一：主按钮蓝色、次要按钮灰色、危险按钮红色
-- 响应式设计，适配 1366px 以上桌面端
+## License
 
-## 注意事项
-
-- 系统使用 SQLite 文件数据库，无需额外安装数据库服务
-- 上传文件保存在 `app/static/uploads/` 目录下
-- 生产部署请使用 Gunicorn/uWSGI 等 WSGI 服务器，并修改 `SECRET_KEY`
+MIT License

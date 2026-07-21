@@ -482,7 +482,7 @@ def inject_announcements():
     if not current_user.is_authenticated:
         return {'active_announcements': [], 'unread_popup_announcements': [], 'expiry_alert_count': 0}
 
-    now = datetime.utcnow()
+    now = datetime.now()
     query = SysAnnouncement.query.filter(
         SysAnnouncement.status == True,
         SysAnnouncement.publish_time <= now,
@@ -491,9 +491,48 @@ def inject_announcements():
 
     all_active = query.limit(5).all()
 
+    # 过滤可见范围
+    import json
+    user_role_id = str(current_user.role_id) if current_user.role_id else ''
+    user_dept_id = str(current_user.dept_id) if current_user.dept_id else ''
+
+    def is_visible(ann):
+        if ann.visible_scope == 'all':
+            return True
+        elif ann.visible_scope == 'role' and ann.visible_roles:
+            try:
+                role_ids = json.loads(ann.visible_roles)
+                return user_role_id in role_ids
+            except:
+                return False
+        elif ann.visible_scope == 'dept' and ann.visible_depts:
+            try:
+                dept_ids = json.loads(ann.visible_depts)
+                return user_dept_id in dept_ids
+            except:
+                return False
+        return True
+
+    all_active = [a for a in all_active if is_visible(a)]
+
     # 未读的弹窗公告
     read_ids = [r.announcement_id for r in SysAnnouncementRead.query.filter_by(user_id=current_user.id).all()]
     unread_popups = [a for a in all_active if a.is_popup and a.id not in read_ids]
+
+    # 序列化为可 JSON 化的字典列表
+    def serialize_announcement(ann):
+        return {
+            'id': ann.id,
+            'title': ann.title,
+            'content': ann.content,
+            'type': ann.type,
+            'is_popup': ann.is_popup,
+            'publish_time': ann.publish_time.strftime('%Y-%m-%dT%H:%M:%S') if ann.publish_time else None,
+            'expire_time': ann.expire_time.strftime('%Y-%m-%dT%H:%M:%S') if ann.expire_time else None,
+        }
+
+    serialized_active = [serialize_announcement(a) for a in all_active]
+    serialized_unread = [serialize_announcement(a) for a in unread_popups]
 
     # 到期提醒数量（当前项目）
     expiry_count = 0
@@ -521,8 +560,8 @@ def inject_announcements():
         expiry_count += maint_count
 
     return {
-        'active_announcements': all_active,
-        'unread_popup_announcements': unread_popups,
+        'active_announcements': serialized_active,
+        'unread_popup_announcements': serialized_unread,
         'expiry_alert_count': expiry_count
     }
 
@@ -696,7 +735,7 @@ def wizard_submit():
                     code=project_data['project_code'],
                     name=project_data['project_name'],
                     status='active',
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(),
                 )
                 db.session.add(proj)
                 db.session.flush()
@@ -705,7 +744,7 @@ def wizard_submit():
             # 4. 创建超级管理员
             admin = User(
                 username=admin_data['username'],
-                password_hash=generate_password_hash(admin_data['password']),
+                password_hash=generate_password_hash(admin_data['password'], method='pbkdf2:sha256'),
                 role='admin',
                 role_id=super_role.id,
                 dept_id=dept_id,

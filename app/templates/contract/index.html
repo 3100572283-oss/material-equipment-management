@@ -33,6 +33,13 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" name="deleted">
+                    <option value="normal" {% if deleted_filter == 'normal' or not deleted_filter %}selected{% endif %}>正常</option>
+                    <option value="all" {% if deleted_filter == 'all' %}selected{% endif %}>全部</option>
+                    <option value="deleted" {% if deleted_filter == 'deleted' %}selected{% endif %}>已作废</option>
+                </select>
+            </div>
             <div class="col-auto">
                 <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
                 <a href="{{ url_for('contract.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
@@ -86,23 +93,23 @@
                 <tbody>
                     {% for c in pagination.items %}
                     {% set st = c.stats %}
-                    <tr>
+                    <tr {% if c.is_deleted %}class="table-secondary"{% endif %}>
                         <td>
-                            <input type="checkbox" class="form-check-input row-checkbox" data-id="{{ c.id }}" onchange="updateSelection()">
+                            <input type="checkbox" class="form-check-input row-checkbox" data-id="{{ c.id }}" onchange="updateSelection()" {% if c.is_deleted %}disabled{% endif %}>
                         </td>
-                        <td><a href="{{ url_for('contract.detail', id=c.id) }}?from=list" class="text-decoration-none fw-bold">{{ c.code }}</a></td>
-                        <td>{{ c.name }}</td>
-                        <td>{{ c.supplier.name if c.supplier else '-' }}</td>
-                        <td>{{ c.contract_type or '-' }}</td>
-                        <td class="text-end fw-bold">{{ '%.2f'|format(c.amount_with_tax or 0) }}</td>
-                        <td class="text-end">{{ '%.2f'|format(st.occurred_total) }}</td>
-                        <td class="text-end">{{ '%.2f'|format(st.invoice_total) }}</td>
-                        <td class="text-end">{{ '%.2f'|format(st.payment_total) }}</td>
-                        <td class="text-end {% if st.owing_total > 0 %}text-danger fw-bold{% endif %}">{{ '%.2f'|format(st.owing_total) }}</td>
+                        <td><a href="{{ url_for('contract.detail', id=c.id) }}?from=list" class="text-decoration-none fw-bold {% if c.is_deleted %}text-muted{% endif %}">{{ c.code }}</a></td>
+                        <td {% if c.is_deleted %}class="text-muted"{% endif %}>{{ c.name }}</td>
+                        <td {% if c.is_deleted %}class="text-muted"{% endif %}>{{ c.supplier.name if c.supplier else '-' }}</td>
+                        <td {% if c.is_deleted %}class="text-muted"{% endif %}>{{ c.contract_type or '-' }}</td>
+                        <td class="text-end fw-bold {% if c.is_deleted %}text-muted{% endif %}">{{ '%.2f'|format(c.amount_with_tax or 0) }}</td>
+                        <td class="text-end {% if c.is_deleted %}text-muted{% endif %}">{{ '%.2f'|format(st.occurred_total) }}</td>
+                        <td class="text-end {% if c.is_deleted %}text-muted{% endif %}">{{ '%.2f'|format(st.invoice_total) }}</td>
+                        <td class="text-end {% if c.is_deleted %}text-muted{% endif %}">{{ '%.2f'|format(st.payment_total) }}</td>
+                        <td class="text-end {% if st.owing_total > 0 and not c.is_deleted %}text-danger fw-bold{% elif c.is_deleted %}text-muted{% endif %}">{{ '%.2f'|format(st.owing_total) }}</td>
                         <td class="text-center" style="min-width:140px;">
                             {% set ir = st.inbound_rate %}
                             <div class="progress" style="height: 18px;">
-                                <div class="progress-bar {% if ir >= 100 %}bg-success{% elif ir >= 80 %}bg-info{% else %}bg-primary{% endif %}" 
+                                <div class="progress-bar {% if ir >= 100 %}bg-success{% elif ir >= 80 %}bg-info{% else %}bg-primary{% endif %} {% if c.is_deleted %}bg-secondary{% endif %}" 
                                      role="progressbar" 
                                      style="width: {{ ir if ir <= 100 else 100 }}%">
                                     {{ "%.2f%%"|format(ir) }}
@@ -110,19 +117,26 @@
                             </div>
                         </td>
                         <td>
-                            {% if c.status == '正常履约' %}<span class="badge bg-success">{{ c.status }}</span>
+                            {% if c.is_deleted %}<span class="badge bg-secondary">已作废</span>
+                            {% elif c.status == '正常履约' %}<span class="badge bg-success">{{ c.status }}</span>
                             {% elif c.status == '已终止' %}<span class="badge bg-secondary">{{ c.status }}</span>
                             {% elif c.status == '已结算' %}<span class="badge bg-info">{{ c.status }}</span>
                             {% else %}<span class="badge bg-warning text-dark">{{ c.status }}</span>{% endif %}
                         </td>
                         <td class="text-end">
-                            <a href="{{ url_for('contract.detail', id=c.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+                            <a href="{{ url_for('contract.detail', id=c.id) }}?from=list" class="btn btn-sm btn-outline-primary {% if c.is_deleted %}btn-outline-secondary{% endif %}"><i class="bi bi-eye"></i></a>
                             {% if current_user.can_edit() %}
-                            <a href="{{ url_for('contract.create', copy_from=c.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
-                            <a href="{{ url_for('contract.edit', id=c.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
-                            <form method="POST" action="{{ url_for('contract.delete', id=c.id) }}" class="d-inline" onsubmit="return confirm('确定删除此合同？相关明细/发票/付款都将被删除。');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                            </form>
+                                {% if c.is_deleted %}
+                                <form method="POST" action="{{ url_for('contract.restore', id=c.id) }}" class="d-inline" onsubmit="return confirm('确定恢复此合同？');">
+                                    <button type="submit" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise"></i></button>
+                                </form>
+                                {% else %}
+                                <a href="{{ url_for('contract.create', copy_from=c.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
+                                <a href="{{ url_for('contract.edit', id=c.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                                <form method="POST" action="{{ url_for('contract.delete', id=c.id) }}" class="d-inline" onsubmit="return confirm('确定作废此合同？关联数据将保留但不再参与业务统计。');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                                {% endif %}
                             {% endif %}
                         </td>
                     </tr>

@@ -68,7 +68,7 @@ class BusinessLogger:
             resp_masked = BusinessLogger._mask_sensitive(response_data) if response_data else None
 
             log_entry = {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now().isoformat(),
                 'trace_id': trace_id,
                 'module': module,
                 'action': action,
@@ -100,7 +100,7 @@ class BusinessLogger:
         try:
             trace_id = BusinessLogger._get_trace_id()
             log_entry = {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now().isoformat(),
                 'trace_id': trace_id,
                 'type': 'calculation',
                 'module': module,
@@ -128,7 +128,7 @@ class BusinessLogger:
         try:
             trace_id = BusinessLogger._get_trace_id()
             log_entry = {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now().isoformat(),
                 'trace_id': trace_id,
                 'type': 'print',
                 'module': module,
@@ -162,7 +162,7 @@ class BusinessLogger:
         try:
             trace_id = BusinessLogger._get_trace_id()
             log_entry = {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now().isoformat(),
                 'trace_id': trace_id,
                 'type': 'inventory_change',
                 'project_id': project_id,

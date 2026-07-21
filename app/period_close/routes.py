@@ -8,7 +8,7 @@ from app.models import (
     PeriodClose, MovementSnapshot, StockIn, StockOut, StockInItem, StockOutItem,
     Inventory, Material, Reconciliation
 )
-from app.decorators import admin_required, log_audit
+from app.decorators import editor_required, log_audit
 from app.period_close import bp
 
 
@@ -35,7 +35,7 @@ def _check_period_close(project_id, period):
 
 @bp.route('/')
 @login_required
-@admin_required
+@editor_required
 def index():
     from flask import session
     project_id = session.get('current_project_id')
@@ -49,7 +49,7 @@ def index():
 
 @bp.route('/check')
 @login_required
-@admin_required
+@editor_required
 def check():
     """结账前校验"""
     from flask import session
@@ -104,7 +104,7 @@ def check():
 
 @bp.route('/do_close', methods=['POST'])
 @login_required
-@admin_required
+@editor_required
 @log_audit(module='period_close', operation='期末结账')
 def do_close():
     from flask import session
@@ -131,7 +131,7 @@ def do_close():
         pc = PeriodClose(project_id=project_id, period=period)
         db.session.add(pc)
     pc.status = 'closed'
-    pc.closed_at = datetime.utcnow()
+    pc.closed_at = datetime.now()
     pc.closed_by = current_user.name or current_user.username
     db.session.commit()
 
@@ -219,7 +219,7 @@ def _generate_snapshots(project_id, period):
 
 @bp.route('/reopen', methods=['POST'])
 @login_required
-@admin_required
+@editor_required
 @log_audit(module='period_close', operation='反结账')
 def reopen():
     from flask import session
@@ -240,7 +240,7 @@ def reopen():
     MovementSnapshot.query.filter_by(project_id=project_id, period=period).delete()
 
     pc.status = 'open'
-    pc.reopen_at = datetime.utcnow()
+    pc.reopen_at = datetime.now()
     pc.reopen_by = current_user.name or current_user.username
     pc.reopen_reason = reason
     db.session.commit()

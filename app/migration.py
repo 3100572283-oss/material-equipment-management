@@ -102,7 +102,7 @@ def apply_migration(version, description, filepath):
             {
                 'version': version,
                 'description': description,
-                'applied_at': datetime.utcnow(),
+                'applied_at': datetime.now(),
             }
         )
         db.session.commit()

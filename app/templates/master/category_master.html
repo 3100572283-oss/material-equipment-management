@@ -7,10 +7,15 @@
             <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>公司物资分类</h5>
             <small class="text-muted">公司级统一分类，全公司所有项目共用，共三级，仅末级可关联物资</small>
         </div>
-        <button class="btn btn-primary btn-sm" id="btnAddRoot" data-bs-toggle="modal" data-bs-target="#createModal"
-                data-parent-id="0" data-parent-name="一级分类">
-            <i class="bi bi-plus-lg me-1"></i>新增一级分类
-        </button>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" id="btnBatchAdd" data-bs-toggle="modal" data-bs-target="#batchModal">
+                <i class="bi bi-list-plus me-1"></i>批量新增
+            </button>
+            <button class="btn btn-primary btn-sm" id="btnAddRoot" data-bs-toggle="modal" data-bs-target="#createModal"
+                    data-parent-id="0" data-parent-name="一级分类">
+                <i class="bi bi-plus-lg me-1"></i>新增一级分类
+            </button>
+        </div>
     </div>
     <div class="card-body p-0">
         {% if tree %}
@@ -159,6 +164,54 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                     <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 批量新增分类模态框 -->
+<div class="modal fade" id="batchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('master.category_batch_create') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">批量新增公司分类</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 mb-3">
+                        每行一个分类名称，可一次添加多个同级公司分类。
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">选择父级分类</label>
+                        <select class="form-select" name="parent_id" id="batchParentId">
+                            <option value="0">一级分类（无父级）</option>
+                            {% for c in categories %}
+                                {% if c.level == 1 %}
+                                    <option value="{{ c.id }}">├─ {{ c.name }}（{{ c.category_code }}）</option>
+                                    {% for child in c.children %}
+                                        {% if child.level == 2 %}
+                                            <option value="{{ child.id }}">│  ├─ {{ child.name }}（{{ child.category_code }}）</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">分类名称（每行一个）<span class="text-danger">*</span></label>
+                        <textarea class="form-control" name="names" rows="6" placeholder="钢材&#10;水泥&#10;砂石料&#10;防水材料"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">起始排序号</label>
+                        <input type="number" class="form-control" name="start_sort" value="1">
+                        <div class="form-text">每个分类的排序号将自动递增。</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">确认创建</button>
                 </div>
             </form>
         </div>

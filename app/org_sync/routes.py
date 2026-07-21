@@ -95,7 +95,7 @@ def _record_sync_log(platform, operation, status, message, params=None, cost_tim
             params=json.dumps(params, ensure_ascii=False) if params else None,
             ip_address=request.remote_addr if request else None,
             user_agent=(request.headers.get('User-Agent', '')[:256] if request else None),
-            operation_time=datetime.utcnow(),
+            operation_time=datetime.now(),
             cost_time=cost_time,
             status=status,
             error_msg=message if status != 'success' else None,
@@ -342,16 +342,16 @@ def sync(platform):
     if not app_key or not app_secret:
         return jsonify({'success': False, 'message': 'AppKey 或 AppSecret 未配置'})
 
-    start = datetime.utcnow()
+    start = datetime.now()
     sync_func = _SYNC_FUNCS[platform]
     result = sync_func(app_key, app_secret)
-    cost = int((datetime.utcnow() - start).total_seconds() * 1000)
+    cost = int((datetime.now() - start).total_seconds() * 1000)
 
     status = 'success' if result.get('success') else 'failed'
     message = result.get('message', '')
 
     # 更新配置中的同步状态
-    cfg['last_sync_time'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    cfg['last_sync_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     cfg['last_sync_status'] = status
     cfg['last_sync_message'] = message
     _save_platform_config(platform, cfg)

@@ -1278,8 +1278,8 @@ class PriceCalculator:
                 return formula.get(key, default)
             return getattr(formula, key, default) or default
 
-        discount_type = _get('discount_type', '不下浮')
-        discount_value = float(_get('discount_value', 0) or 0)
+        float_type = _get('float_type', 'none')
+        float_value = float(_get('float_value', 0) or 0)
         service_fee_rate = float(_get('service_fee_rate', 0) or 0)
         service_fee_fixed = float(_get('service_fee_fixed', 0) or 0)
         capital_fee_rate = float(_get('capital_fee_rate', 0) or 0)
@@ -1287,11 +1287,11 @@ class PriceCalculator:
         rate = float(tax_rate if tax_rate is not None else (_get('tax_rate', 13) or 13))
         tax_included = _get('tax_included', True)
 
-        # 1. 下浮计算
-        if discount_type == '比例':
-            after_discount = base * (1 - discount_value / 100)
-        elif discount_type == '金额':
-            after_discount = base - discount_value
+        # 1. 浮动计算：正数=上浮，负数=下浮，0=不浮动
+        if float_type == 'ratio':
+            after_discount = base * (1 + float_value / 100)
+        elif float_type == 'amount':
+            after_discount = base + float_value
         else:
             after_discount = base
         after_discount = round(after_discount, 4)
@@ -1321,8 +1321,8 @@ class PriceCalculator:
 
         detail = {
             'base_price': round(base, 4),
-            'discount_type': discount_type,
-            'discount_value': discount_value,
+            'float_type': float_type,
+            'float_value': float_value,
             'after_discount': after_discount,
             'service_fee_rate': service_fee_rate,
             'service_fee_fixed': service_fee_fixed,
@@ -1347,10 +1347,12 @@ class PriceCalculator:
     def format_detail(detail):
         """将计算明细格式化为可读字符串"""
         parts = [f"基准价: {detail['base_price']}"]
-        if detail['discount_type'] == '比例':
-            parts.append(f"下浮{detail['discount_value']}%: {detail['after_discount']}")
-        elif detail['discount_type'] == '金额':
-            parts.append(f"下浮{detail['discount_value']}元: {detail['after_discount']}")
+        if detail['float_type'] == 'ratio':
+            sign = '+' if detail['float_value'] >= 0 else ''
+            parts.append(f"浮动{sign}{detail['float_value']}%: {detail['after_discount']}")
+        elif detail['float_type'] == 'amount':
+            sign = '+' if detail['float_value'] >= 0 else ''
+            parts.append(f"浮动{sign}{detail['float_value']}元: {detail['after_discount']}")
         if detail['service_fee'] > 0:
             if detail['service_fee_rate'] > 0:
                 parts.append(f"服务费{detail['service_fee_rate']}%: +{detail['service_fee']}")

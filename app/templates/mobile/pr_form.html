@@ -1,6 +1,7 @@
 {% extends "mobile/base.html" %}
 {% block title %}{% if pr %}编辑领料申请{% else %}新建领料申请{% endif %}{% endblock %}
 {% block nav_title %}{% if pr %}编辑领料申请{% else %}新建领料申请{% endif %}{% endblock %}
+{% block hide_tab %}true{% endblock %}
 
 {% block content %}
 <form method="POST" id="prForm" action="{% if pr %}{{ url_for('mobile.pr_edit', id=pr.id) }}{% else %}{{ url_for('mobile.pr_create') }}{% endif %}">

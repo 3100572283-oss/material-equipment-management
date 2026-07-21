@@ -16,7 +16,7 @@
             <div class="col-md-3 mb-2"><strong>操作用户：</strong>{{ log.username or '-' }}</div>
             <div class="col-md-3 mb-2"><strong>IP地址：</strong>{{ log.ip_address or '-' }}</div>
             <div class="col-md-3 mb-2"><strong>处理状态：</strong>
-                {% if log.handled %}<span class="badge bg-success">已处理</span>
+                {% if log.is_handled %}<span class="badge bg-success">已处理</span>
                 {% else %}<span class="badge bg-warning text-dark">未处理</span>{% endif %}
             </div>
             {% if log.user_agent %}<div class="col-12 mb-2"><strong>User-Agent：</strong><small class="text-muted">{{ log.user_agent }}</small></div>{% endif %}
@@ -32,7 +32,7 @@
             <pre class="mb-0 small">{{ log.stack_trace or '-' }}</pre>
         </div>
 
-        {% if log.handled %}
+        {% if log.is_handled %}
         <h6 class="text-primary border-bottom pb-2"><i class="bi bi-check-circle me-1"></i>处理信息</h6>
         <div class="row mb-3">
             <div class="col-md-3 mb-2"><strong>处理人：</strong>{{ log.handled_by or '-' }}</div>
@@ -40,7 +40,7 @@
             <div class="col-12 mb-2"><strong>处理备注：</strong></div>
             <div class="col-12">
                 <div class="bg-light p-3 rounded">
-                    {{ log.handle_remark or '-' }}
+                    {{ log.handle_note or '-' }}
                 </div>
             </div>
         </div>

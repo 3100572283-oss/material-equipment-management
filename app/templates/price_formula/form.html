@@ -31,7 +31,7 @@
                     </select>
                 </div>
 
-                <div class="col-12"><hr class="my-2"><h6 class="text-muted">基准价与下浮</h6></div>
+                <div class="col-12"><hr class="my-2"><h6 class="text-muted">基准价与浮动</h6></div>
                 <div class="col-md-4">
                     <label class="form-label">基准价类型</label>
                     <select class="form-select" name="base_price_type" id="base_price_type">
@@ -41,16 +41,17 @@
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">下浮方式</label>
+                    <label class="form-label">浮动方式</label>
                     <select class="form-select" name="discount_type" id="discount_type">
-                        <option value="不下浮" {% if formula and formula.discount_type == '不下浮' %}selected{% endif %}>不下浮</option>
-                        <option value="比例" {% if formula and formula.discount_type == '比例' %}selected{% endif %}>比例下浮(%)</option>
-                        <option value="金额" {% if formula and formula.discount_type == '金额' %}selected{% endif %}>金额下浮(元)</option>
+                        <option value="不下浮" {% if formula and (formula.float_type == 'none' or formula.discount_type == '不下浮') %}selected{% endif %}>不浮动</option>
+                        <option value="比例" {% if formula and (formula.float_type == 'ratio' or formula.discount_type == '比例') %}selected{% endif %}>比例浮动(%)</option>
+                        <option value="金额" {% if formula and (formula.float_type == 'amount' or formula.discount_type == '金额') %}selected{% endif %}>金额浮动(元)</option>
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">下浮值</label>
-                    <input type="number" step="0.0001" min="0" class="form-control" name="discount_value" value="{{ '%.4f'|format(formula.discount_value or 0) if formula else '0' }}">
+                    <label class="form-label">浮动值</label>
+                    <input type="number" step="0.0001" class="form-control" name="discount_value" value="{{ '%.4f'|format(formula.float_value or 0) if formula else '0' }}">
+                    <small class="text-muted" style="font-size:12px;">正数为上浮，负数为下浮，如：下浮5%填 -5，上浮3%填 3</small>
                 </div>
 
                 <div class="col-12"><hr class="my-2"><h6 class="text-muted">服务费</h6></div>

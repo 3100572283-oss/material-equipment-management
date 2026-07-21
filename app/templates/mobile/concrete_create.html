@@ -1,6 +1,7 @@
 {% extends "mobile/base.html" %}
 {% block title %}商砼小票登记{% endblock %}
 {% block nav_title %}商砼小票登记{% endblock %}
+{% block hide_tab %}true{% endblock %}
 
 {% block nav_right %}
 <a href="{{ url_for('mobile.concrete_list') }}" style="color:#165DFF; font-size:14px; margin-right:8px;">列表</a>
@@ -53,13 +54,19 @@
             <input type="hidden" name="supplier_name" id="supplierName">
         </div>
         <div class="m-form-group">
-            <label class="m-form-label">砼标号<span class="req">*</span></label>
-            <select name="strength_grade" id="strengthGrade" class="m-form-select" required>
-                <option value="">-- 请选择 --</option>
-                {% for g in strength_grades %}
-                <option value="{{ g }}">{{ g }}</option>
-                {% endfor %}
+            <label class="m-form-label">关联合同</label>
+            <select name="contract_id" id="contractId" class="m-form-select" disabled>
+                <option value="">-- 请先选择供应商 --</option>
             </select>
+            <div id="contractProgress" style="display:none;font-size:12px;margin-top:4px;"></div>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">砼标号<span class="req">*</span></label>
+            <select name="material_id" id="materialId" class="m-form-select" required>
+                <option value="">-- 请选择 --</option>
+            </select>
+            <input type="hidden" name="strength_grade" id="strengthGrade">
+            <small class="text-muted" style="font-size:12px;">仅显示项目常用商砼物资，未找到请到PC端添加</small>
         </div>
         <div class="m-form-group">
             <label class="m-form-label">浇筑部位</label>
@@ -184,10 +191,103 @@ function syncSupplierName(){
     var opt = sel.options[sel.selectedIndex];
     var name = opt ? (opt.getAttribute('data-name') || '') : '';
     document.getElementById('supplierName').value = name;
-    // 最近使用记录（用户需求3.1）
     if (sel.value && name && window.MobileRecentUse) MobileRecentUse.record('supplier', { id: sel.value, name: name });
+    
+    loadContracts(sel.value);
 }
+
+function loadContracts(supplierId) {
+    var contractSelect = document.getElementById('contractId');
+    var progressEl = document.getElementById('contractProgress');
+    progressEl.style.display = 'none';
+    if (supplierId) {
+        contractSelect.disabled = false;
+        contractSelect.innerHTML = '<option value="">加载中...</option>';
+        
+        fetch("{{ url_for('concrete.api_supplier_contracts') }}?supplier_id=" + supplierId, {
+            credentials: 'same-origin'
+        }).then(function(r){ return r.json(); }).then(function(data){
+            contractSelect.innerHTML = '<option value="">-- 请选择合同 --</option>';
+            if (data && data.length > 0) {
+                data.forEach(function(c) {
+                    var option = document.createElement('option');
+                    option.value = c.id;
+                    option.textContent = c.code + ' - ' + c.name;
+                    contractSelect.appendChild(option);
+                });
+                
+                var lastContract = sessionStorage.getItem('last_concrete_contract_' + supplierId);
+                if (lastContract) {
+                    contractSelect.value = lastContract;
+                    updateContractProgress();
+                }
+            }
+        }).catch(function(){
+            contractSelect.innerHTML = '<option value="">加载失败</option>';
+        });
+    } else {
+        contractSelect.disabled = true;
+        contractSelect.innerHTML = '<option value="">-- 请先选择供应商 --</option>';
+    }
+}
+
+function updateContractProgress() {
+    var contractId = document.getElementById('contractId').value;
+    var progressEl = document.getElementById('contractProgress');
+    if (!contractId) { progressEl.style.display = 'none'; return; }
+    fetch("{{ url_for('concrete.api_contract_progress') }}?contract_id=" + contractId, {
+        credentials: 'same-origin'
+    }).then(function(r){ return r.json(); }).then(function(data){
+        if (data.success) {
+            var color = data.exceeded ? '#dc3545' :
+                        (data.total > 0 && data.remaining / data.total < 0.2) ? '#fd7e14' : '#6c757d';
+            progressEl.style.display = 'block';
+            progressEl.style.color = color;
+            progressEl.textContent = '合同总量：' + data.total + '方 / 已供货：' + data.supplied + '方 / 剩余：' + data.remaining + '方';
+        }
+    }).catch(function(){ progressEl.style.display = 'none'; });
+}
+
 document.getElementById('supplierId').addEventListener('change', syncSupplierName);
+document.getElementById('contractId').addEventListener('change', function() {
+    var supplierId = document.getElementById('supplierId').value;
+    if (supplierId && this.value) {
+        sessionStorage.setItem('last_concrete_contract_' + supplierId, this.value);
+    }
+    updateContractProgress();
+});
+
+// ========== 加载项目常用商砼物资 ==========
+function loadConcreteMaterials() {
+    var materialSelect = document.getElementById('materialId');
+    fetch("{{ url_for('concrete.api_project_concrete_materials') }}", {
+        credentials: 'same-origin'
+    }).then(function(r){ return r.json(); }).then(function(data){
+        materialSelect.innerHTML = '<option value="">-- 请选择 --</option>';
+        if (data && data.length > 0) {
+            data.forEach(function(m) {
+                var option = document.createElement('option');
+                option.value = m.id;
+                option.textContent = m.name + (m.specification ? ' / ' + m.specification : '');
+                materialSelect.appendChild(option);
+            });
+            var last = sessionStorage.getItem('last_concrete_material');
+            if (last) materialSelect.value = last;
+        } else {
+            materialSelect.innerHTML = '<option value="">-- 无可用商砼物资 --</option>';
+        }
+    }).catch(function(){
+        materialSelect.innerHTML = '<option value="">加载失败</option>';
+    });
+}
+document.getElementById('materialId').addEventListener('change', function() {
+    var opt = this.options[this.selectedIndex];
+    var name = opt ? opt.textContent : '';
+    var gradeMatch = name.match(/C\d+/);
+    document.getElementById('strengthGrade').value = gradeMatch ? gradeMatch[0] : '';
+    if (this.value) sessionStorage.setItem('last_concrete_material', this.value);
+});
+loadConcreteMaterials();
 
 // ========== 浇筑部位联想 ==========
 var suggestTimer = null;
@@ -429,7 +529,7 @@ function saveOfflineTicket(){
 // ========== 提交 ==========
 function submitForm(){
     var f = document.getElementById('concreteForm');
-    if (!f.strength_grade.value) {
+    if (!f.material_id.value) {
         M.toast('请选择砼标号', 'danger');
         return;
     }
@@ -438,6 +538,44 @@ function submitForm(){
         return;
     }
     syncSupplierName();
+
+    var contractId = f.contract_id.value;
+    var volume = parseFloat(f.volume.value) || 0;
+
+    // 超量预警校验
+    if (contractId) {
+        checkContractOverLimit(contractId, volume, function(){
+            // 确认继续或未超量，执行实际提交
+            _doSubmitForm();
+        });
+        return;
+    }
+
+    _doSubmitForm();
+}
+
+function checkContractOverLimit(contractId, volume, onContinue) {
+    fetch("{{ url_for('concrete.api_contract_progress') }}?contract_id=" + contractId, {
+        credentials: 'same-origin'
+    }).then(function(r){ return r.json(); }).then(function(data){
+        if (data.success && data.remaining - volume < 0) {
+            var over = (volume - data.remaining).toFixed(2);
+            var msg = '当前合同累计供货将超出合同总量，确认继续提交吗？\n' +
+                      '合同总量：' + data.total + '方\n' +
+                      '已供货：' + data.supplied + '方\n' +
+                      '本次录入：' + volume + '方\n' +
+                      '超出：' + over + '方';
+            if (confirm(msg)) {
+                onContinue();
+            }
+        } else {
+            onContinue();
+        }
+    }).catch(function(){ onContinue(); });
+}
+
+function _doSubmitForm(){
+    var f = document.getElementById('concreteForm');
 
     // 离线检测：无网络时存入 IndexedDB，联网后自动同步
     if (window.MobileConcreteOffline && !MobileConcreteOffline.isOnline()) {

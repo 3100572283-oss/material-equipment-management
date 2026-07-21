@@ -44,7 +44,7 @@ def change_password():
     if len(new_pwd) < 6:
         flash('密码长度不能少于6位', 'danger')
         return redirect(url_for('profile.settings'))
-    user.password_hash = generate_password_hash(new_pwd)
+    user.password_hash = generate_password_hash(new_pwd, method='pbkdf2:sha256')
     db.session.commit()
     flash('密码修改成功', 'success')
     return redirect(url_for('profile.settings'))

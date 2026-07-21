@@ -125,7 +125,7 @@ def generate():
             if deduction:
                 deduction.total_quantity = total_qty
                 deduction.total_amount = total_amt
-                deduction.updated_at = datetime.utcnow()
+                deduction.updated_at = datetime.now()
                 updated_count += 1
             else:
                 deduction = SubcontractDeduction(
@@ -460,7 +460,7 @@ def confirm(id):
         flash('该扣款记录已确认，无需重复操作。', 'info')
         return redirect(url_for('subcontract.index'))
     deduction.status = 'confirmed'
-    deduction.updated_at = datetime.utcnow()
+    deduction.updated_at = datetime.now()
     db.session.commit()
     flash(f'{deduction.period} 扣款记录已确认。', 'success')
     return redirect(url_for('subcontract.index'))

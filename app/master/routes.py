@@ -6,9 +6,13 @@
 数据筛选规则：source='company' 表示公司级主库数据（跨项目共享）。
 项目级 project_id 字段仅为兼容 NOT NULL 约束，实际过滤以 source 为准。
 """
-from flask import render_template, request, redirect, url_for, flash, session, jsonify
+import os
+from datetime import datetime
+from flask import render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
 from flask_login import login_required, current_user
 from sqlalchemy import or_
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 
 from app.master import master_bp
 from app import db
@@ -21,6 +25,7 @@ from app.utils import (
     _code_gen_lock, _CODE_GEN_MAX_RETRY,
     log_operation, get_dict_items, ConfigCache,
 )
+from flask import current_app
 
 
 def _ai_vision_enabled():
@@ -310,6 +315,246 @@ def material_api_search():
     })
 
 
+@master_bp.route('/material/export')
+@login_required
+@admin_required
+@log_audit(module='master_material', operation='导出')
+def material_export():
+    """导出公司物资主库Excel"""
+    keyword = request.args.get('keyword', '', type=str)
+    category_id = request.args.get('category_id', 0, type=int)
+    status = request.args.get('status', '', type=str)
+
+    query = Material.query.filter_by(source='company')
+    if keyword:
+        query = query.filter(
+            or_(Material.name.contains(keyword), Material.code.contains(keyword))
+        )
+    if category_id:
+        query = query.filter_by(category_id=category_id)
+    if status:
+        query = query.filter_by(status=status)
+
+    materials = query.order_by(Material.code.asc()).all()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '物资主库'
+
+    headers = ['物资编码', '物资名称', '规格型号', '单位', '分类编码', '分类名称', '状态', '备注']
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color='E8F0FE', end_color='E8F0FE', fill_type='solid')
+
+    status_map = {'active': '启用', 'inactive': '停用'}
+
+    for m in materials:
+        ws.append([
+            m.code or '',
+            m.name or '',
+            m.specification or '',
+            m.unit or '',
+            m.category.category_code if m.category else '',
+            m.category.name if m.category else '',
+            status_map.get(m.status, m.status or ''),
+            m.remark or '',
+        ])
+
+    col_widths = [16, 24, 24, 10, 14, 18, 10, 30]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    upload_dir = os.path.join(current_app.root_path, 'static', 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f'物资主库_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    filepath = os.path.join(upload_dir, filename)
+    wb.save(filepath)
+
+    log_operation('导出', module='公司物资主库', description=f'导出物资数据 {len(materials)} 条')
+    return send_from_directory(upload_dir, filename, as_attachment=True)
+
+
+@master_bp.route('/material/template')
+@login_required
+@admin_required
+def material_template():
+    """下载公司物资主库导入模板"""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '物资导入模板'
+
+    headers = ['物资编码', '物资名称', '规格型号', '物资分类编码', '单位', '备注']
+    ws.append(headers)
+
+    red_fill = PatternFill(start_color='FFE6E6', end_color='FFE6E6', fill_type='solid')
+    required_cols = [1, 3, 4]
+    for col_idx in required_cols:
+        ws.cell(row=1, column=col_idx).fill = red_fill
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center')
+
+    ws.append(['', '示例钢筋 HRB400', 'HRB400 Φ12', 'MC010601', '吨', '主体结构用'])
+
+    ws2 = wb.create_sheet('填写说明')
+    ws2.append(['字段', '是否必填', '说明'])
+    for cell in ws2[1]:
+        cell.font = Font(bold=True)
+    ws2.append(['物资编码', '选填', '不填则系统自动生成；填写则使用指定编码，不能与现有编码重复'])
+    ws2.append(['物资名称', '必填', '物资名称，同一分类下不可重复'])
+    ws2.append(['规格型号', '选填', '如：HRB400 Φ12'])
+    ws2.append(['物资分类编码', '必填', '三级分类编码，如 MC010601，需与系统分类一致'])
+    ws2.append(['单位', '必填', '计量单位，如：吨、个、米、m³'])
+    ws2.append(['备注', '选填', '其他说明信息'])
+
+    ws2.column_dimensions['A'].width = 16
+    ws2.column_dimensions['B'].width = 10
+    ws2.column_dimensions['C'].width = 60
+
+    col_widths = [16, 24, 24, 16, 10, 30]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    upload_dir = os.path.join(current_app.root_path, 'static', 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = '公司物资主库导入模板.xlsx'
+    filepath = os.path.join(upload_dir, filename)
+    wb.save(filepath)
+    return send_from_directory(upload_dir, filename, as_attachment=True)
+
+
+@master_bp.route('/material/import', methods=['POST'])
+@login_required
+@admin_required
+@log_audit(module='master_material', operation='批量导入')
+def material_import():
+    """批量导入公司物资主库
+
+    编码规则：
+    - 用户填写了编码：使用用户编码，检查重复
+    - 用户未填写编码：系统自动生成（分类编码 + 3位流水号）
+    """
+    file = request.files.get('file')
+    if not file:
+        flash('请选择要导入的Excel文件。', 'danger')
+        return redirect(url_for('master.material_index'))
+
+    project_id = _get_company_project_id()
+    if not project_id:
+        flash('系统未找到任何项目，无法导入。请先创建项目。', 'danger')
+        return redirect(url_for('master.material_index'))
+
+    try:
+        wb = openpyxl.load_workbook(file)
+        ws = wb.active
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+
+        success_count = 0
+        errors = []
+
+        for idx, row in enumerate(rows, start=2):
+            if not row or all(v is None or str(v).strip() == '' for v in row):
+                continue
+
+            code = str(row[0]).strip() if len(row) > 0 and row[0] else ''
+            name = str(row[1]).strip() if len(row) > 1 and row[1] else ''
+            spec = str(row[2]).strip() if len(row) > 2 and row[2] else ''
+            cat_code = str(row[3]).strip() if len(row) > 3 and row[3] else ''
+            unit = str(row[4]).strip() if len(row) > 4 and row[4] else ''
+            remark = str(row[5]).strip() if len(row) > 5 and row[5] else ''
+
+            if not name:
+                errors.append(f'第{idx}行：物资名称不能为空')
+                continue
+            if not unit:
+                errors.append(f'第{idx}行：单位不能为空')
+                continue
+            if not cat_code:
+                errors.append(f'第{idx}行：物资分类编码不能为空')
+                continue
+
+            category = Category.query.filter_by(
+                source='company', category_code=cat_code
+            ).first()
+            if not category:
+                errors.append(f'第{idx}行：物资分类编码"{cat_code}"不存在')
+                continue
+            if category.level != 3:
+                errors.append(f'第{idx}行：物资分类"{cat_code}"不是三级分类')
+                continue
+
+            if code:
+                existing_code = Material.query.filter_by(code=code).first()
+                if existing_code:
+                    errors.append(f'第{idx}行：物资编码"{code}"已存在')
+                    continue
+            else:
+                from sqlalchemy import func
+                with _code_gen_lock:
+                    max_code = db.session.query(func.max(Material.code)).filter(
+                        Material.code.like(category.category_code + '%'),
+                        Material.source == 'company'
+                    ).scalar()
+                    seq = 1
+                    if max_code and max_code.startswith(category.category_code):
+                        try:
+                            seq = int(max_code[len(category.category_code):]) + 1
+                        except ValueError:
+                            seq = 1
+                    for _ in range(_CODE_GEN_MAX_RETRY):
+                        candidate = f"{category.category_code}{seq:03d}"
+                        exists = db.session.query(Material.id).filter_by(code=candidate).first()
+                        if not exists:
+                            code = candidate
+                            break
+                        seq += 1
+                    if not code:
+                        errors.append(f'第{idx}行：物资编码生成失败')
+                        continue
+
+            existing_name = Material.query.filter_by(
+                source='company', name=name, category_id=category.id
+            ).first()
+            if existing_name:
+                errors.append(f'第{idx}行：物资名称"{name}"在该分类下已存在')
+                continue
+
+            material = Material(
+                project_id=project_id,
+                name=name,
+                code=code,
+                specification=spec,
+                category_id=category.id,
+                unit=unit,
+                remark=remark,
+                source='company',
+                status='active',
+                create_dept=current_user.dept_id,
+            )
+            db.session.add(material)
+            success_count += 1
+
+        if success_count > 0:
+            db.session.commit()
+
+        if errors:
+            msg = f'成功导入 {success_count} 条，失败 {len(errors)} 条：<br>' + '<br>'.join(errors[:10])
+            if len(errors) > 10:
+                msg += f'<br>...还有 {len(errors) - 10} 条错误未显示'
+            flash(msg, 'warning')
+        else:
+            flash(f'成功导入 {success_count} 条物资数据。', 'success')
+
+        log_operation('导入', module='公司物资主库', description=f'批量导入物资 {success_count} 条')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'导入失败：{str(e)}', 'danger')
+
+    return redirect(url_for('master.material_index'))
+
+
 # ============================================================
 # 公司级供应商主库
 # ============================================================
@@ -549,6 +794,217 @@ def supplier_api_search():
     })
 
 
+@master_bp.route('/supplier/export')
+@login_required
+@admin_required
+@log_audit(module='master_supplier', operation='导出')
+def supplier_export():
+    """导出公司供应商主库Excel"""
+    keyword = request.args.get('keyword', '', type=str)
+    status = request.args.get('status', '', type=str)
+
+    query = Supplier.query.filter_by(source='company')
+    if keyword:
+        query = query.filter(
+            or_(Supplier.name.contains(keyword), Supplier.code.contains(keyword))
+        )
+    if status:
+        query = query.filter_by(status=status)
+
+    suppliers = query.order_by(Supplier.code.asc()).all()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '供应商主库'
+
+    headers = ['供应商编码', '供应商名称', '社会信用代码', '联系人', '联系电话', '地址', '状态', '备注']
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color='E8F0FE', end_color='E8F0FE', fill_type='solid')
+
+    status_map = {
+        'qualified': '合格',
+        'unqualified': '不合格',
+        'blacklist': '黑名单',
+    }
+
+    for s in suppliers:
+        ws.append([
+            s.code or '',
+            s.name or '',
+            s.credit_code or '',
+            s.contact_person or '',
+            s.phone or '',
+            s.address or '',
+            status_map.get(s.status, s.status or ''),
+            '',
+        ])
+
+    col_widths = [16, 28, 22, 12, 16, 32, 10, 30]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    upload_dir = os.path.join(current_app.root_path, 'static', 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f'供应商主库_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    filepath = os.path.join(upload_dir, filename)
+    wb.save(filepath)
+
+    log_operation('导出', module='公司供应商主库', description=f'导出供应商数据 {len(suppliers)} 条')
+    return send_from_directory(upload_dir, filename, as_attachment=True)
+
+
+@master_bp.route('/supplier/template')
+@login_required
+@admin_required
+def supplier_template():
+    """下载公司供应商主库导入模板"""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '供应商导入模板'
+
+    headers = ['供应商编码', '供应商名称', '社会信用代码', '联系人', '联系电话', '地址', '备注']
+    ws.append(headers)
+
+    red_fill = PatternFill(start_color='FFE6E6', end_color='FFE6E6', fill_type='solid')
+    required_cols = [1]
+    for col_idx in required_cols:
+        ws.cell(row=1, column=col_idx).fill = red_fill
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center')
+
+    ws.append(['', '示例建材有限公司', '91110000MA01ABCD12', '张三', '13800138000', '北京市朝阳区示例路1号', '长期合作'])
+
+    ws2 = wb.create_sheet('填写说明')
+    ws2.append(['字段', '是否必填', '说明'])
+    for cell in ws2[1]:
+        cell.font = Font(bold=True)
+    ws2.append(['供应商编码', '选填', '不填则系统自动生成；填写则使用指定编码，不能与现有编码重复'])
+    ws2.append(['供应商名称', '必填', '供应商全称，不可重复'])
+    ws2.append(['社会信用代码', '选填', '统一社会信用代码'])
+    ws2.append(['联系人', '选填', '主要联系人姓名'])
+    ws2.append(['联系电话', '选填', '手机号或座机号'])
+    ws2.append(['地址', '选填', '供应商地址'])
+    ws2.append(['备注', '选填', '其他说明信息'])
+
+    ws2.column_dimensions['A'].width = 16
+    ws2.column_dimensions['B'].width = 10
+    ws2.column_dimensions['C'].width = 60
+
+    col_widths = [16, 28, 22, 12, 16, 32, 30]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    upload_dir = os.path.join(current_app.root_path, 'static', 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = '公司供应商主库导入模板.xlsx'
+    filepath = os.path.join(upload_dir, filename)
+    wb.save(filepath)
+    return send_from_directory(upload_dir, filename, as_attachment=True)
+
+
+@master_bp.route('/supplier/import', methods=['POST'])
+@login_required
+@admin_required
+@log_audit(module='master_supplier', operation='批量导入')
+def supplier_import():
+    """批量导入公司供应商主库
+
+    编码规则：
+    - 用户填写了编码：使用用户编码，检查重复
+    - 用户未填写编码：系统自动生成（SUP + 4位流水号）
+    """
+    file = request.files.get('file')
+    if not file:
+        flash('请选择要导入的Excel文件。', 'danger')
+        return redirect(url_for('master.supplier_index'))
+
+    project_id = _get_company_project_id()
+    if not project_id:
+        flash('系统未找到任何项目，无法导入。请先创建项目。', 'danger')
+        return redirect(url_for('master.supplier_index'))
+
+    try:
+        wb = openpyxl.load_workbook(file)
+        ws = wb.active
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+
+        success_count = 0
+        errors = []
+
+        for idx, row in enumerate(rows, start=2):
+            if not row or all(v is None or str(v).strip() == '' for v in row):
+                continue
+
+            code = str(row[0]).strip() if len(row) > 0 and row[0] else ''
+            name = str(row[1]).strip() if len(row) > 1 and row[1] else ''
+            credit_code = str(row[2]).strip() if len(row) > 2 and row[2] else ''
+            contact_person = str(row[3]).strip() if len(row) > 3 and row[3] else ''
+            phone = str(row[4]).strip() if len(row) > 4 and row[4] else ''
+            address = str(row[5]).strip() if len(row) > 5 and row[5] else ''
+            remark = str(row[6]).strip() if len(row) > 6 and row[6] else ''
+
+            if not name:
+                errors.append(f'第{idx}行：供应商名称不能为空')
+                continue
+
+            if code:
+                existing_code = Supplier.query.filter_by(code=code).first()
+                if existing_code:
+                    errors.append(f'第{idx}行：供应商编码"{code}"已存在')
+                    continue
+            else:
+                code = _gen_master_supplier_code()
+                if not code:
+                    errors.append(f'第{idx}行：供应商编码生成失败')
+                    continue
+
+            existing_name = Supplier.query.filter_by(
+                source='company', name=name
+            ).first()
+            if existing_name:
+                errors.append(f'第{idx}行：供应商名称"{name}"已存在')
+                continue
+
+            supplier = Supplier(
+                project_id=project_id,
+                name=name,
+                code=code,
+                credit_code=credit_code,
+                contact_person=contact_person,
+                phone=phone,
+                address=address,
+                source='company',
+                status='qualified',
+                create_dept=current_user.dept_id,
+            )
+            if remark:
+                pass
+            db.session.add(supplier)
+            success_count += 1
+
+        if success_count > 0:
+            db.session.commit()
+
+        if errors:
+            msg = f'成功导入 {success_count} 条，失败 {len(errors)} 条：<br>' + '<br>'.join(errors[:10])
+            if len(errors) > 10:
+                msg += f'<br>...还有 {len(errors) - 10} 条错误未显示'
+            flash(msg, 'warning')
+        else:
+            flash(f'成功导入 {success_count} 条供应商数据。', 'success')
+
+        log_operation('导入', module='公司供应商主库', description=f'批量导入供应商 {success_count} 条')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'导入失败：{str(e)}', 'danger')
+
+    return redirect(url_for('master.supplier_index'))
+
+
 # ============================================================
 # 公司级物资分类管理
 # ============================================================
@@ -661,6 +1117,72 @@ def category_create():
     db.session.add(category)
     db.session.commit()
     flash(f'分类创建成功，编码：{category_code}', 'success')
+    return redirect(url_for('master.category_index'))
+
+
+@master_bp.route('/category/batch_create', methods=['POST'])
+@login_required
+@admin_required
+@log_audit(module='master_category', operation='批量新增')
+def category_batch_create():
+    """批量新增公司级物资分类"""
+    names = request.form.get('names', '').strip()
+    parent_id = request.form.get('parent_id', 0, type=int) or 0
+    start_sort = request.form.get('start_sort', 1, type=int) or 1
+
+    if not names:
+        flash('请输入分类名称。', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    if parent_id != 0:
+        parent = Category.query.get(parent_id)
+        if not parent:
+            flash('父级分类不存在。', 'danger')
+            return redirect(url_for('master.category_index'))
+        if parent.level >= 3:
+            flash('最多支持三级分类，无法继续新增子分类。', 'danger')
+            return redirect(url_for('master.category_index'))
+        if parent.source != 'company':
+            flash('父级分类不在公司主库。', 'danger')
+            return redirect(url_for('master.category_index'))
+
+    lines = [n.strip() for n in names.split('\n') if n.strip()]
+    if not lines:
+        flash('请输入有效的分类名称。', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    # 公司级分类使用任一项目 ID 兜底 NOT NULL 约束
+    project_id = _get_company_project_id()
+    if not project_id:
+        flash('系统未找到任何项目，无法创建分类。', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    count = 0
+    sort_order = start_sort
+    for name in lines:
+        level = 1
+        if parent_id != 0:
+            level = parent.level + 1
+
+        category_code = _gen_master_category_code(parent_id)
+        if not category_code:
+            continue
+
+        category = Category(
+            project_id=project_id,
+            parent_id=parent_id,
+            level=level,
+            category_code=category_code,
+            name=name,
+            sort_order=sort_order,
+            source='company',
+        )
+        db.session.add(category)
+        count += 1
+        sort_order += 1
+
+    db.session.commit()
+    flash(f'成功创建 {count} 个分类。', 'success')
     return redirect(url_for('master.category_index'))
 
 

@@ -50,6 +50,36 @@
                 </div>
             </div>
             <div class="mb-3">
+                <label class="form-label">可见范围</label>
+                <select class="form-select" name="visible_scope" id="visibleScope">
+                    <option value="all" {% if not announcement or announcement.visible_scope == 'all' %}selected{% endif %}>全部用户</option>
+                    <option value="role" {% if announcement and announcement.visible_scope == 'role' %}selected{% endif %}>指定角色</option>
+                    <option value="dept" {% if announcement and announcement.visible_scope == 'dept' %}selected{% endif %}>指定部门</option>
+                </select>
+            </div>
+            <div class="mb-3" id="roleSelectContainer" style="display:none;">
+                <label class="form-label">可见角色</label>
+                <select class="form-select" name="visible_roles" multiple size="4">
+                    {% for role in roles %}
+                    <option value="{{ role.id }}" {% if announcement and announcement.visible_roles and '"' ~ role.id ~ '"' in announcement.visible_roles %}selected{% endif %}>
+                        {{ role.role_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">按住 Ctrl 或 Shift 可多选</div>
+            </div>
+            <div class="mb-3" id="deptSelectContainer" style="display:none;">
+                <label class="form-label">可见部门</label>
+                <select class="form-select" name="visible_depts" multiple size="4">
+                    {% for dept in depts %}
+                    <option value="{{ dept.id }}" {% if announcement and announcement.visible_depts and '"' ~ dept.id ~ '"' in announcement.visible_depts %}selected{% endif %}>
+                        {{ dept.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">按住 Ctrl 或 Shift 可多选</div>
+            </div>
+            <div class="mb-3">
                 <label class="form-label">内容</label>
                 <textarea class="form-control" name="content" rows="8"
                           placeholder="请输入公告内容...">{{ announcement.content if announcement else '' }}</textarea>
@@ -61,4 +91,15 @@
         </form>
     </div>
 </div>
+<script>
+document.getElementById('visibleScope').addEventListener('change', function() {
+    var scope = this.value;
+    document.getElementById('roleSelectContainer').style.display = scope === 'role' ? 'block' : 'none';
+    document.getElementById('deptSelectContainer').style.display = scope === 'dept' ? 'block' : 'none';
+});
+// 初始化显示
+var scope = document.getElementById('visibleScope').value;
+document.getElementById('roleSelectContainer').style.display = scope === 'role' ? 'block' : 'none';
+document.getElementById('deptSelectContainer').style.display = scope === 'dept' ? 'block' : 'none';
+</script>
 {% endblock %}

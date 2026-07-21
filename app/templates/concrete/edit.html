@@ -24,13 +24,19 @@
                     <input type="hidden" name="supplier_name" id="supplierName" value="{{ ticket.supplier_name or '' }}">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">强度等级</label>
-                    <select class="form-select" name="strength_grade">
-                        <option value="">-- 请选择 --</option>
-                        {% for g in strength_grades %}
-                        <option value="{{ g }}" {% if ticket.strength_grade == g %}selected{% endif %}>{{ g }}</option>
-                        {% endfor %}
+                    <label class="form-label">关联合同</label>
+                    <select class="form-select" name="contract_id" id="contractSelect" {% if not ticket.supplier_id %}disabled{% endif %}>
+                        <option value="">-- 请先选择供应商 --</option>
                     </select>
+                    <small id="contractProgress" class="form-text" style="display:none;"></small>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">商砼标号</label>
+                    <select class="form-select" name="material_id" id="materialSelect">
+                        <option value="">-- 请选择 --</option>
+                    </select>
+                    <input type="hidden" name="strength_grade" id="strengthGrade" value="{{ ticket.strength_grade or '' }}">
+                    <small class="text-muted">仅显示项目常用商砼物资</small>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">浇筑部位</label>
@@ -91,7 +97,7 @@
 
             <div class="form-actions">
                 <a href="{{ url_for('concrete.index') }}" class="btn btn-secondary">返回</a>
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>保存</button>
+                <button type="submit" class="btn btn-primary" id="submitBtn"><i class="bi bi-check-lg me-1"></i>保存</button>
             </div>
         </form>
     </div>
@@ -99,9 +105,131 @@
 {% endblock %}
 {% block extra_js %}
 <script>
+var currentContractId = {{ ticket.contract_id or 0 }};
+
+function updateContractProgress() {
+    const contractId = document.getElementById('contractSelect').value;
+    const progressEl = document.getElementById('contractProgress');
+    if (!contractId) {
+        progressEl.style.display = 'none';
+        return;
+    }
+    fetch("{{ url_for('concrete.api_contract_progress') }}?contract_id=" + contractId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const color = data.exceeded ? '#dc3545' :
+                              (data.total > 0 && data.remaining / data.total < 0.2) ? '#fd7e14' : '#6c757d';
+                progressEl.style.display = 'block';
+                progressEl.style.color = color;
+                progressEl.textContent = `合同总量：${data.total}方 / 已供货：${data.supplied}方 / 剩余：${data.remaining}方`;
+            }
+        }).catch(() => { progressEl.style.display = 'none'; });
+}
+
+function loadContracts(supplierId) {
+    const contractSelect = document.getElementById('contractSelect');
+    const progressEl = document.getElementById('contractProgress');
+    progressEl.style.display = 'none';
+    if (supplierId) {
+        contractSelect.disabled = false;
+        contractSelect.innerHTML = '<option value="">加载中...</option>';
+        
+        fetch("{{ url_for('concrete.api_supplier_contracts') }}?supplier_id=" + supplierId)
+            .then(r => r.json())
+            .then(data => {
+                contractSelect.innerHTML = '<option value="">-- 请选择合同 --</option>';
+                if (data && data.length > 0) {
+                    data.forEach(function(c) {
+                        const option = document.createElement('option');
+                        option.value = c.id;
+                        option.textContent = c.code + ' - ' + c.name;
+                        if (c.id === currentContractId) {
+                            option.selected = true;
+                        }
+                        contractSelect.appendChild(option);
+                    });
+                }
+                updateContractProgress();
+            }).catch(err => {
+                contractSelect.innerHTML = '<option value="">加载失败</option>';
+            });
+    } else {
+        contractSelect.disabled = true;
+        contractSelect.innerHTML = '<option value="">-- 请先选择供应商 --</option>';
+    }
+}
+
 document.getElementById('supplierSelect').addEventListener('change', function() {
     const opt = this.options[this.selectedIndex];
     document.getElementById('supplierName').value = opt ? opt.dataset.name || '' : '';
+    currentContractId = 0;
+    loadContracts(this.value);
 });
+
+document.getElementById('contractSelect').addEventListener('change', updateContractProgress);
+
+// 提交前超量预警
+document.getElementById('submitBtn').addEventListener('click', function(e) {
+    const contractId = document.getElementById('contractSelect').value;
+    const volume = parseFloat(document.querySelector('input[name="volume"]').value) || 0;
+    if (!contractId || volume <= 0) return;
+
+    e.preventDefault();
+    fetch("{{ url_for('concrete.api_contract_progress') }}?contract_id=" + contractId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.remaining - volume < 0) {
+                const over = (volume - data.remaining).toFixed(2);
+                const msg = `当前合同累计供货将超出合同总量，确认继续提交吗？\n\n` +
+                            `合同总量：${data.total}方\n` +
+                            `已供货：${data.supplied}方\n` +
+                            `本次录入：${volume}方\n` +
+                            `超出：${over}方`;
+                if (confirm(msg)) {
+                    document.querySelector('form').submit();
+                }
+            } else {
+                document.querySelector('form').submit();
+            }
+        }).catch(() => {
+            document.querySelector('form').submit();
+        });
+});
+
+{% if ticket.supplier_id %}
+loadContracts({{ ticket.supplier_id }});
+{% endif %}
+
+// 加载项目常用商砼物资
+var currentMaterialId = {{ ticket.material_id or 0 }};
+const materialSelect = document.getElementById('materialSelect');
+function loadConcreteMaterials() {
+    fetch("{{ url_for('concrete.api_project_concrete_materials') }}")
+        .then(r => r.json())
+        .then(data => {
+            materialSelect.innerHTML = '<option value="">-- 请选择 --</option>';
+            if (data && data.length > 0) {
+                data.forEach(function(m) {
+                    const option = document.createElement('option');
+                    option.value = m.id;
+                    option.textContent = m.name + (m.specification ? ' / ' + m.specification : '');
+                    if (m.id === currentMaterialId) option.selected = true;
+                    materialSelect.appendChild(option);
+                });
+            } else {
+                materialSelect.innerHTML = '<option value="">-- 无可用商砼物资 --</option>';
+            }
+        }).catch(() => {
+            materialSelect.innerHTML = '<option value="">加载失败</option>';
+        });
+}
+materialSelect.addEventListener('change', function() {
+    const opt = this.options[this.selectedIndex];
+    const name = opt ? opt.textContent : '';
+    const gradeMatch = name.match(/C\d+/);
+    document.getElementById('strengthGrade').value = gradeMatch ? gradeMatch[0] : '';
+});
+loadConcreteMaterials();
 </script>
 {% endblock %}

@@ -10,6 +10,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/datepicker.css') }}">
     <script>
         // 提前加载主题，防止页面闪烁
         // 支持 'light' / 'dark' / 'auto' 三种模式，默认 'auto' 跟随系统
@@ -276,52 +277,55 @@
 
                         <!-- Project Switcher -->
                         {% if can_switch_project %}
-                        <div class="dropdown me-2">
-                            <button class="btn btn-outline-primary btn-sm dropdown-toggle project-name-mobile" type="button" data-bs-toggle="dropdown" id="projectSwitcherBtn">
-                                <i class="bi bi-building me-1"></i>
-                                <span class="d-none d-md-inline">{{ current_project_name or '请选择项目' }}</span>
-                                <span class="d-md-none">{{ current_project_name or '选择项目' }}</span>
+                        <div class="project-switcher-wrap me-2" id="projectSwitcherWrap">
+                            <button class="project-switcher-btn" type="button" id="projectSwitcherBtn" aria-expanded="false">
+                                <i class="bi bi-building"></i>
+                                <span class="project-switcher-label">{{ current_project_name or '请选择项目' }}</span>
                                 {% if is_all_projects_mode %}
-                                <span class="badge bg-warning text-dark ms-1">汇总</span>
+                                <span class="project-switcher-badge">汇总</span>
                                 {% endif %}
+                                <i class="bi bi-chevron-down project-switcher-arrow"></i>
                             </button>
-                            <ul class="dropdown-menu dropdown-menu-end project-switcher-menu" id="projectSwitcherMenu">
+                            <div class="project-switcher-dropdown" id="projectSwitcherMenu">
                                 {% if switcher_projects|length > 8 %}
-                                <li class="px-2 py-1">
+                                <div class="project-switcher-search">
                                     <input type="text" class="form-control form-control-sm" id="projectSearchInput" placeholder="搜索项目..." autocomplete="off">
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
+                                </div>
                                 {% endif %}
                                 {% if can_view_all_projects %}
-                                <li><a class="dropdown-item {% if is_all_projects_mode %}active{% endif %}" href="{{ url_for('main.set_all_projects') }}">
-                                    <i class="bi bi-grid me-2"></i>全部项目
-                                    {% if is_all_projects_mode %}<i class="bi bi-check-lg float-end"></i>{% endif %}
-                                </a></li>
-                                <li><hr class="dropdown-divider"></li>
+                                <a class="project-switcher-item {% if is_all_projects_mode %}active{% endif %}" href="{{ url_for('main.set_all_projects') }}">
+                                    <i class="bi bi-grid"></i>
+                                    <span>全部项目</span>
+                                    {% if is_all_projects_mode %}<i class="bi bi-check-lg project-switcher-check"></i>{% endif %}
+                                </a>
+                                <div class="project-switcher-divider"></div>
                                 {% endif %}
-                                {% for p in switcher_projects %}
-                                <li class="project-item" data-name="{{ p.name }}">
-                                    <a class="dropdown-item {% if p.id == current_project_id %}active{% endif %}" href="{{ url_for('main.set_project', project_id=p.id) }}">
-                                        {% if p.id == current_project_id %}<i class="bi bi-check-lg me-1"></i>{% else %}<i class="bi bi-circle me-1 text-muted"></i>{% endif %}
-                                        {{ p.name }}
-                                        {% if p.id == main_project_id %}<span class="text-warning ms-1" title="主项目">★</span>{% endif %}
+                                <div class="project-switcher-list">
+                                    {% for p in switcher_projects %}
+                                    <a class="project-switcher-item {% if p.id == current_project_id %}active{% endif %}"
+                                       href="{{ url_for('main.set_project', project_id=p.id) }}"
+                                       data-name="{{ p.name }}">
+                                        <span class="project-switcher-dot {% if p.id == current_project_id %}active{% endif %}"></span>
+                                        <span class="project-switcher-name">{{ p.name }}</span>
+                                        {% if p.id == main_project_id %}<span class="project-switcher-tag" title="主项目">主</span>{% endif %}
+                                        {% if p.id == current_project_id %}<i class="bi bi-check-lg project-switcher-check"></i>{% endif %}
                                     </a>
-                                </li>
-                                {% endfor %}
+                                    {% endfor %}
+                                </div>
                                 {% if not switcher_projects %}
-                                <li><span class="dropdown-item-text text-muted">暂无在建项目</span></li>
+                                <div class="project-switcher-empty">暂无在建项目</div>
                                 {% endif %}
                                 {% if current_project_id %}
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    {% set can_config_project = current_user.is_admin() or current_user.get_role_code() == 'project_admin' or current_user.has_permission('project:config') %}
-                                    <a class="dropdown-item" href="{{ url_for('project.modules', id=current_project_id) if can_config_project else '#' }}"
-                                       {% if not can_config_project %}onclick="return false;title='您没有权限配置项目'"{% endif %}>
-                                        <i class="bi bi-gear me-1"></i>项目设置
-                                    </a>
-                                </li>
+                                <div class="project-switcher-divider"></div>
+                                {% set can_config_project = current_user.is_admin() or current_user.get_role_code() == 'project_admin' or current_user.has_permission('project:config') %}
+                                <a class="project-switcher-item project-switcher-settings"
+                                   href="{{ url_for('project.modules', id=current_project_id) if can_config_project else '#' }}"
+                                   {% if not can_config_project %}onclick="return false;" title="您没有权限配置项目"{% endif %}>
+                                    <i class="bi bi-gear"></i>
+                                    <span>项目设置</span>
+                                </a>
                                 {% endif %}
-                            </ul>
+                            </div>
                         </div>
                         {% elif current_project_name %}
                         <span class="navbar-text text-primary me-2">
@@ -380,14 +384,14 @@
                                 <li>
                                     <a class="dropdown-item" href="#" onclick="showAnnouncementDetail({{ ann.id }}); return false;">
                                         <div class="d-flex justify-content-between align-items-start">
-                                            <span class="{% if ann.is_popup and ann.id in unread_popup_announcements|map(attribute='id') %}fw-bold{% endif %}">
+                                            <span class="{% if ann.is_popup and ann.id in (unread_popup_announcements | map(attribute='id') | list) %}fw-bold{% endif %}">
                                                 {% if ann.type == 'important' %}<span class="badge bg-danger me-1">重要</span>
                                                 {% elif ann.type == 'maintenance' %}<span class="badge bg-warning me-1">维护</span>
                                                 {% endif %}
                                                 {{ ann.title }}
                                             </span>
                                         </div>
-                                        <small class="text-muted d-block mt-1">{{ ann.publish_time.strftime('%m-%d %H:%M') }}</small>
+                                        <small class="text-muted d-block mt-1">{{ ann.publish_time[:10] if ann.publish_time else '' }}</small>
                                     </a>
                                 </li>
                                 {% endfor %}
@@ -650,20 +654,64 @@
     })();
     </script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/datepicker.js') }}"></script>
     <script>
-    // ========== 项目切换器搜索 ==========
+    // ========== 项目切换器 ==========
     document.addEventListener('DOMContentLoaded', function() {
+        var wrap = document.getElementById('projectSwitcherWrap');
+        var btn = document.getElementById('projectSwitcherBtn');
+        var menu = document.getElementById('projectSwitcherMenu');
         var searchInput = document.getElementById('projectSearchInput');
+
+        if (!wrap || !btn || !menu) return;
+
+        function openMenu() {
+            btn.setAttribute('aria-expanded', 'true');
+            menu.classList.add('show');
+        }
+
+        function closeMenu() {
+            btn.setAttribute('aria-expanded', 'false');
+            menu.classList.remove('show');
+        }
+
+        function toggleMenu() {
+            if (menu.classList.contains('show')) {
+                closeMenu();
+            } else {
+                openMenu();
+            }
+        }
+
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            toggleMenu();
+        });
+
+        // 点击页面其他区域关闭
+        document.addEventListener('click', function(e) {
+            if (menu.classList.contains('show') && !wrap.contains(e.target)) {
+                closeMenu();
+            }
+        });
+
+        // ESC 键关闭
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && menu.classList.contains('show')) {
+                closeMenu();
+            }
+        });
+
+        // 搜索过滤
         if (searchInput) {
             searchInput.addEventListener('input', function() {
                 var keyword = this.value.trim().toLowerCase();
-                var items = document.querySelectorAll('#projectSwitcherMenu .project-item');
+                var items = menu.querySelectorAll('.project-switcher-item[data-name]');
                 items.forEach(function(item) {
                     var name = (item.getAttribute('data-name') || '').toLowerCase();
-                    item.style.display = name.indexOf(keyword) !== -1 ? '' : 'none';
+                    item.style.display = name.indexOf(keyword) !== -1 ? 'flex' : 'none';
                 });
             });
-            // 阻止点击搜索框时关闭下拉菜单
             searchInput.addEventListener('click', function(e) {
                 e.stopPropagation();
             });
@@ -881,11 +929,11 @@
             <div class="modal-content">
                 <div class="modal-header" id="annModalHeader">
                     <h5 class="modal-title" id="annModalTitle">公告</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" id="annModalCloseBtn"></button>
                 </div>
                 <div class="modal-body" id="annModalBody"></div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">我知道了</button>
+                    <button type="button" class="btn btn-primary" id="annModalConfirmBtn">我已阅读</button>
                 </div>
             </div>
         </div>
@@ -894,17 +942,51 @@
     <script>
     // ========== 系统公告 ==========
     var _announcements = {{ active_announcements|tojson if active_announcements else '[]'|safe }};
-    var _unreadPopupIds = {{ (unread_popup_announcements|map(attribute='id')|list) if unread_popup_announcements else '[]'|safe }};
+    var _unreadPopupIds = {{ (unread_popup_announcements | map(attribute='id') | list) if unread_popup_announcements else '[]'|safe }};
+    var _currentAnnModal = null;
+
+    function getAnnouncementById(id) {
+        return _announcements.find(function(a) { return a.id === id; });
+    }
+
+    function markAnnouncementRead(annId) {
+        fetch('/api/announcement/' + annId + '/read', {
+            method: 'POST',
+            credentials: 'include'
+        }).catch(function(e) {
+            console.warn('标记公告已读失败:', e);
+        });
+    }
+
+    function closeAnnouncement() {
+        if (_currentAnnModal) {
+            _currentAnnModal.hide();
+            _currentAnnModal = null;
+        }
+        showNextAnnouncement();
+    }
+
+    function showNextAnnouncement() {
+        if (!_unreadPopupIds || _unreadPopupIds.length === 0) {
+            return;
+        }
+        var nextId = _unreadPopupIds[0];
+        window.showAnnouncementDetail(nextId);
+    }
 
     window.showAnnouncementDetail = function(id) {
-        var ann = _announcements.find(function(a) { return a.id === id; });
-        if (!ann) return;
-        var modal = new bootstrap.Modal(document.getElementById('announcementModal'));
+        var ann = getAnnouncementById(id);
+        if (!ann) {
+            closeAnnouncement();
+            return;
+        }
+
+        var modalEl = document.getElementById('announcementModal');
+        _currentAnnModal = new bootstrap.Modal(modalEl);
         var header = document.getElementById('annModalHeader');
         var title = document.getElementById('annModalTitle');
         var body = document.getElementById('annModalBody');
 
-        // 设置样式
         header.className = 'modal-header';
         if (ann.type === 'important') {
             header.classList.add('bg-danger', 'text-white');
@@ -921,25 +1003,23 @@
         body.innerHTML = '<div class="mb-2"><small class="text-muted">发布时间：' + publishTime + '</small></div>' +
                          '<div style="white-space:pre-wrap;line-height:1.8;">' + (ann.content || '') + '</div>';
 
-        modal.show();
+        _currentAnnModal.show();
 
-        // 标记为已读
-        if (_unreadPopupIds.indexOf(ann.id) >= 0) {
-            fetch('/api/announcement/' + ann.id + '/read', { method: 'POST' });
-            _unreadPopupIds = _unreadPopupIds.filter(function(x) { return x !== ann.id; });
-            // 更新小红点
-            var badge = document.querySelector('.navbar .badge.bg-danger');
-            if (badge) {
-                if (_unreadPopupIds.length === 0) {
-                    badge.style.display = 'none';
-                } else {
-                    badge.textContent = _unreadPopupIds.length;
-                }
+        markAnnouncementRead(ann.id);
+        _unreadPopupIds = _unreadPopupIds.filter(function(x) { return x !== ann.id; });
+        var badge = document.querySelector('.navbar .badge.bg-danger');
+        if (badge) {
+            if (_unreadPopupIds.length === 0) {
+                badge.style.display = 'none';
+            } else {
+                badge.textContent = _unreadPopupIds.length;
             }
         }
     };
 
-    // 页面加载后自动弹出未读的重要公告
+    document.getElementById('annModalCloseBtn').addEventListener('click', closeAnnouncement);
+    document.getElementById('annModalConfirmBtn').addEventListener('click', closeAnnouncement);
+
     document.addEventListener('DOMContentLoaded', function() {
         if (_unreadPopupIds && _unreadPopupIds.length > 0) {
             setTimeout(function() {

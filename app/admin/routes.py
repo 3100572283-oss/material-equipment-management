@@ -20,7 +20,9 @@ def users():
     users = User.query.order_by(User.created_at.desc()).all()
     depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
-    return render_template('admin/users.html', users=users, depts=depts, roles=roles)
+    from app.utils import get_config
+    default_password = get_config('default_password', 'Abc@123456')
+    return render_template('admin/users.html', users=users, depts=depts, roles=roles, default_password=default_password)
 
 
 @bp.route('/users/<int:id>/projects', methods=['GET', 'POST'])
@@ -87,7 +89,7 @@ def create_user():
         from werkzeug.security import generate_password_hash
         user = User(
             username=username,
-            password_hash=generate_password_hash(password),
+            password_hash=generate_password_hash(password, method='pbkdf2:sha256'),
             role='viewer',
             role_id=role_id,
             dept_id=dept_id,
@@ -127,7 +129,7 @@ def edit_user(id):
         new_password = request.form.get('new_password', '')
         if new_password:
             from werkzeug.security import generate_password_hash
-            user.password_hash = generate_password_hash(new_password)
+            user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
 
         db.session.commit()
         flash('用户信息更新成功', 'success')
@@ -135,7 +137,53 @@ def edit_user(id):
 
     depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
-    return render_template('admin/user_form.html', user=user, depts=depts, roles=roles)
+    from app.utils import get_config
+    default_password = get_config('default_password', 'Abc@123456')
+    return render_template('admin/user_form.html', user=user, depts=depts, roles=roles, default_password=default_password)
+
+
+@bp.route('/users/<int:id>/reset_password', methods=['GET', 'POST'])
+@login_required
+@admin_required
+@log_audit(module='admin', operation='重置密码')
+def reset_password(id):
+    user = User.query.get_or_404(id)
+    from app.utils import get_config
+    default_pwd = get_config('default_password', 'Abc@123456')
+
+    if request.method == 'POST':
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        force_change = request.form.get('force_change') == '1'
+
+        if not new_password:
+            flash('新密码不能为空', 'error')
+            return redirect(url_for('admin.reset_password', id=id))
+        if new_password != confirm_password:
+            flash('两次输入的密码不一致', 'error')
+            return redirect(url_for('admin.reset_password', id=id))
+        if len(new_password) < 6:
+            flash('密码长度不能少于6位', 'error')
+            return redirect(url_for('admin.reset_password', id=id))
+
+        from werkzeug.security import generate_password_hash
+        user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
+        user.must_change_password = force_change
+        db.session.commit()
+
+        # 操作日志：记录重置密码详情
+        from app.utils import log_operation
+        log_operation(
+            '重置密码',
+            module='用户管理',
+            description=f'管理员 {current_user.username} 重置用户 {user.username} 的密码'
+                         + ('，强制下次登录修改密码' if force_change else '')
+        )
+
+        flash(f'用户 {user.username} 密码已重置成功', 'success')
+        return redirect(url_for('admin.users'))
+
+    return render_template('admin/reset_password.html', user=user, default_password=default_pwd)
 
 
 @bp.route('/users/<int:id>/delete', methods=['POST'])
@@ -295,7 +343,7 @@ def import_users():
                 pwd = password or default_password
                 user = User(
                     username=username,
-                    password_hash=generate_password_hash(pwd),
+                    password_hash=generate_password_hash(pwd, method='pbkdf2:sha256'),
                     role='viewer',
                     role_id=role_id,
                     dept_id=dept_id,
@@ -474,7 +522,7 @@ def recycle_bin():
     from datetime import datetime, timedelta
     from app.utils import get_config
     retention = int(get_config('recycle_bin_retention_days', '30'))
-    cutoff = datetime.utcnow() - timedelta(days=retention)
+    cutoff = datetime.now() - timedelta(days=retention)
     tables = [
         ('contracts', '合同', 'contract_no', 'name'),
         ('stock_ins', '入库单', 'stock_in_no', 'supplier_id'),
@@ -756,7 +804,7 @@ def handle_error_log(id):
     log = ErrorLog.query.get_or_404(id)
     log.is_handled = True
     log.handled_by = current_user.name or current_user.username
-    log.handled_at = datetime.utcnow()
+    log.handled_at = datetime.now()
     log.handle_note = request.form.get('note', '')
     db.session.commit()
     flash('错误日志已标记为已处理', 'success')
@@ -771,7 +819,7 @@ def cleanup_error_logs():
     from app.models import ErrorLog
     days = int(request.form.get('days', 30))
     from datetime import timedelta
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now() - timedelta(days=days)
     count = ErrorLog.query.filter(ErrorLog.error_time < cutoff).delete()
     db.session.commit()
     flash(f'已清理 {count} 条 {days} 天前的错误日志', 'success')
@@ -875,7 +923,7 @@ def delete_attachment(id):
     from app.models import Attachment
     att = Attachment.query.get_or_404(id)
     att.is_deleted = True
-    att.deleted_at = datetime.utcnow()
+    att.deleted_at = datetime.now()
     db.session.commit()
     flash('附件已删除', 'success')
     return redirect(url_for('admin.attachments'))
@@ -927,6 +975,9 @@ def create_announcement():
         status = request.form.get('status') == '1'
         publish_time_str = request.form.get('publish_time', '').strip()
         expire_time_str = request.form.get('expire_time', '').strip()
+        visible_scope = request.form.get('visible_scope', 'all')
+        visible_roles = request.form.getlist('visible_roles')
+        visible_depts = request.form.getlist('visible_depts')
 
         publish_time = None
         if publish_time_str:
@@ -936,7 +987,7 @@ def create_announcement():
                 try:
                     publish_time = datetime.strptime(publish_time_str, '%Y-%m-%dT%H:%M')
                 except ValueError:
-                    publish_time = datetime.utcnow()
+                    publish_time = datetime.now()
 
         expire_time = None
         if expire_time_str:
@@ -948,23 +999,30 @@ def create_announcement():
                 except ValueError:
                     expire_time = None
 
+        import json
         ann = SysAnnouncement(
             title=title,
             content=content,
             type=type,
             is_popup=is_popup,
             status=status,
-            publish_time=publish_time or datetime.utcnow(),
+            publish_time=publish_time or datetime.now(),
             expire_time=expire_time,
             created_by=current_user.username,
-            created_by_id=current_user.id
+            created_by_id=current_user.id,
+            visible_scope=visible_scope,
+            visible_roles=json.dumps(visible_roles) if visible_roles else None,
+            visible_depts=json.dumps(visible_depts) if visible_depts else None
         )
         db.session.add(ann)
         db.session.commit()
         flash('公告创建成功', 'success')
         return redirect(url_for('admin.announcements'))
 
-    return render_template('admin/announcement_form.html', announcement=None)
+    from app.models import SysRole, SysDept
+    roles = SysRole.query.all()
+    depts = SysDept.query.all()
+    return render_template('admin/announcement_form.html', announcement=None, roles=roles, depts=depts)
 
 
 @bp.route('/announcements/<int:id>/edit', methods=['GET', 'POST'])
@@ -981,6 +1039,12 @@ def edit_announcement(id):
         ann.type = request.form.get('type', 'notice')
         ann.is_popup = request.form.get('is_popup') == '1'
         ann.status = request.form.get('status') == '1'
+        ann.visible_scope = request.form.get('visible_scope', 'all')
+        visible_roles = request.form.getlist('visible_roles')
+        visible_depts = request.form.getlist('visible_depts')
+        import json
+        ann.visible_roles = json.dumps(visible_roles) if visible_roles else None
+        ann.visible_depts = json.dumps(visible_depts) if visible_depts else None
 
         publish_time_str = request.form.get('publish_time', '').strip()
         if publish_time_str:
@@ -1008,7 +1072,10 @@ def edit_announcement(id):
         flash('公告更新成功', 'success')
         return redirect(url_for('admin.announcements'))
 
-    return render_template('admin/announcement_form.html', announcement=ann)
+    from app.models import SysRole, SysDept
+    roles = SysRole.query.all()
+    depts = SysDept.query.all()
+    return render_template('admin/announcement_form.html', announcement=ann, roles=roles, depts=depts)
 
 
 @bp.route('/announcements/<int:id>/delete', methods=['POST'])
@@ -1036,7 +1103,7 @@ def online_users():
     minutes = request.args.get('minutes', 30, type=int)
     if minutes < 1:
         minutes = 30
-    cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+    cutoff = datetime.now() - timedelta(minutes=minutes)
 
     # 查询最近N分钟内活跃的登录记录
     query = LoginLog.query.filter(
@@ -1077,7 +1144,7 @@ def kick_user(login_id):
     from app.models import LoginLog
     from datetime import datetime
     login_log = LoginLog.query.get_or_404(login_id)
-    login_log.logout_time = datetime.utcnow()
+    login_log.logout_time = datetime.now()
     db.session.commit()
     flash('已强制下线该用户', 'success')
     return redirect(url_for('admin.online_users'))

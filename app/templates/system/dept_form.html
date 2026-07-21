@@ -60,6 +60,11 @@
                         <input type="text" class="form-control" name="leader"
                                value="{{ dept.leader if dept else '' }}">
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label">排序号</label>
+                        <input type="number" class="form-control" name="sort" min="1"
+                               value="{{ dept.sort if dept else (default_sort or 1) }}">
+                    </div>
                     <div class="col-12">
                         <label class="form-label">备注</label>
                         <textarea class="form-control" name="remark" rows="2">{{ dept.remark if dept else '' }}</textarea>

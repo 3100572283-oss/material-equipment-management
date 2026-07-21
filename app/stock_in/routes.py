@@ -561,7 +561,7 @@ def edit(id):
 @bp.route('/<int:id>/delete', methods=['POST'])
 @login_required
 @editor_required
-@log_audit(module='stock_in', operation='删除')
+@log_audit(module='stock_in', operation='作废')
 def delete(id):
     from app.utils import reject_in_all_projects_mode
     if reject_in_all_projects_mode():
@@ -569,13 +569,13 @@ def delete(id):
         return redirect(url_for('stock_in.index'))
     stock_in = StockIn.query.get_or_404(id)
     if stock_in.is_reconciled:
-        flash('已对账的入库单禁止删除。', 'danger')
+        flash('已对账的入库单禁止作废。', 'danger')
         return redirect(url_for('stock_in.detail', id=stock_in.id))
 
     from app.utils import ConfigCache
     enable_qc = ConfigCache.get('enable_quality_check') == 'true'
     if enable_qc and stock_in.quality_status == 'passed':
-        flash('质检合格的入库单禁止删除。', 'danger')
+        flash('质检合格的入库单禁止作废。', 'danger')
         return redirect(url_for('stock_in.detail', id=stock_in.id))
 
     # 仅在质检合格且已生效的才回滚库存
@@ -587,9 +587,21 @@ def delete(id):
             _apply_inventory(stock_in, 1)
             _update_contract_total_in(stock_in, 1)
 
-    db.session.delete(stock_in)
+    stock_in.is_deleted = True
     db.session.commit()
-    flash('入库单已删除。', 'success')
+    flash('入库单已作废。', 'success')
+    return redirect(url_for('stock_in.index'))
+
+
+@bp.route('/<int:id>/restore', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='stock_in', operation='恢复')
+def restore(id):
+    stock_in = StockIn.query.get_or_404(id)
+    stock_in.is_deleted = False
+    db.session.commit()
+    flash('入库单已恢复。', 'success')
     return redirect(url_for('stock_in.index'))
 
 
@@ -612,7 +624,7 @@ def quality_pass(id):
     from flask_login import current_user
     stock_in.quality_status = 'passed'
     stock_in.quality_checker = current_user.name or current_user.username
-    stock_in.quality_check_time = datetime.utcnow()
+    stock_in.quality_check_time = datetime.now()
     stock_in.quality_remark = request.form.get('quality_remark', '').strip() or None
 
     from app.approval.service import is_approval_enabled
@@ -653,7 +665,7 @@ def quality_reject(id):
     from flask_login import current_user
     stock_in.quality_status = 'rejected'
     stock_in.quality_checker = current_user.name or current_user.username
-    stock_in.quality_check_time = datetime.utcnow()
+    stock_in.quality_check_time = datetime.now()
     stock_in.quality_remark = request.form.get('quality_remark', '').strip() or None
 
     db.session.commit()
@@ -875,7 +887,7 @@ def api_price_check():
 @bp.route('/batch_delete', methods=['POST'])
 @login_required
 @editor_required
-@log_audit(module='stock_in', operation='批量删除')
+@log_audit(module='stock_in', operation='批量作废')
 def batch_delete():
     project_id = request.form.get('project_id', type=int)
     if not project_id:
@@ -883,7 +895,7 @@ def batch_delete():
     ids = request.form.get('ids', '')
     id_list = [int(x) for x in ids.split(',') if x.strip().isdigit()]
     if not id_list:
-        flash('请选择要删除的入库单。', 'warning')
+        flash('请选择要作废的入库单。', 'warning')
         return redirect(url_for('stock_in.index'))
 
     success_count = 0
@@ -900,17 +912,13 @@ def batch_delete():
             fail_count += 1
             continue
         try:
-            # 修复死代码: 质检通过或审批通过的入库单已应用库存,需要回滚
-            # 之前判断 approval_status == 'passed' 是死代码(前面已过滤只允许 draft)
             if stock_in.quality_status == 'passed' or (stock_in.approval_status == 'passed' and not stock_in.stock_in_type):
                 _apply_inventory(stock_in, -1)
                 _update_contract_total_in(stock_in, -1)
             elif stock_in.approval_status == 'passed' and stock_in.stock_in_type == '退货入库':
                 _apply_inventory(stock_in, 1)
                 _update_contract_total_in(stock_in, 1)
-            for item in stock_in.items:
-                db.session.delete(item)
-            db.session.delete(stock_in)
+            stock_in.is_deleted = True
             success_count += 1
         except Exception:
             db.session.rollback()
@@ -918,9 +926,9 @@ def batch_delete():
 
     db.session.commit()
     if fail_count > 0:
-        flash(f'批量删除完成：成功{success_count}条，失败{fail_count}条（可能已对账/非草稿状态）。', 'warning')
+        flash(f'批量作废完成：成功{success_count}条，失败{fail_count}条（可能已对账/非草稿状态）。', 'warning')
     else:
-        flash(f'批量删除成功，共{success_count}条。', 'success')
+        flash(f'批量作废成功，共{success_count}条。', 'success')
     return redirect(url_for('stock_in.index'))
 
 

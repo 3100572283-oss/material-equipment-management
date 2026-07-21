@@ -200,12 +200,32 @@ def get_sys_menu_data():
     return result
 
 
+def _reorder_depts(parent_id):
+    """删除部门后重新整理同级排序号"""
+    depts = SysDept.query.filter_by(parent_id=parent_id).order_by(
+        SysDept.sort, SysDept.id).all()
+    for index, dept in enumerate(depts, 1):
+        if dept.sort != index:
+            dept.sort = index
+    db.session.commit()
+
+
 def _reorder_roles():
     """删除角色后重新整理排序号"""
     roles = SysRole.query.order_by(SysRole.sort, SysRole.id).all()
-    for index, role in enumerate(roles):
+    for index, role in enumerate(roles, 1):
         if role.sort != index:
             role.sort = index
+    db.session.commit()
+
+
+def _reorder_menus(parent_id):
+    """删除菜单后重新整理同级排序号"""
+    menus = SysMenu.query.filter_by(parent_id=parent_id).order_by(
+        SysMenu.sort, SysMenu.id).all()
+    for index, menu in enumerate(menus, 1):
+        if menu.sort != index:
+            menu.sort = index
     db.session.commit()
 
 
@@ -274,6 +294,7 @@ def create_dept():
         dept_type = request.form.get('dept_type', 'dept')
         project_id = request.form.get('project_id', type=int, default=0)
         leader = request.form.get('leader', '').strip()
+        sort_input = request.form.get('sort', type=int, default=None)
         remark = request.form.get('remark', '').strip()
 
         # 项目相关字段
@@ -320,6 +341,11 @@ def create_dept():
             db.session.flush()
             project_id = new_project.id
 
+        if sort_input is None:
+            max_sort = db.session.query(db.func.max(SysDept.sort)).filter_by(
+                parent_id=parent_id if parent_id else 0).scalar() or 0
+            sort_input = max_sort + 1
+
         dept = SysDept(
             dept_code=dept_code,
             dept_name=dept_name,
@@ -327,7 +353,7 @@ def create_dept():
             dept_type=dept_type,
             project_id=project_id if project_id and dept_type == 'project' else None,
             leader=leader or None,
-            sort=0,
+            sort=sort_input,
             remark=remark or None
         )
         db.session.add(dept)
@@ -351,7 +377,14 @@ def create_dept():
     for d in all_depts:
         d._depth = get_dept_depth(d)
 
+    default_sort = 1
+    parent_id_param = request.args.get('parent_id', type=int, default=0)
+    max_sort = db.session.query(db.func.max(SysDept.sort)).filter_by(
+        parent_id=parent_id_param).scalar() or 0
+    default_sort = max_sort + 1
+
     return render_template('system/dept_form.html', dept=None, all_depts=all_depts, all_projects=all_projects,
+                           default_sort=default_sort,
                            DEPT_TYPE_LABELS=SysDept._DEPT_TYPE_MAP if hasattr(SysDept, '_DEPT_TYPE_MAP') else {})
 
 
@@ -368,6 +401,7 @@ def edit_dept(id):
         dept_type = request.form.get('dept_type', 'dept')
         project_id = request.form.get('project_id', type=int, default=0)
         leader = request.form.get('leader', '').strip()
+        sort = request.form.get('sort', type=int, default=dept.sort)
         remark = request.form.get('remark', '').strip()
 
         # 项目相关字段
@@ -395,6 +429,7 @@ def edit_dept(id):
         dept.parent_id = parent_id if parent_id else 0
         dept.dept_type = dept_type
         dept.leader = leader or None
+        dept.sort = sort
         dept.remark = remark or None
 
         if dept_type == 'project':
@@ -483,8 +518,10 @@ def delete_dept(id):
         if project:
             project.is_archived = True
 
+    parent_id = dept.parent_id
     db.session.delete(dept)
     db.session.commit()
+    _reorder_depts(parent_id)
     flash('部门已删除', 'success')
     return redirect(url_for('system.depts'))
 
@@ -733,7 +770,7 @@ def create_menu():
         menu_type = request.form.get('menu_type', 'menu')
         path = request.form.get('path', '').strip()
         icon = request.form.get('icon', '').strip()
-        sort = request.form.get('sort', type=int, default=0)
+        sort_input = request.form.get('sort', type=int, default=None)
         permission = request.form.get('permission', '').strip()
         remark = request.form.get('remark', '').strip()
 
@@ -745,6 +782,11 @@ def create_menu():
             flash('菜单编码已存在', 'error')
             return redirect(url_for('system.create_menu'))
 
+        if sort_input is None:
+            max_sort = db.session.query(db.func.max(SysMenu.sort)).filter_by(
+                parent_id=parent_id if parent_id else 0).scalar() or 0
+            sort_input = max_sort + 1
+
         menu = SysMenu(
             menu_name=menu_name,
             menu_code=menu_code or None,
@@ -752,7 +794,7 @@ def create_menu():
             menu_type=menu_type,
             path=path or None,
             icon=icon or None,
-            sort=sort,
+            sort=sort_input,
             permission=permission or None,
             remark=remark or None
         )
@@ -762,7 +804,11 @@ def create_menu():
         return redirect(url_for('system.menus'))
 
     all_menus = SysMenu.query.order_by(SysMenu.sort).all()
-    return render_template('system/menu_form.html', menu=None, all_menus=all_menus)
+    parent_id_param = request.args.get('parent_id', type=int, default=0)
+    max_sort = db.session.query(db.func.max(SysMenu.sort)).filter_by(
+        parent_id=parent_id_param).scalar() or 0
+    default_sort = max_sort + 1
+    return render_template('system/menu_form.html', menu=None, all_menus=all_menus, default_sort=default_sort)
 
 
 @bp.route('/menus/<int:id>/edit', methods=['GET', 'POST'])
@@ -821,8 +867,10 @@ def delete_menu(id):
         return redirect(url_for('system.menus'))
 
     SysRoleMenu.query.filter_by(menu_id=id).delete()
+    parent_id = menu.parent_id
     db.session.delete(menu)
     db.session.commit()
+    _reorder_menus(parent_id)
     flash('菜单已删除', 'success')
     return redirect(url_for('system.menus'))
 
@@ -929,11 +977,12 @@ def copy_role(id):
             flash('角色编码已存在', 'error')
             return redirect(url_for('system.copy_role', id=id))
 
+        max_sort = db.session.query(db.func.max(SysRole.sort)).scalar() or 0
         new_role = SysRole(
             role_code=role_code,
             role_name=role_name,
             data_scope=src_role.data_scope,
-            sort=src_role.sort,
+            sort=max_sort + 1,
             remark=src_role.remark
         )
         db.session.add(new_role)
