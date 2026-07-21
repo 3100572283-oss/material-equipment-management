@@ -44,9 +44,10 @@
         this.input.parentNode.insertBefore(this.wrapper, this.input);
         this.wrapper.appendChild(this.input);
 
-        this.originalType = this.input.type;
-        this.input.type = 'text';
-        this.input.setAttribute('data-dtp-type', this.originalType);
+        // type 已在 initDatePickers 中改为 text，这里只需确保 data-dtp-type 存在
+        if (!this.input.getAttribute('data-dtp-type')) {
+            this.input.setAttribute('data-dtp-type', this.input.type || 'date');
+        }
 
         this.input.style.paddingRight = '32px';
         this.input.style.cursor = 'pointer';
@@ -503,9 +504,16 @@
                        'input[type="datetime-local"]:not(.dtp-initialized), ' +
                        'input[type="time"]:not(.dtp-initialized)';
         document.querySelectorAll(selector).forEach(function(input) {
+            // 已经在 wrapper 内或父级是 wrapper，跳过
             if (input.closest('.dtp-wrapper')) return;
+            if (input.parentNode && input.parentNode.classList &&
+                input.parentNode.classList.contains('dtp-wrapper')) return;
 
             input.classList.add('dtp-initialized');
+            // 立即把 type 改成 text，彻底禁用浏览器原生日历
+            input.setAttribute('data-dtp-type', input.type);
+            input.type = 'text';
+
             new DatePicker(input, {});
         });
     }

@@ -27,6 +27,54 @@ def _add_column_if_missing(table_name, col_name, col_def):
         db.session.rollback()
 
 
+def _migrate_price_formula_fields():
+    """迁移价格方案表字段：discount_type -> float_type, discount_value -> float_value"""
+    from sqlalchemy import text
+    try:
+        cols = db.session.execute(text("PRAGMA table_info('price_formula')")).fetchall()
+        col_names = [c[1] for c in cols]
+
+        # 表不存在，跳过
+        if not col_names:
+            return
+
+        # 添加新字段（如果不存在）
+        if 'float_type' not in col_names:
+            db.session.execute(text("ALTER TABLE price_formula ADD COLUMN float_type VARCHAR(16) DEFAULT 'none'"))
+            db.session.commit()
+            print("Added column: price_formula.float_type")
+
+        if 'float_value' not in col_names:
+            db.session.execute(text("ALTER TABLE price_formula ADD COLUMN float_value NUMERIC(18,4) DEFAULT 0"))
+            db.session.commit()
+            print("Added column: price_formula.float_value")
+
+        # 如果有旧字段，迁移数据
+        if 'discount_type' in col_names:
+            db.session.execute(text("""
+                UPDATE price_formula SET float_type = CASE
+                    WHEN discount_type = '比例' THEN 'ratio'
+                    WHEN discount_type = '金额' THEN 'amount'
+                    ELSE 'none'
+                END
+                WHERE float_type = 'none' OR float_type IS NULL
+            """))
+            db.session.commit()
+            print("Migrated discount_type -> float_type")
+
+        if 'discount_value' in col_names:
+            db.session.execute(text("""
+                UPDATE price_formula SET float_value = discount_value
+                WHERE float_value = 0 OR float_value IS NULL
+            """))
+            db.session.commit()
+            print("Migrated discount_value -> float_value")
+
+    except Exception as e:
+        print(f"Error migrating price_formula fields: {e}")
+        db.session.rollback()
+
+
 def init_db_schema():
     """数据库表结构初始化/迁移"""
     _add_column_if_missing('users', 'last_login_at', 'DATETIME')
@@ -197,6 +245,9 @@ def init_db_schema():
     _add_column_if_missing('sys_announcement', 'visible_scope', "VARCHAR(16) DEFAULT 'all'")
     _add_column_if_missing('sys_announcement', 'visible_roles', 'TEXT')
     _add_column_if_missing('sys_announcement', 'visible_depts', 'TEXT')
+
+    # 价格方案字段迁移（discount_type -> float_type, discount_value -> float_value）
+    _migrate_price_formula_fields()
 
     db.create_all()
     print("Database tables created/updated")

@@ -27,9 +27,9 @@
     border: 1px solid #e5e6eb !important;
     border-radius: 8px !important;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-    width: 280px !important;
+    width: 260px !important;
     max-width: calc(100vw - 16px) !important;
-    padding: 8px !important;
+    padding: 6px !important;
     font-size: 13px !important;
     box-sizing: border-box !important;
     user-select: none !important;
@@ -47,9 +47,9 @@
     flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
-    padding: 4px 4px 8px !important;
+    padding: 2px 2px 6px !important;
     border-bottom: 1px solid #f0f0f0 !important;
-    margin-bottom: 4px !important;
+    margin-bottom: 2px !important;
     box-sizing: border-box !important;
     width: 100% !important;
 }
@@ -135,7 +135,7 @@
     font-size: 12px !important;
     font-weight: 600 !important;
     color: #909399 !important;
-    padding: 6px 0 !important;
+    padding: 4px 0 !important;
     box-sizing: border-box !important;
 }
 
@@ -150,7 +150,7 @@
 
 .dtp-day {
     text-align: center !important;
-    padding: 8px 0 !important;
+    padding: 4px 0 !important;
     cursor: pointer !important;
     border-radius: 4px !important;
     font-size: 13px !important;
@@ -162,7 +162,7 @@
     background: transparent !important;
     margin: 0 !important;
     width: auto !important;
-    min-height: 32px !important;
+    min-height: 28px !important;
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
@@ -216,9 +216,9 @@
     display: flex !important;
     flex-direction: row !important;
     justify-content: space-between !important;
-    padding: 8px 4px 0 !important;
+    padding: 6px 4px 0 !important;
     border-top: 1px solid #f0f0f0 !important;
-    margin-top: 4px !important;
+    margin-top: 2px !important;
     gap: 8px !important;
     width: 100% !important;
     box-sizing: border-box !important;
@@ -288,7 +288,7 @@
 .dtp-btn-today,
 .dtp-btn-clear {
     flex: 1 !important;
-    padding: 5px 0 !important;
+    padding: 4px 0 !important;
     border: 1px solid #dcdfe6 !important;
     background: #fff !important;
     border-radius: 4px !important;
@@ -296,7 +296,7 @@
     font-size: 12px !important;
     color: #606266 !important;
     transition: all 0.2s !important;
-    height: 30px !important;
+    height: 28px !important;
     box-sizing: border-box !important;
     line-height: 1.2 !important;
 }
@@ -561,27 +561,28 @@ body.dark-mode .dtp-btn-now:hover {
     color: #fff !important;
 }
 
-/* ===== 输入框样式统一 ===== */
-.dtp-wrapper input[type="date"],
-.dtp-wrapper input[type="month"],
-.dtp-wrapper input[type="datetime-local"],
-.dtp-wrapper input[type="time"] {
-    position: relative !important;
-    z-index: 1 !important;
+/* ===== 全局隐藏浏览器原生日历指示器 ===== */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+    opacity: 0 !important;
+    display: none !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
 }
 
-.dtp-wrapper input[type="date"]::-webkit-calendar-picker-indicator,
-.dtp-wrapper input[type="month"]::-webkit-calendar-picker-indicator,
-.dtp-wrapper input[type="datetime-local"]::-webkit-calendar-picker-indicator,
-.dtp-wrapper input[type="time"]::-webkit-calendar-picker-indicator {
-    position: absolute !important;
-    right: 0 !important;
-    top: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    opacity: 0 !important;
-    cursor: pointer !important;
-    z-index: 2 !important;
+/* ===== 输入框样式统一 ===== */
+.dtp-wrapper input[data-dtp-type="date"],
+.dtp-wrapper input[data-dtp-type="month"],
+.dtp-wrapper input[data-dtp-type="datetime-local"],
+.dtp-wrapper input[data-dtp-type="time"] {
+    position: relative !important;
+    z-index: 1 !important;
+    height: 32px !important;
+    line-height: 32px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
 }
 
 /* ===== 移动端面板宽度自适应 ===== */
