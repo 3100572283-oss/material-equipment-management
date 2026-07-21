@@ -193,6 +193,11 @@ def init_db_schema():
     _add_column_if_missing('concrete_ticket', 'driver_name', 'VARCHAR(32)')
     _add_column_if_missing('material_scrap', 'approval_instance_id', 'INTEGER')
 
+    # 公告表新增可见范围字段
+    _add_column_if_missing('sys_announcement', 'visible_scope', "VARCHAR(16) DEFAULT 'all'")
+    _add_column_if_missing('sys_announcement', 'visible_roles', 'TEXT')
+    _add_column_if_missing('sys_announcement', 'visible_depts', 'TEXT')
+
     db.create_all()
     print("Database tables created/updated")
 

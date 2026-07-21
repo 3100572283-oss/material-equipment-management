@@ -13,7 +13,7 @@
         this.id = ++pickerId;
         this.input = input;
         this.options = options || {};
-        var inputType = input.type || 'date';
+        var inputType = input.getAttribute('data-dtp-type') || input.type || 'date';
         if (this.options.mode) {
             this.mode = this.options.mode;
         } else if (inputType === 'month') {
@@ -43,6 +43,10 @@
 
         this.input.parentNode.insertBefore(this.wrapper, this.input);
         this.wrapper.appendChild(this.input);
+
+        this.originalType = this.input.type;
+        this.input.type = 'text';
+        this.input.setAttribute('data-dtp-type', this.originalType);
 
         this.input.style.paddingRight = '32px';
         this.input.style.cursor = 'pointer';
