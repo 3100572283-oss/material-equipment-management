@@ -4,27 +4,67 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidebarOverlay = document.getElementById('sidebarOverlay');
     const wrapper = document.getElementById('wrapper');
     const sidebarWrapper = document.getElementById('sidebar-wrapper');
+    const SIDEBAR_COLLAPSED_KEY = 'sidebar_collapsed';
+
+    function isDesktop() {
+        return window.innerWidth >= 1199.98;
+    }
+
+    function isMobile() {
+        return window.innerWidth < 768;
+    }
+
+    function getSavedCollapsedState() {
+        try {
+            return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function saveCollapsedState(collapsed) {
+        try {
+            localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+        } catch (e) {}
+    }
 
     function openSidebar() {
         if (wrapper) wrapper.classList.add('toggled');
+        saveCollapsedState(true);
         if (sidebarOverlay) sidebarOverlay.classList.add('show');
         document.body.style.overflow = 'hidden';
     }
 
     function closeSidebar() {
         if (wrapper) wrapper.classList.remove('toggled');
+        saveCollapsedState(false);
         if (sidebarOverlay) sidebarOverlay.classList.remove('show');
         document.body.style.overflow = '';
+    }
+
+    function toggleSidebar() {
+        if (wrapper.classList.contains('toggled')) {
+            closeSidebar();
+        } else {
+            openSidebar();
+        }
+    }
+
+    // 初始化侧边栏状态
+    if (isDesktop()) {
+        if (getSavedCollapsedState()) {
+            openSidebar();
+        } else {
+            closeSidebar();
+        }
+    } else if (isMobile()) {
+        openSidebar();
     }
 
     if (sidebarToggle) {
         sidebarToggle.addEventListener('click', function(e) {
             e.preventDefault();
-            if (wrapper.classList.contains('toggled')) {
-                closeSidebar();
-            } else {
-                openSidebar();
-            }
+            toggleSidebar();
         });
     }
 
@@ -66,10 +106,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // 窗口尺寸变化时重置状态
+    // 窗口尺寸变化时处理状态
     window.addEventListener('resize', function() {
-        if (window.innerWidth >= 1199.98) {
-            closeSidebar();
+        if (isDesktop()) {
+            if (getSavedCollapsedState()) {
+                wrapper.classList.add('toggled');
+            } else {
+                wrapper.classList.remove('toggled');
+            }
         }
     });
 

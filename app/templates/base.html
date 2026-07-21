@@ -668,11 +668,29 @@
         function openMenu() {
             btn.setAttribute('aria-expanded', 'true');
             menu.classList.add('show');
+            requestAnimationFrame(positionMenu);
         }
 
         function closeMenu() {
             btn.setAttribute('aria-expanded', 'false');
             menu.classList.remove('show');
+        }
+
+        function positionMenu() {
+            var btnRect = btn.getBoundingClientRect();
+            var menuHeight = menu.offsetHeight;
+            var viewportW = window.innerWidth;
+            var viewportH = window.innerHeight;
+            var navbar = document.querySelector('.navbar');
+            var navbarBottom = navbar ? navbar.getBoundingClientRect().bottom : 0;
+            var top = Math.max(navbarBottom + 4, btnRect.bottom + 4);
+            var right = viewportW - btnRect.right;
+            if (right < 8) right = 8;
+            if (top + menuHeight > viewportH) {
+                top = Math.max(navbarBottom + 4, btnRect.top - menuHeight - 4);
+            }
+            menu.style.top = top + 'px';
+            menu.style.right = right + 'px';
         }
 
         function toggleMenu() {

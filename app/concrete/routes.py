@@ -59,14 +59,13 @@ def api_supplier_contracts():
     project_id = session.get('current_project_id')
     supplier_id = request.args.get('supplier_id', type=int)
     
-    if not project_id:
-        return jsonify([])
-    
     query = Contract.query.filter(
-        Contract.project_id == project_id,
         Contract.status == '正常履约',
         Contract.is_deleted == False
     )
+    
+    if project_id:
+        query = query.filter(Contract.project_id == project_id)
     
     if supplier_id:
         query = query.filter(Contract.supplier_id == supplier_id)
@@ -124,19 +123,26 @@ def api_project_concrete_materials():
     用于小票标号选择，与入库/出库物资选择规则一致。
     """
     project_id = session.get('current_project_id')
-    if not project_id:
-        return jsonify([])
 
     keyword = (request.args.get('keyword') or '').strip()
 
-    # 查询项目常用物资中商砼/混凝土分类的物资
-    query = get_project_materials(project_id, common_only=True).filter(
-        or_(
-            Material.name.like('%商砼%'),
-            Material.name.like('%混凝土%'),
-            Material.name.like('%砼%'),
+    if project_id:
+        query = get_project_materials(project_id, common_only=True).filter(
+            or_(
+                Material.name.like('%商砼%'),
+                Material.name.like('%混凝土%'),
+                Material.name.like('%砼%'),
+            )
         )
-    )
+    else:
+        query = Material.query.filter(
+            Material.status == 'active',
+            or_(
+                Material.name.like('%商砼%'),
+                Material.name.like('%混凝土%'),
+                Material.name.like('%砼%'),
+            )
+        )
     if keyword:
         query = query.filter(
             or_(Material.name.like(f'%{keyword}%'), Material.code.like(f'%{keyword}%'))
@@ -224,12 +230,19 @@ def index():
     pagination = query.order_by(ConcreteTicket.created_at.desc()).paginate(
         page=page, per_page=20, error_out=False)
 
-    suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
-    contracts = Contract.query.filter(
-        Contract.project_id == project_id,
-        Contract.status == '正常履约',
-        Contract.is_deleted == False
-    ).order_by(Contract.code.desc()).all()
+    if project_id:
+        suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
+        contracts = Contract.query.filter(
+            Contract.project_id == project_id,
+            Contract.status == '正常履约',
+            Contract.is_deleted == False
+        ).order_by(Contract.code.desc()).all()
+    else:
+        suppliers = Supplier.query.filter_by(is_deleted=False).order_by(Supplier.name).all()
+        contracts = Contract.query.filter(
+            Contract.status == '正常履约',
+            Contract.is_deleted == False
+        ).order_by(Contract.code.desc()).all()
     return render_template('concrete/list.html', pagination=pagination,
                            suppliers=suppliers, contracts=contracts,
                            strength_grades=STRENGTH_GRADES,
@@ -285,6 +298,7 @@ def create():
 
         ticket = ConcreteTicket(
             project_id=project_id,
+            dept_id=current_user.dept_id,
             ticket_no=ticket_no,
             supplier_id=supplier_id,
             supplier_name=supplier_name,
@@ -498,6 +512,7 @@ def transfer(id):
     # 创建入库单
     stock_in = StockIn(
         project_id=ticket.project_id,
+        dept_id=ticket.dept_id or current_user.dept_id,
         code=gen_stock_in_code(ticket.project_id),
         stock_in_date=ticket.arrival_time.date() if ticket.arrival_time else date.today(),
         stock_in_type='商砼入库',

@@ -565,11 +565,16 @@ body.dark-mode .dtp-btn-now:hover {
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="month"]::-webkit-calendar-picker-indicator,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator,
-input[type="time"]::-webkit-calendar-picker-indicator {
+input[type="time"]::-webkit-calendar-picker-indicator,
+.dtp-wrapper input::-webkit-calendar-picker-indicator {
     opacity: 0 !important;
     display: none !important;
     -webkit-appearance: none !important;
     appearance: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 /* ===== 输入框样式统一 ===== */

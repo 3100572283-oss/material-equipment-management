@@ -499,31 +499,34 @@
     };
 
     function initDatePickers() {
-        var selector = 'input[type="date"]:not(.dtp-initialized), ' +
-                       'input[type="month"]:not(.dtp-initialized), ' +
-                       'input[type="datetime-local"]:not(.dtp-initialized), ' +
-                       'input[type="time"]:not(.dtp-initialized)';
+        var selector = 'input[type="date"]:not(.dtp-initialized):not([data-dtp-type]), ' +
+                       'input[type="month"]:not(.dtp-initialized):not([data-dtp-type]), ' +
+                       'input[type="datetime-local"]:not(.dtp-initialized):not([data-dtp-type]), ' +
+                       'input[type="time"]:not(.dtp-initialized):not([data-dtp-type])';
         document.querySelectorAll(selector).forEach(function(input) {
-            // 已经在 wrapper 内或父级是 wrapper，跳过
             if (input.closest('.dtp-wrapper')) return;
-            if (input.parentNode && input.parentNode.classList &&
-                input.parentNode.classList.contains('dtp-wrapper')) return;
 
             input.classList.add('dtp-initialized');
-            // 立即把 type 改成 text，彻底禁用浏览器原生日历
             input.setAttribute('data-dtp-type', input.type);
             input.type = 'text';
+
+            new DatePicker(input, {});
+        });
+
+        var textSelector = 'input[type="text"][data-dtp-type]:not(.dtp-initialized)';
+        document.querySelectorAll(textSelector).forEach(function(input) {
+            if (input.closest('.dtp-wrapper')) return;
+
+            input.classList.add('dtp-initialized');
 
             new DatePicker(input, {});
         });
     }
 
     document.addEventListener('click', function(e) {
-        // 点击在任意 wrapper 内，不处理（让对应 picker 自己响应）
         if (e.target.closest('.dtp-wrapper')) return;
-        // 点击在某个 panel 内，不处理
         if (e.target.closest('.dtp-panel')) return;
-        // 否则关闭所有打开的面板
+        if (e.target.closest('.project-switcher-wrap')) return;
         document.querySelectorAll('.dtp-panel').forEach(function(panel) {
             if (panel.style.display !== 'none') {
                 var picker = pickerMap[panel.id];
@@ -553,21 +556,44 @@
         });
     }, true);
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            initDatePickers();
-            var observer = new MutationObserver(function() {
-                initDatePickers();
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-        });
-    } else {
+    var _initTimer = null;
+    function scheduleInit() {
+        if (_initTimer) clearTimeout(_initTimer);
+        _initTimer = setTimeout(initDatePickers, 50);
+    }
+
+    function setupInit() {
         initDatePickers();
-        var observer = new MutationObserver(function() {
-            initDatePickers();
+        var observer = new MutationObserver(function(mutations) {
+            var hasDateInput = false;
+            mutations.forEach(function(m) {
+                if (m.addedNodes) {
+                    m.addedNodes.forEach(function(node) {
+                        if (node.nodeType === 1) {
+                            if (node.tagName === 'INPUT' && 
+                                (node.type === 'date' || node.type === 'month' || 
+                                 node.type === 'datetime-local' || node.type === 'time')) {
+                                hasDateInput = true;
+                            } else if (node.querySelectorAll) {
+                                var inputs = node.querySelectorAll('input[type="date"], input[type="month"], input[type="datetime-local"], input[type="time"]');
+                                if (inputs.length > 0) hasDateInput = true;
+                            }
+                        }
+                    });
+                }
+            });
+            if (hasDateInput) scheduleInit();
         });
         observer.observe(document.body, { childList: true, subtree: true });
     }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupInit);
+    } else {
+        setupInit();
+    }
+
+    setTimeout(initDatePickers, 100);
 
     window.DatePicker = DatePicker;
     window.initDatePickers = initDatePickers;

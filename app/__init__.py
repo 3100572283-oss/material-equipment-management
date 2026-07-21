@@ -239,6 +239,9 @@ def init_db_schema():
         _add_column_if_missing(tbl, 'location_time', 'DATETIME')
     _add_column_if_missing('concrete_ticket', 'vehicle_no', 'VARCHAR(32)')
     _add_column_if_missing('concrete_ticket', 'driver_name', 'VARCHAR(32)')
+    _add_column_if_missing('concrete_ticket', 'pour_part', 'VARCHAR(128)')
+    _add_column_if_missing('concrete_ticket', 'slump', 'VARCHAR(32)')
+    _add_column_if_missing('concrete_ticket', 'temperature', 'VARCHAR(32)')
     _add_column_if_missing('material_scrap', 'approval_instance_id', 'INTEGER')
 
     # 公告表新增可见范围字段
