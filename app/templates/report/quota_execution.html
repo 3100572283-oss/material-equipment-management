@@ -66,7 +66,7 @@
                         <option value="0">全部工号</option>
                         {% for wn in work_numbers %}
                         <option value="{{ wn.id }}" {% if work_number_id|string == wn.id|string %}selected{% endif %}>
-                            {{ wn.code }} - {{ wn.division_name }}
+                            {% if wn.parent %}{{ wn.parent.code }} / {% endif %}{{ wn.code }} - {{ wn.division_name or '' }}{% if wn.item_name %} / {{ wn.item_name }}{% endif %}
                         </option>
                         {% endfor %}
                     </select>

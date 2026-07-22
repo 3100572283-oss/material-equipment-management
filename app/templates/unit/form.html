@@ -16,7 +16,8 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">单位编码</label>
-                            <input type="text" class="form-control" name="code" value="{{ unit.code if unit else '' }}">
+                            <input type="text" class="form-control" name="code" value="{{ unit.code if unit else '' }}" {% if unit %}readonly{% else %}hidden{% endif %}>
+                            {% if not unit %}<small class="text-muted">系统自动生成（YL+4位流水号）</small>{% endif %}
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">负责人</label>

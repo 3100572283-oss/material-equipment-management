@@ -9,11 +9,37 @@ from app.utils import to_decimal, ConfigCache, apply_data_scope
 from sqlalchemy import func
 
 
-def _gen_work_number_code(project_id):
-    today = datetime.now().strftime('%Y%m%d')
-    prefix = f'GH{today}'
-    count = WorkNumber.query.filter(WorkNumber.code.like(f'{prefix}%')).count()
-    return f'{prefix}{count + 1:03d}'
+def _gen_division_code(project_id):
+    """生成分部工程编码: GH{4位流水号}"""
+    max_code = db.session.query(func.max(WorkNumber.code)).filter(
+        WorkNumber.project_id == project_id,
+        WorkNumber.code.like('GH%'),
+        WorkNumber.parent_id.is_(None)
+    ).scalar()
+    if max_code:
+        try:
+            seq = int(max_code[2:]) + 1
+        except ValueError:
+            seq = 1
+    else:
+        seq = 1
+    return f'GH{seq:04d}'
+
+
+def _gen_item_code(division_code):
+    """生成分项工程编码: 分部编码-序号"""
+    existing = WorkNumber.query.filter(
+        WorkNumber.code.like(f'{division_code}-%')
+    ).all()
+    max_seq = 0
+    for item in existing:
+        try:
+            seq = int(item.code.split('-')[1])
+            if seq > max_seq:
+                max_seq = seq
+        except (IndexError, ValueError):
+            continue
+    return f'{division_code}-{max_seq + 1:02d}'
 
 
 def _get_used_quantity(project_id, work_number_id, material_id):
@@ -47,30 +73,27 @@ def _get_used_amount(project_id, work_number_id, material_id):
 def index():
     from flask import session
     project_id = session.get('current_project_id')
-    # 全部数据权限用户在"全部项目"模式下不限制项目
     if not project_id:
         if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
             flash('请先选择项目。', 'warning')
             return redirect(url_for('main.index'))
 
-    page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
-    query = WorkNumber.query
+    query = WorkNumber.query.filter(WorkNumber.parent_id.is_(None))
     if project_id:
         query = query.filter_by(project_id=project_id)
     query = apply_data_scope(query, WorkNumber)
     if keyword:
         query = query.filter(WorkNumber.code.contains(keyword) | WorkNumber.division_name.contains(keyword))
-    pagination = query.order_by(WorkNumber.created_at.desc()).paginate(
-        page=page, per_page=10, error_out=False
-    )
-    return render_template('work_number/index.html', pagination=pagination, keyword=keyword)
+    divisions = query.order_by(WorkNumber.code).all()
+
+    return render_template('work_number/index.html', divisions=divisions, keyword=keyword)
 
 
 @bp.route('/create', methods=['GET', 'POST'])
 @login_required
 @editor_required
-@log_audit(module='work_number', operation='新增')
+@log_audit(module='work_number', operation='新增分部')
 def create():
     from flask import session
     project_id = session.get('current_project_id')
@@ -81,16 +104,55 @@ def create():
     if request.method == 'POST':
         work_number = WorkNumber(
             project_id=project_id,
-            code=_gen_work_number_code(project_id),
+            parent_id=None,
+            code=_gen_division_code(project_id),
             division_name=request.form.get('division_name', '').strip(),
-            item_name=request.form.get('item_name', '').strip()
+            team_name=request.form.get('team_name', '').strip(),
+            picker=request.form.get('picker', '').strip(),
+            remark=request.form.get('remark', '').strip()
         )
         db.session.add(work_number)
         db.session.commit()
-        flash('工号创建成功。', 'success')
-        return redirect(url_for('work_number.detail', id=work_number.id))
-    default_code = _gen_work_number_code(project_id)
-    return render_template('work_number/form.html', work_number=None, default_code=default_code)
+        flash('分部工程创建成功。', 'success')
+        return redirect(url_for('work_number.index'))
+    default_code = _gen_division_code(project_id)
+    return render_template('work_number/form.html', work_number=None, default_code=default_code, is_division=True)
+
+
+@bp.route('/<int:division_id>/add_item', methods=['GET', 'POST'])
+@login_required
+@editor_required
+@log_audit(module='work_number', operation='新增分项')
+def add_item(division_id):
+    from flask import session
+    project_id = session.get('current_project_id')
+    if not project_id:
+        flash('请先选择项目。', 'warning')
+        return redirect(url_for('main.index'))
+
+    division = WorkNumber.query.get_or_404(division_id)
+    if division.parent_id is not None:
+        flash('只能在分部工程下添加分项工程。', 'warning')
+        return redirect(url_for('work_number.index'))
+
+    if request.method == 'POST':
+        work_number = WorkNumber(
+            project_id=project_id,
+            parent_id=division_id,
+            code=_gen_item_code(division.code),
+            division_name=division.division_name,
+            item_name=request.form.get('item_name', '').strip(),
+            team_name=request.form.get('team_name', '').strip(),
+            picker=request.form.get('picker', '').strip(),
+            remark=request.form.get('remark', '').strip()
+        )
+        db.session.add(work_number)
+        db.session.commit()
+        flash('分项工程创建成功。', 'success')
+        return redirect(url_for('work_number.index'))
+    default_code = _gen_item_code(division.code)
+    return render_template('work_number/form.html', work_number=None, default_code=default_code, 
+                           is_division=False, division=division)
 
 
 @bp.route('/<int:id>')
@@ -147,12 +209,21 @@ def detail(id):
 def edit(id):
     work_number = WorkNumber.query.get_or_404(id)
     if request.method == 'POST':
-        work_number.division_name = request.form.get('division_name', '').strip()
-        work_number.item_name = request.form.get('item_name', '').strip()
+        if work_number.is_division:
+            work_number.division_name = request.form.get('division_name', '').strip()
+            work_number.team_name = request.form.get('team_name', '').strip()
+            work_number.picker = request.form.get('picker', '').strip()
+            work_number.remark = request.form.get('remark', '').strip()
+        else:
+            work_number.item_name = request.form.get('item_name', '').strip()
+            work_number.team_name = request.form.get('team_name', '').strip()
+            work_number.picker = request.form.get('picker', '').strip()
+            work_number.remark = request.form.get('remark', '').strip()
         db.session.commit()
         flash('工号更新成功。', 'success')
-        return redirect(url_for('work_number.detail', id=id))
-    return render_template('work_number/form.html', work_number=work_number)
+        return redirect(url_for('work_number.index'))
+    return render_template('work_number/form.html', work_number=work_number, 
+                           is_division=work_number.is_division)
 
 
 @bp.route('/<int:id>/delete', methods=['POST'])

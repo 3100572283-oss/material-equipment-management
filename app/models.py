@@ -547,14 +547,25 @@ class WorkNumber(db.Model):
     __tablename__ = 'work_numbers'
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('work_numbers.id'), nullable=True)
     code = db.Column(db.String(64), nullable=False)
     division_name = db.Column(db.String(128), nullable=True)
     item_name = db.Column(db.String(128), nullable=True)
     team_name = db.Column(db.String(128), nullable=True)
     picker = db.Column(db.String(64), nullable=True)
+    remark = db.Column(db.String(512), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
+    children = db.relationship('WorkNumber', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
     quotas = db.relationship('MaterialQuota', backref='work_number', lazy='dynamic', cascade='all, delete-orphan')
+
+    @property
+    def is_division(self):
+        return self.parent_id is None
+
+    @property
+    def is_item(self):
+        return self.parent_id is not None
 
 
 class MaterialQuota(db.Model):
@@ -1073,17 +1084,19 @@ class ApprovalNode(db.Model):
             return user.role in roles
 
     def get_all_approvers(self):
-        """获取所有审批人ID列表"""
+        """获取所有审批人用户对象列表"""
         from app.models import User
         approvers = []
         if self.approve_type == 'user':
             if self.approve_user_id:
-                approvers.append(self.approve_user_id)
+                user = User.query.get(self.approve_user_id)
+                if user:
+                    approvers.append(user)
         else:
             roles = [r.strip() for r in (self.approve_role or '').split(',') if r.strip()]
             if roles:
                 users = User.query.filter(User.role.in_(roles)).all()
-                approvers = [u.id for u in users]
+                approvers = users
         return list(set(approvers))
 
 

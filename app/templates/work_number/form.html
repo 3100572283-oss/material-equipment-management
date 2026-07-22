@@ -1,29 +1,53 @@
 {% extends "base.html" %}
-{% block title %}{{ '编辑' if work_number else '新增' }}工号 - 物资设备管理系统{% endblock %}
+{% block title %}{{ '编辑' if work_number else (is_division ? '新增分部' : '新增分项') }}工号 - 物资设备管理系统{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
         <div class="card shadow-sm">
             <div class="card-header bg-white">
-                <h5 class="mb-0">{{ '编辑' if work_number else '新增' }}工号</h5>
+                <h5 class="mb-0">{{ '编辑' if work_number else (is_division ? '新增分部工程' : '新增分项工程') }}</h5>
             </div>
             <div class="card-body">
                 <form method="POST">
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label">工号编码 <span class="text-danger">*</span></label>
+                            <label class="form-label">工号编码</label>
                             <input type="text" class="form-control" value="{{ work_number.code if work_number else default_code }}" readonly>
+                            {% if is_division %}
+                            <div class="form-text text-muted">系统自动生成（GH+4位流水号）</div>
+                            {% else %}
+                            <div class="form-text text-muted">系统自动生成（分部编码-序号）</div>
+                            {% endif %}
+                        </div>
+                        {% if is_division %}
+                        <div class="col-md-6">
+                            <label class="form-label">分部工程名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="division_name" value="{{ work_number.division_name if work_number else '' }}" required>
+                        </div>
+                        {% else %}
+                        <div class="col-md-6">
+                            <label class="form-label">所属分部</label>
+                            <input type="text" class="form-control" value="{{ division.code }} - {{ division.division_name }}" readonly>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">分部工程名称</label>
-                            <input type="text" class="form-control" name="division_name" value="{{ work_number.division_name if work_number else '' }}">
+                            <label class="form-label">分项工程名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="item_name" value="{{ work_number.item_name if work_number else '' }}" required>
+                        </div>
+                        {% endif %}
+                        <div class="col-md-6">
+                            <label class="form-label">班组</label>
+                            <input type="text" class="form-control" name="team_name" value="{{ work_number.team_name if work_number else '' }}">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">分项工程名称</label>
-                            <input type="text" class="form-control" name="item_name" value="{{ work_number.item_name if work_number else '' }}">
+                            <label class="form-label">领料人</label>
+                            <input type="text" class="form-control" name="picker" value="{{ work_number.picker if work_number else '' }}">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">备注</label>
+                            <textarea class="form-control" name="remark" rows="2">{{ work_number.remark if work_number else '' }}</textarea>
                         </div>
                     </div>
-                    <div class="form-actions">
+                    <div class="form-actions mt-4">
                         <a href="{{ url_for('work_number.index') }}" class="btn btn-secondary">返回</a>
                         <button type="submit" class="btn btn-primary">保存</button>
                     </div>

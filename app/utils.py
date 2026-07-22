@@ -137,6 +137,32 @@ def gen_project_code():
         return f"XM{seq:05d}"
 
 
+def gen_unit_code():
+    """生成用料单位编码: YL{4位流水号}，流水号全局递增"""
+    from app import db
+    from app.models import UsageUnit
+    from sqlalchemy import func
+
+    with _code_gen_lock:
+        max_code = db.session.query(func.max(UsageUnit.code)).filter(
+            UsageUnit.code.like('YL%')
+        ).scalar()
+        if max_code:
+            try:
+                seq = int(max_code[2:]) + 1
+            except ValueError:
+                seq = 1
+        else:
+            seq = 1
+        for attempt in range(_CODE_GEN_MAX_RETRY):
+            candidate = f"YL{seq:04d}"
+            exists = db.session.query(UsageUnit.code).filter_by(code=candidate).first()
+            if not exists:
+                return candidate
+            seq += 1
+        return f"YL{seq:05d}"
+
+
 def to_decimal(value, default=0):
     try:
         if value is None or value == '':

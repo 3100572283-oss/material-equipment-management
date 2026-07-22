@@ -105,7 +105,9 @@
                     <select class="form-select" name="work_number_id" id="workNumberSelect">
                         <option value="">-- 选择工号 --</option>
                         {% for w in work_numbers %}
-                        <option value="{{ w.id }}" {% if stock_out and stock_out.work_number_id == w.id %}selected{% endif %}>{{ w.code }} - {{ w.division_name or '' }}</option>
+                        <option value="{{ w.id }}" {% if stock_out and stock_out.work_number_id == w.id %}selected{% endif %}>
+                            {% if w.parent %}{{ w.parent.code }} / {% endif %}{{ w.code }} - {{ w.division_name or '' }}{% if w.item_name %} / {{ w.item_name }}{% endif %}
+                        </option>
                         {% endfor %}
                     </select>
                 </div>

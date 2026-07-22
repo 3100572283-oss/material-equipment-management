@@ -5,7 +5,7 @@
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-hash me-2"></i>工号管理</h5>
         {% if current_user.can_edit() %}
-        <a href="{{ url_for('work_number.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增工号</a>
+        <a href="{{ url_for('work_number.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增分部</a>
         {% endif %}
     </div>
     <div class="card-body">
@@ -19,57 +19,82 @@
             </div>
         </form>
 
-        <div class="table-responsive">
-            <table class="table table-striped table-hover align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>工号编码</th>
-                        <th>分部工程名称</th>
-                        <th>分项工程名称</th>
-                        <th class="text-end">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for w in pagination.items %}
-                    <tr>
-                        <td><a href="{{ url_for('work_number.detail', id=w.id) }}?from=list">{{ w.code }}</a></td>
-                        <td>{{ w.division_name or '-' }}</td>
-                        <td>{{ w.item_name or '-' }}</td>
-                        <td class="text-end">
+        <div class="tree-container">
+            {% for division in divisions %}
+            <div class="tree-node">
+                <div class="tree-row bg-light rounded p-3 mb-2">
+                    <div class="d-flex align-items-center gap-3">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleChildren({{ division.id }})">
+                            <i class="bi bi-chevron-right" id="icon-{{ division.id }}"></i>
+                        </button>
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-primary text-white">{{ division.code }}</span>
+                                <span class="fw-bold">{{ division.division_name }}</span>
+                            </div>
+                            {% if division.team_name %}<div class="small text-muted mt-1">班组：{{ division.team_name }} {% if division.picker %} / 领料人：{{ division.picker }}{% endif %}</div>{% endif %}
+                            {% if division.remark %}<div class="small text-muted">{{ division.remark }}</div>{% endif %}
+                        </div>
+                        <div class="d-flex gap-2">
                             {% if current_user.can_edit() %}
-                            <a href="{{ url_for('work_number.edit', id=w.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
-                            <form method="POST" action="{{ url_for('work_number.delete', id=w.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                            <a href="{{ url_for('work_number.add_item', division_id=division.id) }}" class="btn btn-sm btn-success" title="添加分项"><i class="bi bi-plus"></i></a>
+                            <a href="{{ url_for('work_number.edit', id=division.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('work_number.delete', id=division.id) }}" class="d-inline" onsubmit="return confirm('删除分部将同时删除其下所有分项，确定删除？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
                             </form>
                             {% endif %}
-                        </td>
-                    </tr>
+                        </div>
+                    </div>
+                </div>
+                <div class="tree-children ml-6" id="children-{{ division.id }}" style="display:none;">
+                    {% for item in division.children.all() %}
+                    <div class="tree-row bg-white border rounded p-2 mb-2 ml-4">
+                        <div class="d-flex align-items-center gap-3">
+                            <i class="bi bi-chevron-right text-muted" style="width:16px;"></i>
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-info text-white">{{ item.code }}</span>
+                                    <span>{{ item.item_name }}</span>
+                                </div>
+                                {% if item.team_name %}<div class="small text-muted mt-1">班组：{{ item.team_name }} {% if item.picker %} / 领料人：{{ item.picker }}{% endif %}</div>{% endif %}
+                                {% if item.remark %}<div class="small text-muted">{{ item.remark }}</div>{% endif %}
+                            </div>
+                            <div class="d-flex gap-2">
+                                {% if current_user.can_edit() %}
+                                <a href="{{ url_for('work_number.edit', id=item.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
+                                <form method="POST" action="{{ url_for('work_number.delete', id=item.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
                     {% else %}
-                    <tr><td colspan="4" class="text-center text-muted">暂无数据</td></tr>
+                    <div class="text-muted small ml-4 py-2">暂无分项工程</div>
                     {% endfor %}
-                </tbody>
-            </table>
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-8">暂无工号数据</div>
+            {% endfor %}
         </div>
-
-        {% if pagination.pages > 1 %}
-        <nav>
-            <ul class="pagination pagination-sm justify-content-center">
-                {% if pagination.has_prev %}
-                <li class="page-item"><a class="page-link" href="{{ url_for('work_number.index', page=pagination.prev_num, keyword=keyword) }}">上一页</a></li>
-                {% endif %}
-                {% for p in pagination.iter_pages() %}
-                    {% if p %}
-                    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('work_number.index', page=p, keyword=keyword) }}">{{ p }}</a></li>
-                    {% else %}
-                    <li class="page-item disabled"><span class="page-link">...</span></li>
-                    {% endif %}
-                {% endfor %}
-                {% if pagination.has_next %}
-                <li class="page-item"><a class="page-link" href="{{ url_for('work_number.index', page=pagination.next_num, keyword=keyword) }}">下一页</a></li>
-                {% endif %}
-            </ul>
-        </nav>
-        {% endif %}
     </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function toggleChildren(id) {
+    const children = document.getElementById('children-' + id);
+    const icon = document.getElementById('icon-' + id);
+    if (children.style.display === 'none') {
+        children.style.display = 'block';
+        icon.classList.remove('bi-chevron-right');
+        icon.classList.add('bi-chevron-down');
+    } else {
+        children.style.display = 'none';
+        icon.classList.remove('bi-chevron-down');
+        icon.classList.add('bi-chevron-right');
+    }
+}
+</script>
 {% endblock %}

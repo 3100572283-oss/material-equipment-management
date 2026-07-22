@@ -6,7 +6,7 @@ from app.unit import bp
 from app import db
 from app.models import UsageUnit, UnitTeam
 from app.decorators import editor_required, log_audit
-from app.utils import apply_data_scope
+from app.utils import apply_data_scope, gen_unit_code
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 
@@ -61,10 +61,14 @@ def create():
             auth_path = os.path.join('uploads', 'authorizations', filename)
             file.save(os.path.join(upload_dir, filename))
 
+        code = request.form.get('code', '').strip()
+        if not code:
+            code = gen_unit_code()
+
         unit = UsageUnit(
             project_id=project_id,
             name=request.form.get('name', '').strip(),
-            code=request.form.get('code', '').strip(),
+            code=code,
             manager=request.form.get('manager', '').strip(),
             contact_phone=request.form.get('contact_phone', '').strip(),
             auth_file=auth_path
@@ -92,7 +96,6 @@ def edit(id):
             file.save(os.path.join(upload_dir, filename))
 
         unit.name = request.form.get('name', '').strip()
-        unit.code = request.form.get('code', '').strip()
         unit.manager = request.form.get('manager', '').strip()
         unit.contact_phone = request.form.get('contact_phone', '').strip()
         db.session.commit()

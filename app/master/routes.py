@@ -41,32 +41,38 @@ def _ai_vision_enabled():
 # 公司级物资主库
 # ============================================================
 
-def _gen_master_material_code():
-    """生成公司级物资主库编码：WL + 6位流水号（如 WL000001）
+def _gen_master_material_code(category_id):
+    """生成公司级物资主库编码：三级分类编码 + 3位流水号（如 MC010601005）
 
-    使用进程内锁防止并发冲突，参考 app.utils.gen_dept_code 实现。
+    使用进程内锁防止并发冲突，与项目级物资编码规则完全一致。
     """
     from sqlalchemy import func
 
+    category = Category.query.get(category_id)
+    if not category or category.level != 3 or not category.category_code:
+        return None
+
+    prefix = category.category_code
+
     with _code_gen_lock:
-        max_code = db.session.query(func.max(Material.code)).filter(
-            Material.code.like('WL%'),
-            Material.source == 'company'
-        ).scalar()
-        if max_code:
+        materials = Material.query.filter(
+            Material.source == 'company',
+            Material.category_id == category_id,
+            Material.code.like(f'{prefix}%')
+        ).all()
+
+        max_seq = 0
+        for m in materials:
+            if not m.code or len(m.code) < len(prefix):
+                continue
             try:
-                seq = int(max_code[2:]) + 1
+                seq = int(m.code[len(prefix):])
+                if seq > max_seq:
+                    max_seq = seq
             except ValueError:
-                seq = 1
-        else:
-            seq = 1
-        for _ in range(_CODE_GEN_MAX_RETRY):
-            candidate = f"WL{seq:06d}"
-            exists = db.session.query(Material.id).filter_by(code=candidate).first()
-            if not exists:
-                return candidate
-            seq += 1
-        return f"WL{seq:07d}"
+                continue
+
+        return f'{prefix}{max_seq + 1:03d}'
 
 
 def _get_company_project_id():
@@ -147,9 +153,9 @@ def material_create():
             flash('系统未找到任何项目，无法创建物资。请先创建项目。', 'danger')
             return redirect(url_for('master.material_create'))
 
-        code = _gen_master_material_code()
+        code = _gen_master_material_code(category_id)
         if not code:
-            flash('物资编码生成失败，请重试。', 'danger')
+            flash('物资编码生成失败，请检查分类编码是否完整。', 'danger')
             return redirect(url_for('master.material_create'))
 
         material = Material(

@@ -414,7 +414,7 @@ def init_rbac_data():
         if not SysDept.query.filter_by(dept_code=dept_code).first():
             project_dept = SysDept(
                 dept_code=dept_code,
-                dept_name=f'{project.name}项目部',
+                dept_name=project.name,
                 parent_id=1,  # 挂在总公司下
                 dept_type='project',
                 project_id=project.id,

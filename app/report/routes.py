@@ -1535,7 +1535,7 @@ def quota_execution():
     enable_quota = ConfigCache.get('enable_quota_control') == 'true'
     work_number_id = request.args.get('work_number_id', '0', type=str)
 
-    work_numbers = WorkNumber.query.filter_by(project_id=project_id).order_by(WorkNumber.code).all()
+    work_numbers = WorkNumber.query.filter(WorkNumber.project_id == project_id, WorkNumber.parent_id.isnot(None)).order_by(WorkNumber.code).all()
 
     query = MaterialQuota.query.filter_by(project_id=project_id)
     if work_number_id and int(work_number_id) > 0:

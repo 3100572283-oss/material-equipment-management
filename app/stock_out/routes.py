@@ -311,7 +311,7 @@ def create():
         return redirect(url_for('stock_out.detail', id=stock_out.id))
 
     usage_units = UsageUnit.query.filter_by(project_id=project_id).order_by(UsageUnit.name).all()
-    work_numbers = WorkNumber.query.filter_by(project_id=project_id).order_by(WorkNumber.code).all()
+    work_numbers = WorkNumber.query.filter(WorkNumber.project_id == project_id, WorkNumber.parent_id.isnot(None)).order_by(WorkNumber.code).all()
     materials = get_project_materials(project_id, common_only=True).all()
 
     copy_from_id = request.args.get('copy_from', type=int)
@@ -492,7 +492,7 @@ def edit(id):
         return redirect(url_for('stock_out.detail', id=stock_out.id))
 
     usage_units = UsageUnit.query.filter_by(project_id=stock_out.project_id).order_by(UsageUnit.name).all()
-    work_numbers = WorkNumber.query.filter_by(project_id=stock_out.project_id).order_by(WorkNumber.code).all()
+    work_numbers = WorkNumber.query.filter(WorkNumber.project_id == stock_out.project_id, WorkNumber.parent_id.isnot(None)).order_by(WorkNumber.code).all()
     materials = get_project_materials(stock_out.project_id, common_only=True).all()
     from app.approval.service import is_approval_enabled
     return render_template('stock_out/form.html', stock_out=stock_out, usage_units=usage_units,

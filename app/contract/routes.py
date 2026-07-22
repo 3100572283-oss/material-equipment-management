@@ -29,6 +29,19 @@ def _ai_vision_enabled():
 ALLOWED_ATTACHMENT = {'pdf', 'png', 'jpg', 'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx'}
 
 
+def update_contract_amounts(contract_id):
+    """更新合同的含税金额和不含税金额（根据明细汇总）"""
+    contract = Contract.query.get(contract_id)
+    if not contract:
+        return
+    items = ContractItem.query.filter_by(contract_id=contract_id).all()
+    amount_with_tax = sum(float(item.amount_with_tax or 0) for item in items)
+    amount_without_tax = sum(float(item.unit_price_without_tax or 0) * float(item.quantity or 0) for item in items)
+    contract.amount_with_tax = amount_with_tax
+    contract.amount_without_tax = amount_without_tax
+    db.session.commit()
+
+
 def _parse_date(date_str):
     if not date_str:
         return None
@@ -123,8 +136,6 @@ def create():
     if request.method == 'POST':
         attachment = _save_file(request.files.get('attachment'), 'contracts')
         tax_rate = to_decimal(request.form.get('tax_rate'), 13)
-        amount_with_tax = to_decimal(request.form.get('amount_with_tax'))
-        amount_without_tax = calc_without_tax(amount_with_tax, tax_rate)
 
         code = request.form.get('code', '').strip()
         if not code:
@@ -139,9 +150,9 @@ def create():
             business_type=request.form.get('business_type', '').strip() or None,
             procurement_method=request.form.get('procurement_method', '').strip() or None,
             sign_date=_parse_date(request.form.get('sign_date')),
-            amount_with_tax=amount_with_tax,
+            amount_with_tax=0,
             tax_rate=tax_rate,
-            amount_without_tax=amount_without_tax,
+            amount_without_tax=0,
             status=request.form.get('status', '正常履约'),
             is_final_settled=bool(request.form.get('is_final_settled')),
             is_litigated=bool(request.form.get('is_litigated')),
@@ -189,8 +200,6 @@ def edit(id):
         contract.procurement_method = request.form.get('procurement_method', '').strip() or None
         contract.sign_date = _parse_date(request.form.get('sign_date'))
         contract.tax_rate = to_decimal(request.form.get('tax_rate'), 13)
-        contract.amount_with_tax = to_decimal(request.form.get('amount_with_tax'))
-        contract.amount_without_tax = calc_without_tax(contract.amount_with_tax, contract.tax_rate)
         contract.status = request.form.get('status', '正常履约')
         contract.is_final_settled = bool(request.form.get('is_final_settled'))
         contract.is_litigated = bool(request.form.get('is_litigated'))
@@ -298,6 +307,7 @@ def create_item(id):
     )
     db.session.add(item)
     db.session.commit()
+    update_contract_amounts(contract.id)
     flash('合同明细已添加。', 'success')
     return redirect(url_for('contract.detail', id=contract.id))
 
@@ -316,6 +326,7 @@ def edit_item(item_id):
     item.amount_with_tax = float(item.quantity) * float(item.unit_price_with_tax)
     item.remark = request.form.get('remark', '').strip()
     db.session.commit()
+    update_contract_amounts(item.contract_id)
     flash('合同明细已更新。', 'success')
     return redirect(url_for('contract.detail', id=item.contract_id))
 
@@ -329,6 +340,7 @@ def delete_item(item_id):
     contract_id = item.contract_id
     db.session.delete(item)
     db.session.commit()
+    update_contract_amounts(contract_id)
     flash('合同明细已删除。', 'success')
     return redirect(url_for('contract.detail', id=contract_id))
 
@@ -344,7 +356,6 @@ def batch_create_items(id):
     material_ids = [int(mid) for mid in material_ids_raw.split(',') if mid.strip().isdigit()]
     count = 0
     for mid in material_ids:
-        # 避免同一合同重复添加同一物资
         if ContractItem.query.filter_by(contract_id=contract.id, material_id=mid).first():
             continue
         item = ContractItem(
@@ -361,8 +372,29 @@ def batch_create_items(id):
         db.session.add(item)
         count += 1
     db.session.commit()
+    update_contract_amounts(contract.id)
     flash(f'成功批量添加 {count} 条合同明细。', 'success')
     return redirect(url_for('contract.detail', id=contract.id))
+
+
+@bp.route('/api/batch_update_price_type', methods=['POST'])
+@login_required
+@editor_required
+def batch_update_price_type():
+    """批量更新合同明细单价类型"""
+    data = request.get_json()
+    item_ids = data.get('item_ids', [])
+    price_type = data.get('price_type', '')
+    if not item_ids or not price_type:
+        return jsonify({'success': False, 'message': '参数错误'})
+    try:
+        ContractItem.query.filter(ContractItem.id.in_(item_ids)).update(
+            {'price_type': price_type}, synchronize_session=False)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)})
 
 
 # ---------------- 发票 ----------------

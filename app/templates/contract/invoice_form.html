@@ -21,14 +21,19 @@
                 {% endif %}
                 <form method="POST" enctype="multipart/form-data">
                     <div class="row g-3">
-                        <div class="col-md-12">
+                        <div class="col-md-6">
                             <label class="form-label">关联合同 <span class="text-danger">*</span></label>
-                            <select class="form-select" name="contract_id" id="contractSelect" required>
+                            <select class="form-select" name="contract_id" id="contractSelect" required onchange="loadContractSupplier()">
                                 <option value="">-- 请选择 --</option>
                                 {% for c in contracts %}
-                                <option value="{{ c.id }}" {% if (invoice and invoice.contract_id == c.id) or (pre_contract_id == c.id) %}selected{% endif %}>{{ c.code }} - {{ c.name }} ({{ c.supplier.name if c.supplier else '-' }})</option>
+                                <option value="{{ c.id }}" {% if (invoice and invoice.contract_id == c.id) or (pre_contract_id == c.id) %}selected{% endif %} data-supplier="{{ c.supplier_id or '' }}" data-supplier-name="{{ c.supplier.name if c.supplier else '' }}">{{ c.code }} - {{ c.name }} ({{ c.supplier.name if c.supplier else '-' }})</option>
                                 {% endfor %}
                             </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">供应商</label>
+                            <input type="text" class="form-control" id="supplierName" readonly value="{{ invoice.contract.supplier.name if invoice and invoice.contract and invoice.contract.supplier else '' }}">
+                            <input type="hidden" name="supplier_id" id="supplierId" value="{{ invoice.contract.supplier_id if invoice and invoice.contract else '' }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">发票代码</label>
@@ -90,6 +95,16 @@ function calc() {
 }
 document.getElementById('amount_with_tax').addEventListener('input', calc);
 document.getElementById('tax_rate').addEventListener('change', calc);
+
+function loadContractSupplier() {
+    const select = document.getElementById('contractSelect');
+    const option = select.options[select.selectedIndex];
+    if (option) {
+        document.getElementById('supplierName').value = option.dataset.supplierName || '';
+        document.getElementById('supplierId').value = option.dataset.supplier || '';
+    }
+}
+document.addEventListener('DOMContentLoaded', loadContractSupplier);
 
 {% if ai_vision_enabled %}
 // 发票识别

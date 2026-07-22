@@ -276,8 +276,7 @@ def submit_approval(biz_type, biz_id, applicant_id=None, opinion='', project_id=
     try:
         from app.notification_service import notify_pending_approval
         approvers = first_node.get_all_approvers()
-        for approver_id in approvers:
-            approver = User.query.get(approver_id)
+        for approver in approvers:
             if approver and approver.id != applicant_id:
                 approver_name = approver.name or approver.username
                 notify_pending_approval(approver_name, BIZ_NAMES.get(biz_type, biz_type),
@@ -338,7 +337,8 @@ def approve(instance_id, approver_id=None, opinion=''):
         else:
             pass_node = False
 
-        for pending_id in all_approvers:
+        for approver in all_approvers:
+            pending_id = approver.id
             if pending_id in approved_ids:
                 continue
             existing = instance.records.filter(
@@ -360,7 +360,8 @@ def approve(instance_id, approver_id=None, opinion=''):
         pass_node = True
 
         all_approvers = current_node.get_all_approvers()
-        for pending_id in all_approvers:
+        for approver in all_approvers:
+            pending_id = approver.id
             if pending_id == approver_id:
                 continue
             existing = instance.records.filter(
@@ -398,8 +399,7 @@ def approve(instance_id, approver_id=None, opinion=''):
             try:
                 from app.notification_service import notify_pending_approval
                 approvers = next_node.get_all_approvers()
-                for approver_id in approvers:
-                    next_approver = User.query.get(approver_id)
+                for next_approver in approvers:
                     if next_approver and next_approver.id != instance.applicant_id:
                         approver_name = next_approver.name or next_approver.username
                         notify_pending_approval(approver_name, BIZ_NAMES.get(instance.biz_type, instance.biz_type),
@@ -469,7 +469,8 @@ def reject(instance_id, approver_id=None, reason=''):
 
     if current_node.pass_rule == 'ANY':
         all_approvers = current_node.get_all_approvers()
-        for pending_id in all_approvers:
+        for approver in all_approvers:
+            pending_id = approver.id
             if pending_id == approver_id:
                 continue
             existing = instance.records.filter(
