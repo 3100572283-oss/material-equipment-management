@@ -709,6 +709,40 @@ class PaymentApplication(db.Model):
     generated_payment = db.relationship('Payment', foreign_keys=[payment_id], backref=db.backref('source_application', uselist=False))
     payments = db.relationship('Payment', backref='source_application_ref', foreign_keys='Payment.source_application_id', lazy='dynamic')
 
+    @property
+    def paid_amount(self):
+        from app import db
+        from sqlalchemy import func
+        result = db.session.query(func.sum(Payment.amount)).filter(
+            Payment.source_application_id == self.id,
+            Payment.approval_status == 'passed'
+        ).scalar()
+        return float(result or 0)
+
+    @property
+    def unpaid_amount(self):
+        return max(0, float(self.apply_amount or 0) - self.paid_amount)
+
+    @property
+    def payment_status(self):
+        paid = self.paid_amount
+        total = float(self.apply_amount or 0)
+        if paid <= 0:
+            return '未付款'
+        if paid >= total:
+            return '已付款'
+        return '部分付款'
+
+    @property
+    def payment_status_badge(self):
+        s = self.payment_status
+        if s == '未付款':
+            return (s, 'secondary')
+        elif s == '部分付款':
+            return (s, 'warning')
+        else:
+            return (s, 'success')
+
 
 class StockIn(db.Model):
     __tablename__ = 'stock_ins'

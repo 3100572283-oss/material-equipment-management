@@ -8,12 +8,31 @@
             <div class="card-body">
                 <form method="POST">
                     <div class="row g-3">
+                        {% if applications %}
+                        <div class="col-md-12">
+                            <label class="form-label">关联付款申请（可选）</label>
+                            <select class="form-select" name="source_application_id" id="applicationSelect" onchange="loadApplicationInfo()">
+                                <option value="">-- 不关联 --</option>
+                                {% for app in applications %}
+                                <option value="{{ app.id }}" 
+                                    data-contract-id="{{ app.contract_id }}"
+                                    data-amount="{{ app.apply_amount }}"
+                                    data-method="{{ app.payment_method }}"
+                                    data-remark="{{ app.payment_description or '' }}"
+                                    {% if (payment and payment.source_application_id == app.id) or (pre_application and pre_application.id == app.id) %}selected{% endif %}>
+                                    {{ app.application_code }} - {{ app.supplier.name if app.supplier else '' }} ({{ '%.2f'|format(app.apply_amount or 0) }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text text-muted">选择付款申请后将自动带出合同、金额、付款方式等信息</div>
+                        </div>
+                        {% endif %}
                         <div class="col-md-12">
                             <label class="form-label">关联合同 <span class="text-danger">*</span></label>
-                            <select class="form-select" name="contract_id" required>
+                            <select class="form-select" name="contract_id" id="contractSelect" required>
                                 <option value="">-- 请选择 --</option>
                                 {% for c in contracts %}
-                                <option value="{{ c.id }}" {% if (payment and payment.contract_id == c.id) or (pre_contract_id == c.id) %}selected{% endif %}>{{ c.code }} - {{ c.name }} ({{ c.supplier.name if c.supplier else '-' }})</option>
+                                <option value="{{ c.id }}" {% if (payment and payment.contract_id == c.id) or (pre_contract_id == c.id) or (pre_application and pre_application.contract_id == c.id) %}selected{% endif %}>{{ c.code }} - {{ c.name }} ({{ c.supplier.name if c.supplier else '-' }})</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -23,19 +42,19 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">付款金额 <span class="text-danger">*</span></label>
-                            <input type="number" step="0.01" min="0" class="form-control text-end" name="amount" value="{{ payment.amount if payment else '0' }}" required>
+                            <input type="number" step="0.01" min="0" class="form-control text-end" name="amount" id="amountInput" value="{{ payment.amount if payment else (pre_application.apply_amount if pre_application else '0') }}" required>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">付款方式</label>
-                            <select class="form-select" name="method">
+                            <select class="form-select" name="method" id="methodSelect">
                                 {% for label, value in get_dict_items('payment_method') %}
-                                <option value="{{ value }}" {% if (payment and payment.method == value) or (not payment and value == '银行转账') %}selected{% endif %}>{{ label }}</option>
+                                <option value="{{ value }}" {% if (payment and payment.method == value) or (pre_application and pre_application.payment_method == value) or (not payment and not pre_application and value == '银行转账') %}selected{% endif %}>{{ label }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-12">
                             <label class="form-label">备注</label>
-                            <textarea class="form-control" name="remark" rows="2">{{ payment.remark if payment else '' }}</textarea>
+                            <textarea class="form-control" name="remark" id="remarkInput" rows="2">{{ payment.remark if payment else (pre_application.payment_description if pre_application else '') }}</textarea>
                         </div>
                     </div>
                     <div class="form-actions">
@@ -47,4 +66,37 @@
         </div>
     </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function loadApplicationInfo() {
+    const select = document.getElementById('applicationSelect');
+    if (!select) return;
+    const option = select.options[select.selectedIndex];
+    if (option && option.value) {
+        const contractId = option.dataset.contractId;
+        const amount = option.dataset.amount;
+        const method = option.dataset.method;
+        const remark = option.dataset.remark;
+        if (contractId) {
+            document.getElementById('contractSelect').value = contractId;
+        }
+        if (amount) {
+            document.getElementById('amountInput').value = amount;
+        }
+        if (method) {
+            const methodSelect = document.getElementById('methodSelect');
+            for (let i = 0; i < methodSelect.options.length; i++) {
+                if (methodSelect.options[i].value === method) {
+                    methodSelect.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        if (remark) {
+            document.getElementById('remarkInput').value = remark;
+        }
+    }
+}
+</script>
 {% endblock %}

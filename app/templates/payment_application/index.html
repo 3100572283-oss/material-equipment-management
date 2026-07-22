@@ -70,6 +70,9 @@
                         <th>供应商</th>
                         <th>关联合同</th>
                         <th class="text-end">申请金额</th>
+                        <th class="text-end">已付金额</th>
+                        <th class="text-end">未付金额</th>
+                        <th>付款状态</th>
                         <th>付款方式</th>
                         <th>预计付款日期</th>
                         <th>状态</th>
@@ -87,6 +90,12 @@
                         <td>{{ app.supplier.name if app.supplier else '-' }}</td>
                         <td>{{ app.contract.code if app.contract else '-' }}</td>
                         <td class="text-end fw-bold">{{ '%.2f'|format(app.apply_amount or 0) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(app.paid_amount or 0) }}</td>
+                        <td class="text-end text-muted">{{ '%.2f'|format(app.unpaid_amount or 0) }}</td>
+                        <td>
+                            {% set ps_label, ps_cls = app.payment_status_badge %}
+                            <span class="badge bg-{{ ps_cls }}">{{ ps_label }}</span>
+                        </td>
                         <td>{{ app.payment_method or '-' }}</td>
                         <td>{{ app.expected_payment_date if app.expected_payment_date else '-' }}</td>
                         <td>
@@ -104,7 +113,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="10" class="text-center text-muted">暂无付款申请记录</td></tr>
+                    <tr><td colspan="13" class="text-center text-muted">暂无付款申请记录</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

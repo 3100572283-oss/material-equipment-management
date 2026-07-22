@@ -136,3 +136,14 @@ def api_by_supplier(supplier_id):
         'tax_rate': float(f.tax_rate or 13),
         'tax_included': f.tax_included,
     } for f in formulas])
+
+
+@bp.route('/api/<int:id>/toggle_status', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='price_formula', operation='切换状态')
+def toggle_status(id):
+    formula = PriceFormula.query.get_or_404(id)
+    formula.status = '禁用' if formula.status == '启用' else '启用'
+    db.session.commit()
+    return jsonify({'success': True, 'status': formula.status})

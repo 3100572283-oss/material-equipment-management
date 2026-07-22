@@ -55,6 +55,13 @@
                             {% else %}<span class="badge bg-secondary">禁用</span>{% endif %}
                         </td>
                         <td class="text-end">
+                            {% if current_user.can_edit() %}
+                            <div class="form-check form-switch d-inline-block me-2" style="vertical-align: middle;" title="点击切换启用/禁用">
+                                <input class="form-check-input" type="checkbox" id="toggle_{{ f.id }}" 
+                                    {% if f.status == '启用' %}checked{% endif %}
+                                    onchange="toggleStatus({{ f.id }}, this)">
+                            </div>
+                            {% endif %}
                             <a href="{{ url_for('price_formula.edit', id=f.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
                             <form method="POST" action="{{ url_for('price_formula.delete', id=f.id) }}" class="d-inline" onsubmit="return confirm('确定删除此价格方案？');">
                                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
@@ -69,4 +76,29 @@
         </div>
     </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function toggleStatus(id, checkbox) {
+    const newStatus = checkbox.checked ? '启用' : '禁用';
+    if (!confirm('确定' + (checkbox.checked ? '启用' : '禁用') + '该价格方案吗？')) {
+        checkbox.checked = !checkbox.checked;
+        return;
+    }
+    fetch('/price_formula/api/' + id + '/toggle_status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('操作失败');
+            checkbox.checked = !checkbox.checked;
+        }
+    }).catch(() => {
+        alert('操作失败');
+        checkbox.checked = !checkbox.checked;
+    });
+}
+</script>
 {% endblock %}

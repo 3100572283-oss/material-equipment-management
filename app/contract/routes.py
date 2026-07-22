@@ -9,7 +9,7 @@ from sqlalchemy import or_, func
 from app.contract import bp
 from app import db
 from app.models import (Contract, ContractItem, Invoice, Payment, Supplier,
-                       Material, StockIn)
+                       Material, StockIn, PaymentApplication)
 from app.decorators import editor_required, log_audit
 from app.utils import (gen_contract_code, gen_payment_code, calc_without_tax,
                        calc_unit_price_without_tax, get_contract_stats, to_decimal,
@@ -550,8 +550,14 @@ def create_payment():
         flash('请先选择项目。', 'warning')
         return redirect(url_for('main.index'))
 
+    application_id = request.args.get('application_id', type=int)
+    pre_application = None
+    if application_id:
+        pre_application = PaymentApplication.query.get(application_id)
+
     if request.method == 'POST':
         contract = Contract.query.get_or_404(request.form.get('contract_id', type=int))
+        source_application_id = request.form.get('source_application_id', type=int) or None
         payment = Payment(
             project_id=project_id,
             contract_id=contract.id,
@@ -560,6 +566,7 @@ def create_payment():
             payment_date=_parse_date(request.form.get('payment_date')),
             amount=to_decimal(request.form.get('amount')),
             method=request.form.get('method', '银行转账'),
+            source_application_id=source_application_id,
             remark=request.form.get('remark', '').strip()
         )
         db.session.add(payment)
@@ -569,8 +576,13 @@ def create_payment():
 
     contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
     pre_contract_id = request.args.get('contract_id', type=int)
+    applications = PaymentApplication.query.filter_by(
+        project_id=project_id, status='passed'
+    ).order_by(PaymentApplication.apply_date.desc()).all()
     return render_template('contract/payment_form.html', payment=None, contracts=contracts,
-                           pre_contract_id=pre_contract_id)
+                           pre_contract_id=pre_contract_id,
+                           pre_application=pre_application,
+                           applications=applications)
 
 
 @bp.route('/payments/<int:id>/edit', methods=['GET', 'POST'])
@@ -581,18 +593,24 @@ def edit_payment(id):
     payment = Payment.query.get_or_404(id)
     if request.method == 'POST':
         contract = Contract.query.get_or_404(request.form.get('contract_id', type=int))
+        source_application_id = request.form.get('source_application_id', type=int) or None
         payment.contract_id = contract.id
         payment.supplier_id = contract.supplier_id
         payment.payment_date = _parse_date(request.form.get('payment_date'))
         payment.amount = to_decimal(request.form.get('amount'))
         payment.method = request.form.get('method', '银行转账')
+        payment.source_application_id = source_application_id
         payment.remark = request.form.get('remark', '').strip()
         db.session.commit()
         flash('付款记录已更新。', 'success')
         return redirect(url_for('contract.payments'))
 
     contracts = Contract.query.filter_by(project_id=payment.project_id).order_by(Contract.code).all()
-    return render_template('contract/payment_form.html', payment=payment, contracts=contracts)
+    applications = PaymentApplication.query.filter_by(
+        project_id=payment.project_id, status='passed'
+    ).order_by(PaymentApplication.apply_date.desc()).all()
+    return render_template('contract/payment_form.html', payment=payment, contracts=contracts,
+                           applications=applications)
 
 
 @bp.route('/payments/<int:id>/delete', methods=['POST'])

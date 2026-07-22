@@ -43,6 +43,7 @@
                         <th>付款日期</th>
                         <th>合同</th>
                         <th>供应商</th>
+                        <th>关联申请</th>
                         <th>付款方式</th>
                         <th class="text-end">付款金额</th>
                         <th>备注</th>
@@ -56,6 +57,11 @@
                         <td>{{ p.payment_date or '-' }}</td>
                         <td>{% if p.contract %}<a href="{{ url_for('contract.detail', id=p.contract_id) }}?from=payment_list&from_id={{ p.id }}">{{ p.contract.code }}</a>{% else %}-{% endif %}</td>
                         <td>{{ p.supplier.name if p.supplier else '-' }}</td>
+                        <td>
+                            {% if p.source_application_id %}
+                            <a href="{{ url_for('payment_application.detail', id=p.source_application_id) }}?from=payment_list" class="text-info">{{ p.source_application_ref.application_code if p.source_application_ref else '-' }}</a>
+                            {% else %}-{% endif %}
+                        </td>
                         <td>{{ p.method }}</td>
                         <td class="text-end fw-bold">{{ '%.2f'|format(p.amount or 0) }}</td>
                         <td>{{ p.remark or '-' }}</td>
@@ -69,7 +75,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted">暂无数据</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
