@@ -48,14 +48,18 @@ def dashboard():
     # 2. 金额统计
     if is_all_projects_mode:
         stock_in_total = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
-            StockIn.project_id.in_(visible_project_ids)).scalar() or 0
+            StockIn.project_id.in_(visible_project_ids),
+            StockIn.status == 'approved'
+        ).scalar() or 0
         contract_total = db.session.query(func.coalesce(func.sum(Contract.amount_with_tax), 0)).filter(
             Contract.project_id.in_(visible_project_ids)).scalar() or 0
         payment_total = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
             Payment.project_id.in_(visible_project_ids)).scalar() or 0
     else:
         stock_in_total = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
-            StockIn.project_id == project_id).scalar() or 0
+            StockIn.project_id == project_id,
+            StockIn.status == 'approved'
+        ).scalar() or 0
         contract_total = db.session.query(func.coalesce(func.sum(Contract.amount_with_tax), 0)).filter(
             Contract.project_id == project_id).scalar() or 0
         payment_total = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
@@ -182,7 +186,9 @@ def dashboard():
         # 各项目库存金额排行
         for p in visible_projects:
             p_stock_in = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
-                StockIn.project_id == p.id).scalar() or 0
+                StockIn.project_id == p.id,
+                StockIn.status == 'approved'
+            ).scalar() or 0
             project_stats.append({
                 'id': p.id,
                 'name': p.name,
@@ -256,7 +262,8 @@ def dashboard_data():
                 StockIn, StockIn.id == StockInItem.stock_in_id
             ).filter(
                 Material.project_id == project_id,
-                Material.category_id.in_(all_ids)
+                Material.category_id.in_(all_ids),
+                StockIn.status == 'approved'
             ).scalar()
             
             if amount and float(amount) > 0:
@@ -280,7 +287,8 @@ def dashboard_data():
                 StockIn, StockIn.id == StockInItem.stock_in_id
             ).filter(
                 Material.project_id == project_id,
-                Material.category_id.in_(all_ids)
+                Material.category_id.in_(all_ids),
+                StockIn.status == 'approved'
             ).scalar()
             
             if amount and float(amount) > 0:
@@ -310,7 +318,8 @@ def dashboard_data():
         func.coalesce(func.sum(StockIn.total_amount), 0).label('amount')
     ).filter(
         StockIn.project_id == project_id,
-        StockIn.stock_in_date >= now - timedelta(days=180)
+        StockIn.stock_in_date >= now - timedelta(days=180),
+        StockIn.status == 'approved'
     ).group_by(month_label).all()
 
     for month_val, amount in in_data:
@@ -324,7 +333,8 @@ def dashboard_data():
         func.coalesce(func.sum(StockOut.total_amount), 0).label('amount')
     ).filter(
         StockOut.project_id == project_id,
-        StockOut.stock_out_date >= now - timedelta(days=180)
+        StockOut.stock_out_date >= now - timedelta(days=180),
+        StockOut.status == 'approved'
     ).group_by(out_month_label).all()
 
     for month, amount in out_data:
@@ -346,7 +356,8 @@ def dashboard_data():
     ).join(
         StockOut, StockOut.id == StockOutItem.stock_out_id
     ).filter(
-        StockOut.project_id == project_id
+        StockOut.project_id == project_id,
+        StockOut.status == 'approved'
     ).group_by(Material.id, Material.name).order_by(
         func.sum(StockOutItem.quantity).desc()
     ).limit(10).all()

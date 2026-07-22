@@ -134,16 +134,37 @@ def create():
             price_formula_id=request.form.get('price_formula_id', type=int) or None,
             start_date=start_date,
             end_date=end_date,
-            remark=request.form.get('remark', '').strip()
+            remark=request.form.get('remark', '').strip(),
+            status='draft'
         )
         db.session.add(reconciliation)
         db.session.commit()
+
+        action = request.form.get('action', 'save')
+        if action == 'submit':
+            from app.approval.service import submit_approval, is_approval_enabled
+            if not is_approval_enabled('reconciliation', project_id):
+                flash('对账单保存成功，当前未启用审批流，请手动确认。', 'success')
+                return redirect(url_for('reconciliation.detail', id=reconciliation.id))
+            success, msg, instance = submit_approval('reconciliation', reconciliation.id,
+                                                      applicant_id=current_user.id,
+                                                      project_id=project_id)
+            if success:
+                reconciliation.status = 'pending'
+                db.session.commit()
+                flash('对账单已提交审批。', 'success')
+            else:
+                flash(f'提交审批失败：{msg}', 'danger')
+            return redirect(url_for('reconciliation.detail', id=reconciliation.id))
+
         flash('对账单创建成功。', 'success')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
     suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
     formulas = PriceFormula.query.filter_by(project_id=project_id, status='启用').all()
-    return render_template('reconciliation/form.html', reconciliation=None, suppliers=suppliers, formulas=formulas)
+    from app.approval.service import is_approval_enabled
+    approval_enabled = is_approval_enabled('reconciliation', project_id)
+    return render_template('reconciliation/form.html', reconciliation=None, suppliers=suppliers, formulas=formulas, approval_enabled=approval_enabled)
 
 
 @bp.route('/<int:id>')
@@ -178,7 +199,7 @@ def detail(id):
 @log_audit(module='reconciliation', operation='拉取数据')
 def pull_data(id):
     reconciliation = Reconciliation.query.get_or_404(id)
-    if reconciliation.status != '草稿':
+    if reconciliation.status != 'draft':
         flash('只有草稿状态的对账单才能拉取数据。', 'danger')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
@@ -290,7 +311,7 @@ def pull_data(id):
 def apply_formula(id):
     """批量应用价格方案计算所有行的结算单价"""
     reconciliation = Reconciliation.query.get_or_404(id)
-    if reconciliation.status != '草稿':
+    if reconciliation.status != 'draft':
         flash('只有草稿状态的对账单才能操作。', 'danger')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
@@ -336,7 +357,7 @@ def apply_formula(id):
 @log_audit(module='reconciliation', operation='保存单价')
 def save_prices(id):
     reconciliation = Reconciliation.query.get_or_404(id)
-    if reconciliation.status != '草稿':
+    if reconciliation.status != 'draft':
         flash('只有草稿状态的对账单才能修改。', 'danger')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
@@ -396,7 +417,7 @@ def confirm(id):
     import time as _time
     _start = _time.time()
     reconciliation = Reconciliation.query.get_or_404(id)
-    if reconciliation.status != '草稿':
+    if reconciliation.status != 'draft':
         BusinessLogger.log_api_call(
             module='reconciliation', action='confirm',
             request_data={'id': id, 'code': reconciliation.code, 'status': reconciliation.status},
@@ -406,7 +427,7 @@ def confirm(id):
         flash('只有草稿状态的对账单才能确认。', 'danger')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
-    reconciliation.status = '已确认'
+    reconciliation.status = 'approved'
     reconciliation.confirmed_at = datetime.now()
     reconciliation.confirmed_by = current_user.name or current_user.username
 
@@ -494,8 +515,8 @@ def confirm(id):
 @log_audit(module='reconciliation', operation='撤销确认')
 def cancel_confirm(id):
     reconciliation = Reconciliation.query.get_or_404(id)
-    if reconciliation.status != '已确认':
-        flash('只有已确认状态的对账单才能撤销。', 'danger')
+    if reconciliation.status != 'approved':
+        flash('只有已通过状态的对账单才能撤销。', 'danger')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
     from app.models import Invoice, Payment
@@ -514,7 +535,7 @@ def cancel_confirm(id):
         flash('您没有权限撤销此对账单。', 'danger')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
-    reconciliation.status = '草稿'
+    reconciliation.status = 'draft'
     reconciliation.confirmed_at = None
     reconciliation.confirmed_by = None
 
@@ -598,7 +619,7 @@ def cancel_confirm(id):
 @log_audit(module='reconciliation', operation='删除')
 def delete(id):
     reconciliation = Reconciliation.query.get_or_404(id)
-    if reconciliation.status != '草稿':
+    if reconciliation.status != 'draft':
         flash('只有草稿状态的对账单才能删除。', 'danger')
         return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
@@ -606,6 +627,47 @@ def delete(id):
     db.session.commit()
     flash('对账单已删除。', 'success')
     return redirect(url_for('reconciliation.index'))
+
+
+@bp.route('/<int:id>/submit', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='reconciliation', operation='提交审批')
+def submit(id):
+    reconciliation = Reconciliation.query.get_or_404(id)
+    if reconciliation.status != 'draft':
+        flash('只有草稿状态的对账单才能提交审批。', 'danger')
+        return redirect(url_for('reconciliation.detail', id=reconciliation.id))
+    from app.approval.service import submit_approval, is_approval_enabled
+    project_id = reconciliation.project_id
+    if not is_approval_enabled('reconciliation', project_id):
+        flash('当前未启用审批流，请手动确认。', 'warning')
+        return redirect(url_for('reconciliation.detail', id=reconciliation.id))
+    success, msg, instance = submit_approval('reconciliation', reconciliation.id,
+                                              applicant_id=current_user.id,
+                                              project_id=project_id)
+    if success:
+        reconciliation.status = 'pending'
+        db.session.commit()
+        flash('对账单已提交审批。', 'success')
+    else:
+        flash(f'提交审批失败：{msg}', 'danger')
+    return redirect(url_for('reconciliation.detail', id=reconciliation.id))
+
+
+@bp.route('/<int:id>/withdraw', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='reconciliation', operation='撤回')
+def withdraw(id):
+    reconciliation = Reconciliation.query.get_or_404(id)
+    if reconciliation.status != 'pending':
+        flash('只有待审批状态的对账单才能撤回。', 'danger')
+        return redirect(url_for('reconciliation.detail', id=reconciliation.id))
+    reconciliation.status = 'draft'
+    db.session.commit()
+    flash('对账单已撤回为草稿状态。', 'success')
+    return redirect(url_for('reconciliation.detail', id=reconciliation.id))
 
 
 @bp.route('/<int:id>/print')

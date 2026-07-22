@@ -196,9 +196,15 @@
                 {% endif %}
             </div>
 
+            <input type="hidden" name="action" id="form_action" value="save">
             <div class="form-actions">
                 <a href="{{ url_for('stock_in.index') }}" class="btn btn-secondary">返回</a>
-                <button type="submit" class="btn btn-primary">保存入库单</button>
+                {% if approval_enabled %}
+                <button type="button" class="btn btn-primary" onclick="doSave()">保存</button>
+                <button type="button" class="btn btn-success" onclick="doSubmit()">提交</button>
+                {% else %}
+                <button type="button" class="btn btn-primary" onclick="doApproveSave()">保存</button>
+                {% endif %}
             </div>
         </form>
     </div>
@@ -525,6 +531,41 @@ function addScannedRow(material) {
 
 scanModal.addEventListener('shown.bs.modal', startScanner);
 scanModal.addEventListener('hidden.bs.modal', stopScanner);
+
+function doSave() {
+    document.getElementById('form_action').value = 'save';
+    document.getElementById('stockInForm').submit();
+}
+
+function doSubmit() {
+    document.getElementById('form_action').value = 'submit';
+    // 必填校验
+    const supplier = document.getElementById('supplierSelect').value;
+    if (!supplier) {
+        alert('请选择供应商');
+        return;
+    }
+    const rows = document.querySelectorAll('#itemsBody tr');
+    let hasItem = false;
+    for (let i = 0; i < rows.length; i++) {
+        const mid = rows[i].querySelector('input[name="material_id[]"]').value;
+        const qty = parseFloat(rows[i].querySelector('.qty-input').value) || 0;
+        if (mid && qty > 0) {
+            hasItem = true;
+            break;
+        }
+    }
+    if (!hasItem) {
+        alert('请至少添加一条有效的物资明细');
+        return;
+    }
+    document.getElementById('stockInForm').submit();
+}
+
+function doApproveSave() {
+    document.getElementById('form_action').value = 'approve_save';
+    document.getElementById('stockInForm').submit();
+}
 
 {% if ai_vision_enabled %}
 // ===== 收料小票识别 =====

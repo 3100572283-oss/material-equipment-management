@@ -21,8 +21,11 @@
             <div class="col-md-3">
                 <select class="form-select form-select-sm" name="status">
                     <option value="">全部状态</option>
-                    <option value="草稿" {% if status == '草稿' %}selected{% endif %}>草稿</option>
-                    <option value="已确认" {% if status == '已确认' %}selected{% endif %}>已确认</option>
+                    <option value="draft" {% if status == 'draft' %}selected{% endif %}>草稿</option>
+                    <option value="pending" {% if status == 'pending' %}selected{% endif %}>待审批</option>
+                    <option value="approved" {% if status == 'approved' %}selected{% endif %}>已通过</option>
+                    <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>已驳回</option>
+                    <option value="voided" {% if status == 'voided' %}selected{% endif %}>已作废</option>
                 </select>
             </div>
             <div class="col-auto">
@@ -51,11 +54,18 @@
                         <td>{{ r.supplier.name if r.supplier else '-' }}</td>
                         <td>{% if r.contract %}<a href="{{ url_for('contract.detail', id=r.contract_id) }}?from=reconciliation_list&from_id={{ r.id }}">{{ r.contract.code }}</a>{% else %}-{% endif %}</td>
                         <td>{{ r.start_date }} ~ {{ r.end_date }}</td>
-                        <td>{% if r.status == '草稿' %}<span class="badge bg-secondary">{{ r.status }}</span>{% else %}<span class="badge bg-success">{{ r.status }}</span>{% endif %}</td>
+                        <td>
+                            {% if r.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif r.status == 'pending' %}<span class="badge bg-warning text-dark">待审批</span>
+                            {% elif r.status == 'approved' %}<span class="badge bg-success">已通过</span>
+                            {% elif r.status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
+                            {% elif r.status == 'voided' %}<span class="badge bg-dark">已作废</span>
+                            {% else %}<span class="badge bg-secondary">{{ r.status }}</span>{% endif %}
+                        </td>
                         <td class="text-end fw-bold">{{ '%.2f'|format(r.total_amount or 0) }}</td>
                         <td class="text-end">
                             <a href="{{ url_for('reconciliation.detail', id=r.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
-                            {% if r.status == '已确认' %}
+                            {% if r.status == 'approved' %}
                             <a href="{{ url_for('reconciliation.print_reconciliation', id=r.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-printer"></i></a>
                             <form method="POST" action="{{ url_for('reconciliation.cancel_confirm', id=r.id) }}" class="d-inline" onsubmit="return confirm('确定撤销此对账单？撤销后关联入库单将恢复为未对账状态。');">
                                 <button type="submit" class="btn btn-sm btn-outline-warning"><i class="bi bi-arrow-counterclockwise"></i></button>

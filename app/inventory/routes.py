@@ -37,6 +37,11 @@ def index():
     )
     if project_id:
         subq_query = subq_query.filter(Material.project_id == project_id)
+        subq_query = subq_query.filter(
+            db.or_(StockIn.status == 'approved', StockIn.status == None)
+        ).filter(
+            db.or_(StockOut.status == 'approved', StockOut.status == None)
+        )
     subq = subq_query.group_by(Material.id).subquery()
 
     query = db.session.query(
@@ -107,7 +112,12 @@ def export():
         StockIn, StockIn.id == StockInItem.stock_in_id
     ).outerjoin(StockOutItem, StockOutItem.material_id == Material.id).outerjoin(
         StockOut, StockOut.id == StockOutItem.stock_out_id
-    ).filter(Material.project_id == project_id).group_by(Material.id).subquery()
+    ).filter(
+        Material.project_id == project_id,
+        db.or_(StockIn.status == 'approved', StockIn.status == None)
+    ).filter(
+        db.or_(StockOut.status == 'approved', StockOut.status == None)
+    ).group_by(Material.id).subquery()
 
     query = db.session.query(
         Material,
@@ -173,7 +183,9 @@ def history(material_id):
         StockInItem.amount.label('amount'),
         literal('入库').label('direction')
     ).join(StockInItem, StockInItem.stock_in_id == StockIn.id).filter(
-        StockIn.project_id == project_id, StockInItem.material_id == material_id
+        StockIn.project_id == project_id, 
+        StockInItem.material_id == material_id,
+        StockIn.status == 'approved'
     )
 
     stock_outs = db.session.query(
@@ -184,7 +196,9 @@ def history(material_id):
         StockOutItem.amount.label('amount'),
         literal('出库').label('direction')
     ).join(StockOutItem, StockOutItem.stock_out_id == StockOut.id).filter(
-        StockOut.project_id == project_id, StockOutItem.material_id == material_id
+        StockOut.project_id == project_id, 
+        StockOutItem.material_id == material_id,
+        StockOut.status == 'approved'
     )
 
     history = stock_ins.union_all(stock_outs).order_by('date', 'code').all()

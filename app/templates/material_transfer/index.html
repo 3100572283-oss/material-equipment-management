@@ -17,8 +17,8 @@
                 <select class="form-select form-select-sm" name="status">
                     <option value="">全部状态</option>
                     <option value="draft" {% if status == 'draft' %}selected{% endif %}>草稿</option>
-                    <option value="pending" {% if status == 'pending' %}selected{% endif %}>待出库</option>
-                    <option value="out_done" {% if status == 'out_done' %}selected{% endif %}>已出库</option>
+                    <option value="pending" {% if status == 'pending' %}selected{% endif %}>待审批</option>
+                    <option value="in_transit" {% if status == 'in_transit' %}selected{% endif %}>在途</option>
                     <option value="completed" {% if status == 'completed' %}selected{% endif %}>已完成</option>
                     <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>已取消</option>
                 </select>
@@ -57,8 +57,8 @@
                         <td>{{ t.transfer_date or '-' }}</td>
                         <td>
                             {% if t.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
-                            {% elif t.status == 'pending' %}<span class="badge bg-warning text-dark">待出库</span>
-                            {% elif t.status == 'out_done' %}<span class="badge bg-info">已出库</span>
+                            {% elif t.status == 'pending' %}<span class="badge bg-warning text-dark">待审批</span>
+                            {% elif t.status == 'in_transit' %}<span class="badge bg-info">在途</span>
                             {% elif t.status == 'completed' %}<span class="badge bg-success">已完成</span>
                             {% elif t.status == 'cancelled' %}<span class="badge bg-danger">已取消</span>
                             {% endif %}
@@ -67,7 +67,7 @@
                         <td class="text-end">
                             <a href="{{ url_for('material_transfer.detail', id=t.id) }}?from=list" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
                             {% if current_user.can_edit() %}
-                            {% if t.status in ('draft', 'cancelled') %}
+                            {% if t.status == 'draft' %}
                             <form method="POST" action="{{ url_for('material_transfer.delete', id=t.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
                                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                             </form>

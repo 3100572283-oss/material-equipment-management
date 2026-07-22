@@ -30,9 +30,14 @@
             {% if pr.status in ('draft', 'rejected') %}
             <a href="{{ url_for('purchase_requisition.edit', id=pr.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
             {% endif %}
-            {% if pr.status == 'draft' %}
+            {% if pr.status in ('draft', 'rejected') %}
             <form method="POST" action="{{ url_for('purchase_requisition.submit', id=pr.id) }}" class="d-inline" onsubmit="return confirm('确定提交审批？');">
                 <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-send me-1"></i>提交审批</button>
+            </form>
+            {% endif %}
+            {% if pr.status == 'pending' %}
+            <form method="POST" action="{{ url_for('purchase_requisition.withdraw', id=pr.id) }}" class="d-inline" onsubmit="return confirm('确定撤回审批？');">
+                <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-1"></i>撤回</button>
             </form>
             {% endif %}
             {% if pr.status == 'passed' %}
@@ -44,7 +49,7 @@
                 <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-box-arrow-up me-1"></i>生成出库单</button>
             </form>
             {% endif %}
-            {% if pr.status in ('draft', 'rejected') %}
+            {% if pr.status == 'draft' %}
             <form method="POST" action="{{ url_for('purchase_requisition.delete', id=pr.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
             </form>

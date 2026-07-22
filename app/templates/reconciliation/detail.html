@@ -16,17 +16,25 @@
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-journal-check me-2"></i>对账单详情 - {{ reconciliation.code }}</h5>
         <div>
-            {% if reconciliation.status == '已确认' %}
+            {% if reconciliation.status == 'approved' %}
             <a href="{{ url_for('reconciliation.print_reconciliation', id=reconciliation.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-printer me-1"></i>打印</a>
             {% endif %}
-            {% if reconciliation.status == '已确认' %}
+            {% if reconciliation.status == 'approved' %}
             <form method="POST" action="{{ url_for('reconciliation.cancel_confirm', id=reconciliation.id) }}" class="d-inline" onsubmit="return confirm('确定撤销此对账单？撤销后关联入库单将恢复为未对账状态。');">
                 <button type="submit" class="btn btn-sm btn-outline-warning"><i class="bi bi-arrow-counterclockwise me-1"></i>撤销对账</button>
             </form>
             {% endif %}
-            {% if reconciliation.status == '草稿' %}
+            {% if reconciliation.status == 'draft' %}
             <form method="POST" action="{{ url_for('reconciliation.delete', id=reconciliation.id) }}" class="d-inline" onsubmit="return confirm('确定删除此对账单？');">
                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
+            </form>
+            <form method="POST" action="{{ url_for('reconciliation.submit', id=reconciliation.id) }}" class="d-inline" onsubmit="return confirm('确定提交审批？');">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-send me-1"></i>提交审批</button>
+            </form>
+            {% endif %}
+            {% if reconciliation.status == 'pending' %}
+            <form method="POST" action="{{ url_for('reconciliation.withdraw', id=reconciliation.id) }}" class="d-inline" onsubmit="return confirm('确定撤回此对账单？');">
+                <button type="submit" class="btn btn-sm btn-warning"><i class="bi bi-arrow-counterclockwise me-1"></i>撤回</button>
             </form>
             {% endif %}
             <button onclick="goBack('{{ url_for('reconciliation.index') }}', 'reconciliation_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>
@@ -53,8 +61,12 @@
             <div class="col-md-3">
                 <div class="text-muted small">状态</div>
                 <div>
-                    {% if reconciliation.status == '草稿' %}<span class="badge bg-secondary">{{ reconciliation.status }}</span>
-                    {% else %}<span class="badge bg-success">{{ reconciliation.status }}</span>{% endif %}
+                    {% if reconciliation.status == 'draft' %}<span class="badge bg-secondary">draft</span>
+                    {% elif reconciliation.status == 'pending' %}<span class="badge bg-warning text-dark">待审批</span>
+                    {% elif reconciliation.status == 'approved' %}<span class="badge bg-success">已通过</span>
+                    {% elif reconciliation.status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
+                    {% elif reconciliation.status == 'voided' %}<span class="badge bg-dark">已作废</span>
+                    {% else %}<span class="badge bg-secondary">{{ reconciliation.status }}</span>{% endif %}
                 </div>
             </div>
             <div class="col-md-3">
@@ -88,7 +100,7 @@
             {% endif %}
         </div>
 
-        {% if reconciliation.status == '草稿' %}
+        {% if reconciliation.status == 'draft' %}
         <div class="mb-3 d-flex gap-2 flex-wrap">
             <form method="POST" action="{{ url_for('reconciliation.pull_data', id=reconciliation.id) }}" class="d-inline">
                 <button type="submit" class="btn btn-success" onclick="return confirm('将拉取指定期间内未对账的入库记录，是否继续？');">
@@ -141,7 +153,7 @@
                         <td>{{ it.specification or '-' }}</td>
                         <td>{{ it.unit or '-' }}</td>
                         <td>
-                            {% if reconciliation.status == '草稿' %}
+                            {% if reconciliation.status == 'draft' %}
                             <select name="cost_subject_{{ it.id }}" class="form-select form-select-sm w-auto d-inline">
                                 <option value="">请选择</option>
                                 {% for label, value in get_dict_items('cost_subject') %}
@@ -161,14 +173,14 @@
                         </td>
                         <td class="text-end qty-cell">{{ it.quantity }}</td>
                         <td class="text-end">
-                            {% if reconciliation.status == '草稿' %}
+                            {% if reconciliation.status == 'draft' %}
                             <input type="number" name="base_price_{{ it.id }}" step="0.0001" min="0" class="form-control form-control-sm text-end w-auto d-inline base-price-input" data-id="{{ it.id }}" value="{{ '%.4f'|format(it.base_price or 0) }}">
                             {% else %}
                             {{ '%.4f'|format(it.base_price or 0) }}
                             {% endif %}
                         </td>
                         <td class="text-end">
-                            {% if reconciliation.status == '草稿' %}
+                            {% if reconciliation.status == 'draft' %}
                             <input type="number" name="price_{{ it.id }}" step="0.0001" min="0" class="form-control form-control-sm text-end w-auto d-inline price-input" data-id="{{ it.id }}" value="{{ '%.4f'|format(it.settlement_price or it.unit_price or 0) }}"
                                 {% if calc_details.get(it.id) %}title="{{ calc_details[it.id] | tojson }}"{% endif %}>
                             {% else %}
@@ -181,7 +193,7 @@
                     </tr>
                     {% else %}
                     <tr><td colspan="12" class="text-center text-muted">
-                        {% if reconciliation.status == '草稿' %}点击"拉取入库数据"按钮获取入库明细{% else %}暂无明细{% endif %}
+                        {% if reconciliation.status == 'draft' %}点击"拉取入库数据"按钮获取入库明细{% else %}暂无明细{% endif %}
                     </td></tr>
                     {% endfor %}
                 </tbody>
@@ -200,7 +212,7 @@
                 {% endif %}
             </table>
         </div>
-        {% if items and reconciliation.status == '草稿' %}
+        {% if items and reconciliation.status == 'draft' %}
         <div class="mt-3 text-end">
             <button type="submit" class="btn btn-primary">
                 <i class="bi bi-save me-1"></i>保存单价并计算金额

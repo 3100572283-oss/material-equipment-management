@@ -259,6 +259,7 @@ def submit_approval(biz_type, biz_id, applicant_id=None, opinion='', project_id=
     db.session.flush()
 
     obj.approval_status = 'pending'
+    obj.status = 'pending'
 
     record = ApprovalRecord(
         instance_id=instance.id,
@@ -489,9 +490,7 @@ def reject(instance_id, approver_id=None, reason=''):
     obj = get_biz_obj(instance.biz_type, instance.biz_id)
     if obj:
         obj.approval_status = 'rejected'
-        # 付款申请同步状态
-        if instance.biz_type == 'payment_application':
-            obj.status = 'rejected'
+        obj.status = 'rejected'
 
     db.session.commit()
 
@@ -540,9 +539,7 @@ def withdraw(instance_id, applicant_id=None, reason=''):
     obj = get_biz_obj(instance.biz_type, instance.biz_id)
     if obj:
         obj.approval_status = 'withdrawn'
-        # 付款申请同步状态
-        if instance.biz_type == 'payment_application':
-            obj.status = 'withdrawn'
+        obj.status = 'draft'
 
     db.session.commit()
     return True, '已撤回'
@@ -555,6 +552,7 @@ def _on_approval_passed(instance):
         return
 
     obj.approval_status = 'passed'
+    obj.status = 'approved'
 
     if instance.biz_type == 'stockin':
         from app.stock_in.routes import _apply_inventory, _update_contract_total_in

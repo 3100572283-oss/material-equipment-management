@@ -716,6 +716,7 @@ class StockIn(db.Model):
     actual_amount = db.Column(db.Numeric(18, 2), default=0)
     is_reconciled = db.Column(db.Boolean, default=False)
     is_initial = db.Column(db.Boolean, default=False)
+    status = db.Column(db.String(16), default='approved')  # draft/pending/approved/rejected/voided
     approval_status = db.Column(db.String(16), default='passed')
     quality_status = db.Column(db.String(16), default='draft')  # draft/pending/passed/rejected
     quality_checker = db.Column(db.String(64), nullable=True)
@@ -787,6 +788,7 @@ class StockOut(db.Model):
     total_quantity = db.Column(db.Numeric(18, 4), default=0)
     total_amount = db.Column(db.Numeric(18, 2), default=0)
     is_reconciled = db.Column(db.Boolean, default=False)
+    status = db.Column(db.String(16), default='approved')  # draft/pending/approved/rejected/voided
     approval_status = db.Column(db.String(16), default='passed')
     is_deleted = db.Column(db.Boolean, default=False)
     location_lat = db.Column(db.Float, nullable=True)
@@ -870,7 +872,7 @@ class Reconciliation(db.Model):
     price_formula_id = db.Column(db.Integer, db.ForeignKey('price_formula.id'), nullable=True)
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
-    status = db.Column(db.String(32), default='草稿')
+    status = db.Column(db.String(16), default='draft')  # draft/pending/approved/rejected/voided
     total_amount = db.Column(db.Numeric(18, 2), default=0)  # 含税合计
     total_amount_without_tax = db.Column(db.Numeric(18, 2), default=0)  # 不含税合计
     total_tax_amount = db.Column(db.Numeric(18, 2), default=0)  # 税额合计
@@ -1801,6 +1803,7 @@ class MaterialScrap(db.Model):
     photo_path = db.Column(db.String(256), nullable=True)  # 照片路径
     applicant_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     applicant_name = db.Column(db.String(64), nullable=True)
+    status = db.Column(db.String(16), default='draft')  # draft/pending/approved/rejected/voided
     approval_status = db.Column(db.String(16), default='draft')  # draft/pending/passed/rejected
     approval_instance_id = db.Column(db.Integer, nullable=True)  # 审批实例ID
     total_quantity = db.Column(db.Numeric(18, 4), default=0)

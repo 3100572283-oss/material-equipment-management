@@ -145,18 +145,22 @@ def index():
     stock_out_type = request.args.get('stock_out_type', '', type=str)
     date_from = request.args.get('date_from', '', type=str)
     date_to = request.args.get('date_to', '', type=str)
+    status = request.args.get('status', '', type=str)
     approval_status = request.args.get('approval_status', '', type=str)
 
     query = StockOut.query
     if project_id:
         query = query.filter_by(project_id=project_id)
     query = apply_data_scope(query, StockOut)
+    query = query.filter(StockOut.status != 'voided')
     if keyword:
         query = query.filter(or_(StockOut.code.contains(keyword), StockOut.remark.contains(keyword)))
     if usage_unit_id:
         query = query.filter_by(usage_unit_id=usage_unit_id)
     if stock_out_type:
         query = query.filter_by(stock_out_type=stock_out_type)
+    if status:
+        query = query.filter_by(status=status)
     if approval_status:
         query = query.filter_by(approval_status=approval_status)
     if date_from:
@@ -177,7 +181,7 @@ def index():
     return render_template('stock_out/index.html', pagination=pagination, keyword=keyword,
                            usage_units=usage_units, usage_unit_id=usage_unit_id,
                            stock_out_type=stock_out_type, date_from=date_from, date_to=date_to,
-                           approval_status=approval_status)
+                           status=status, approval_status=approval_status)
 
 
 @bp.route('/create', methods=['GET', 'POST'])
@@ -266,14 +270,38 @@ def create():
         stock_out.total_quantity = total_qty
         stock_out.total_amount = total_amount
 
-        # 审批流程：如果启用审批，则不立即扣减库存（已在上面扣减，需回滚）
-        from app.approval.service import is_approval_enabled
-        if is_approval_enabled('stockout'):
-            # 回滚刚才扣减的库存，等待审批通过后再扣减
+        action = request.form.get('action', 'save')
+        if action == 'save':
+            stock_out.status = 'draft'
+            stock_out.approval_status = 'draft'
+            # 回滚刚才扣减的库存
             for item in stock_out.items:
                 _apply_stock(project_id, item.material_id, float(item.quantity))
-            stock_out.approval_status = 'draft'
-        else:
+        elif action == 'submit':
+            if not usage_unit_id:
+                db.session.rollback()
+                flash('请选择领料单位。', 'danger')
+                return redirect(url_for('stock_out.create'))
+            if not stock_out.items:
+                db.session.rollback()
+                flash('请至少添加一条物资明细。', 'danger')
+                return redirect(url_for('stock_out.create'))
+            stock_out.status = 'pending'
+            stock_out.approval_status = 'pending'
+            # 回滚刚才扣减的库存
+            for item in stock_out.items:
+                _apply_stock(project_id, item.material_id, float(item.quantity))
+            db.session.commit()
+
+            from app.approval.service import submit_approval
+            success, message, instance = submit_approval('stockout', stock_out.id, project_id=project_id)
+            if success:
+                flash('出库单已提交审批。', 'success')
+            else:
+                flash(message, 'danger')
+            return redirect(url_for('stock_out.detail', id=stock_out.id))
+        elif action == 'approve_save':
+            stock_out.status = 'approved'
             stock_out.approval_status = 'passed'
 
         db.session.commit()
@@ -293,16 +321,18 @@ def create():
         if src and src.project_id == project_id:
             copy_stock_out = src
 
+    from app.approval.service import is_approval_enabled
     return render_template('stock_out/form.html', stock_out=copy_stock_out, usage_units=usage_units,
                            work_numbers=work_numbers, materials=materials,
                            default_code=_gen_stock_out_code(project_id),
-                           is_copy=bool(copy_stock_out))
+                           is_copy=bool(copy_stock_out),
+                           approval_enabled=is_approval_enabled('stockout'))
 
 
 @bp.route('/<int:id>')
 @login_required
 def detail(id):
-    stock_out = StockOut.query.get_or_404(id)
+    stock_out = StockOut.query.filter(StockOut.status != 'voided').filter_by(id=id).first_or_404()
 
     from app.models import ContractItem, ReconciliationItem, StockInItem
     from app.approval.service import get_instance_by_biz
@@ -347,6 +377,10 @@ def edit(id):
     stock_out = StockOut.query.get_or_404(id)
     if stock_out.is_reconciled:
         flash('已对账的出库单禁止编辑。', 'danger')
+        return redirect(url_for('stock_out.detail', id=stock_out.id))
+
+    if stock_out.status not in ('draft', 'rejected'):
+        flash('仅草稿或已驳回状态的单据可编辑。', 'danger')
         return redirect(url_for('stock_out.detail', id=stock_out.id))
 
     if request.method == 'POST':
@@ -424,6 +458,35 @@ def edit(id):
 
         stock_out.total_quantity = total_qty
         stock_out.total_amount = total_amount
+
+        action = request.form.get('action', 'save')
+        if action == 'save':
+            stock_out.status = 'draft'
+            stock_out.approval_status = 'draft'
+        elif action == 'submit':
+            if not usage_unit_id:
+                db.session.rollback()
+                flash('请选择领料单位。', 'danger')
+                return redirect(url_for('stock_out.edit', id=stock_out.id))
+            if not stock_out.items:
+                db.session.rollback()
+                flash('请至少添加一条物资明细。', 'danger')
+                return redirect(url_for('stock_out.edit', id=stock_out.id))
+            stock_out.status = 'pending'
+            stock_out.approval_status = 'pending'
+            db.session.commit()
+
+            from app.approval.service import submit_approval
+            success, message, instance = submit_approval('stockout', stock_out.id, project_id=stock_out.project_id)
+            if success:
+                flash('出库单已提交审批。', 'success')
+            else:
+                flash(message, 'danger')
+            return redirect(url_for('stock_out.detail', id=stock_out.id))
+        elif action == 'approve_save':
+            stock_out.status = 'approved'
+            stock_out.approval_status = 'passed'
+
         db.session.commit()
         flash('出库单更新成功。', 'success')
         return redirect(url_for('stock_out.detail', id=stock_out.id))
@@ -431,8 +494,10 @@ def edit(id):
     usage_units = UsageUnit.query.filter_by(project_id=stock_out.project_id).order_by(UsageUnit.name).all()
     work_numbers = WorkNumber.query.filter_by(project_id=stock_out.project_id).order_by(WorkNumber.code).all()
     materials = get_project_materials(stock_out.project_id, common_only=True).all()
+    from app.approval.service import is_approval_enabled
     return render_template('stock_out/form.html', stock_out=stock_out, usage_units=usage_units,
-                           work_numbers=work_numbers, materials=materials)
+                           work_numbers=work_numbers, materials=materials,
+                           approval_enabled=is_approval_enabled('stockout'))
 
 
 @bp.route('/<int:id>/delete', methods=['POST'])
@@ -445,13 +510,67 @@ def delete(id):
         flash('已对账的出库单禁止作废。', 'danger')
         return redirect(url_for('stock_out.detail', id=stock_out.id))
 
+    if stock_out.status != 'draft':
+        flash('仅草稿状态的单据可作废。', 'danger')
+        return redirect(url_for('stock_out.detail', id=stock_out.id))
+
+    # 先回滚库存（库存增加）
     for item in stock_out.items:
         _apply_stock(stock_out.project_id, item.material_id, float(item.quantity))
 
     stock_out.is_deleted = True
+    stock_out.status = 'voided'
     db.session.commit()
-    flash('出库单已作废，库存已回加。', 'success')
+    flash('出库单已作废。', 'success')
     return redirect(url_for('stock_out.index'))
+
+
+@bp.route('/<int:id>/submit', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='stock_out', operation='提交审批')
+def submit(id):
+    """将草稿提交审批"""
+    stock_out = StockOut.query.get_or_404(id)
+    if stock_out.status != 'draft':
+        flash('仅草稿状态可提交审批。', 'warning')
+        return redirect(url_for('stock_out.detail', id=id))
+    if stock_out.is_reconciled:
+        flash('已对账的出库单禁止提交审批。', 'danger')
+        return redirect(url_for('stock_out.detail', id=stock_out.id))
+
+    from app.approval.service import submit_approval
+    success, message, instance = submit_approval('stockout', stock_out.id, project_id=stock_out.project_id)
+    if success:
+        flash('已提交审批。', 'success')
+    else:
+        flash(message, 'danger')
+    return redirect(url_for('stock_out.detail', id=stock_out.id))
+
+
+@bp.route('/<int:id>/withdraw', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='stock_out', operation='撤回审批')
+def withdraw(id):
+    """撤回审批（回到草稿）"""
+    stock_out = StockOut.query.get_or_404(id)
+    if stock_out.status != 'pending':
+        flash('仅待审批状态可撤回。', 'warning')
+        return redirect(url_for('stock_out.detail', id=id))
+
+    from app.approval.service import get_instance_by_biz, withdraw as approval_withdraw
+    instance = get_instance_by_biz('stockout', stock_out.id)
+    if not instance or instance.status not in ('pending', 'approving'):
+        flash('未找到有效的审批实例。', 'warning')
+        return redirect(url_for('stock_out.detail', id=id))
+
+    success, message = approval_withdraw(instance.id)
+    if success:
+        flash('已撤回审批。', 'success')
+    else:
+        flash(message, 'danger')
+    return redirect(url_for('stock_out.detail', id=stock_out.id))
 
 
 @bp.route('/<int:id>/restore', methods=['POST'])
@@ -595,10 +714,14 @@ def batch_delete():
         if stock_out.is_reconciled:
             fail_count += 1
             continue
+        if stock_out.status != 'draft':
+            fail_count += 1
+            continue
         try:
             for item in stock_out.items:
                 _apply_stock(stock_out.project_id, item.material_id, float(item.quantity))
             stock_out.is_deleted = True
+            stock_out.status = 'voided'
             success_count += 1
         except Exception:
             db.session.rollback()

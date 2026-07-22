@@ -124,6 +124,16 @@ def create():
         recon_ids = request.form.getlist('reconciliation_ids')
         recon_ids_str = ','.join(recon_ids) if recon_ids else None
 
+        action = request.form.get('action')
+        if action == 'submit':
+            if not supplier_id or not contract_id:
+                flash('供应商和关联合同为必填项。', 'danger')
+                return redirect(url_for('payment_application.create'))
+            apply_amount = to_decimal(request.form.get('apply_amount', 0))
+            if not apply_amount or apply_amount <= 0:
+                flash('申请金额必须大于0。', 'danger')
+                return redirect(url_for('payment_application.create'))
+
         application = PaymentApplication(
             project_id=project_id,
             application_code=_gen_application_code(project_id),
@@ -146,7 +156,26 @@ def create():
 
         db.session.add(application)
         db.session.commit()
-        flash('付款申请已创建。', 'success')
+
+        if action == 'submit':
+            from app.approval.service import submit_approval, is_approval_enabled
+            if not is_approval_enabled('payment_application'):
+                application.status = 'passed'
+                application.approval_status = 'passed'
+                _generate_payment(application)
+                db.session.commit()
+                flash('未启用审批流程，已直接生成付款记录。', 'success')
+            else:
+                success, msg, _ = submit_approval('payment_application', application.id,
+                                                  applicant_id=current_user.id, opinion='',
+                                                  project_id=application.project_id)
+                if success:
+                    application.status = 'pending'
+                    db.session.commit()
+                flash(msg, 'success' if success else 'danger')
+            return redirect(url_for('payment_application.detail', id=application.id))
+
+        flash('付款申请已保存。', 'success')
         return redirect(url_for('payment_application.detail', id=application.id))
 
     suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
@@ -159,9 +188,11 @@ def create():
         if src and src.project_id == project_id:
             copy_application = src
 
+    from app.approval.service import is_approval_enabled
+    is_approval_enabled_flag = is_approval_enabled('payment_application', project_id)
     return render_template('payment_application/form.html', application=copy_application,
                            suppliers=suppliers, contracts=contracts,
-                           is_copy=bool(copy_application))
+                           is_copy=bool(copy_application), is_approval_enabled=is_approval_enabled_flag)
 
 
 @bp.route('/<int:id>')
@@ -217,19 +248,49 @@ def edit(id):
             if new_path:
                 application.attachment = new_path
 
-        if application.status == 'rejected':
-            application.status = 'draft'
-            application.approval_status = 'draft'
+        action = request.form.get('action')
+        if action == 'submit':
+            if not application.supplier_id or not application.contract_id:
+                flash('供应商和关联合同为必填项。', 'danger')
+                return redirect(url_for('payment_application.edit', id=application.id))
+            if not application.apply_amount or application.apply_amount <= 0:
+                flash('申请金额必须大于0。', 'danger')
+                return redirect(url_for('payment_application.edit', id=application.id))
 
-        db.session.commit()
-        flash('付款申请已更新。', 'success')
-        return redirect(url_for('payment_application.detail', id=application.id))
+            db.session.commit()
+
+            from app.approval.service import submit_approval, is_approval_enabled
+            if not is_approval_enabled('payment_application'):
+                application.status = 'passed'
+                application.approval_status = 'passed'
+                _generate_payment(application)
+                db.session.commit()
+                flash('未启用审批流程，已直接生成付款记录。', 'success')
+            else:
+                success, msg, _ = submit_approval('payment_application', application.id,
+                                                  applicant_id=current_user.id, opinion='',
+                                                  project_id=application.project_id)
+                if success:
+                    application.status = 'pending'
+                    db.session.commit()
+                flash(msg, 'success' if success else 'danger')
+            return redirect(url_for('payment_application.detail', id=application.id))
+        else:
+            if application.status == 'rejected':
+                application.status = 'draft'
+                application.approval_status = 'draft'
+            db.session.commit()
+            flash('付款申请已更新。', 'success')
+            return redirect(url_for('payment_application.detail', id=application.id))
 
     project_id = session.get('current_project_id')
     suppliers = Supplier.query.filter_by(project_id=project_id).order_by(Supplier.name).all()
     contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
+    from app.approval.service import is_approval_enabled
+    is_approval_enabled_flag = is_approval_enabled('payment_application', application.project_id)
     return render_template('payment_application/form.html', application=application,
-                           suppliers=suppliers, contracts=contracts)
+                           suppliers=suppliers, contracts=contracts,
+                           is_approval_enabled=is_approval_enabled_flag)
 
 
 @bp.route('/<int:id>/submit', methods=['POST'])
@@ -282,7 +343,7 @@ def withdraw(id):
     reason = request.form.get('reason', '').strip()
     success, msg = withdraw_approval(inst.id, applicant_id=current_user.id, reason=reason)
     if success:
-        application.status = 'withdrawn'
+        application.status = 'draft'
         db.session.commit()
     flash(msg, 'success' if success else 'danger')
     return redirect(url_for('payment_application.detail', id=application.id))

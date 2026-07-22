@@ -154,6 +154,7 @@ def index():
     stock_in_type = request.args.get('stock_in_type', '', type=str)
     date_from = request.args.get('date_from', '', type=str)
     date_to = request.args.get('date_to', '', type=str)
+    status = request.args.get('status', '', type=str)
     approval_status = request.args.get('approval_status', '', type=str)
     quality_status = request.args.get('quality_status', '', type=str)
     project_filter = request.args.get('project_filter', 0, type=int)
@@ -170,6 +171,7 @@ def index():
     else:
         query = query.filter_by(project_id=project_id)
     query = apply_data_scope(query, StockIn)
+    query = query.filter(StockIn.status != 'voided')
     if keyword:
         query = query.filter(or_(StockIn.code.contains(keyword), StockIn.remark.contains(keyword)))
     if supplier_id:
@@ -178,6 +180,8 @@ def index():
         query = query.filter_by(contract_id=contract_id)
     if stock_in_type:
         query = query.filter_by(stock_in_type=stock_in_type)
+    if status:
+        query = query.filter_by(status=status)
     if approval_status:
         query = query.filter_by(approval_status=approval_status)
     if quality_status and enable_quality_check:
@@ -210,7 +214,7 @@ def index():
                            suppliers=suppliers, contracts=contracts,
                            supplier_id=supplier_id, contract_id=contract_id,
                            stock_in_type=stock_in_type, date_from=date_from, date_to=date_to,
-                           approval_status=approval_status, quality_status=quality_status,
+                           status=status, approval_status=approval_status, quality_status=quality_status,
                            enable_quality_check=enable_quality_check,
                            is_all_projects_mode=is_all_projects_mode,
                            filter_projects=filter_projects, project_filter=project_filter)
@@ -336,11 +340,13 @@ def create():
                 suppliers = get_project_suppliers(project_id, common_only=True).all()
                 materials = get_project_materials(project_id, common_only=True).all()
                 is_admin = current_user.is_admin() if hasattr(current_user, 'is_admin') else False
+                from app.approval.service import is_approval_enabled
                 return render_template('stock_in/form.html', stock_in=None, contracts=contracts,
                                        suppliers=suppliers, materials=materials,
                                        default_code=_gen_stock_in_code(project_id),
                                        over_items=over_items, form_data=request.form,
                                        is_admin=is_admin,
+                                       approval_enabled=is_approval_enabled('stockin'),
                                        ai_vision_enabled=_ai_vision_enabled())
 
         # 强制超量入库时标记明细行
@@ -353,19 +359,60 @@ def create():
                 if is_over:
                     item.is_over_contract = True
 
-        # 库存联动：如果启用了审批流程，则等待审批通过后再更新库存
         from app.approval.service import is_approval_enabled
         from app.utils import ConfigCache
         enable_qc = ConfigCache.get('enable_quality_check') == 'true'
-        
-        if enable_qc:
-            # 启用质检：保存后为待检状态，质检合格后才更新库存
-            stock_in.quality_status = 'pending'
-            stock_in.approval_status = 'draft'  # 待检期间审批状态先为草稿
-        elif is_approval_enabled('stockin'):
+        action = request.form.get('action', 'save')
+
+        if action == 'save':
+            stock_in.status = 'draft'
             stock_in.approval_status = 'draft'
-            stock_in.quality_status = 'passed'
-        else:
+            if enable_qc:
+                stock_in.quality_status = 'pending'
+            else:
+                stock_in.quality_status = 'passed'
+        elif action == 'submit':
+            if not supplier_id:
+                db.session.rollback()
+                flash('请选择供应商。', 'danger')
+                contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
+                suppliers = get_project_suppliers(project_id, common_only=True).all()
+                materials = get_project_materials(project_id, common_only=True).all()
+                is_admin = current_user.is_admin() if hasattr(current_user, 'is_admin') else False
+                from app.approval.service import is_approval_enabled
+                return render_template('stock_in/form.html', stock_in=None, contracts=contracts,
+                                       suppliers=suppliers, materials=materials,
+                                       default_code=_gen_stock_in_code(project_id),
+                                       form_data=request.form, is_admin=is_admin,
+                                       approval_enabled=is_approval_enabled('stockin'),
+                                       ai_vision_enabled=_ai_vision_enabled())
+            if not stock_in.items:
+                db.session.rollback()
+                flash('请至少添加一条物资明细。', 'danger')
+                contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
+                suppliers = get_project_suppliers(project_id, common_only=True).all()
+                materials = get_project_materials(project_id, common_only=True).all()
+                is_admin = current_user.is_admin() if hasattr(current_user, 'is_admin') else False
+                from app.approval.service import is_approval_enabled
+                return render_template('stock_in/form.html', stock_in=None, contracts=contracts,
+                                       suppliers=suppliers, materials=materials,
+                                       default_code=_gen_stock_in_code(project_id),
+                                       form_data=request.form, is_admin=is_admin,
+                                       approval_enabled=is_approval_enabled('stockin'),
+                                       ai_vision_enabled=_ai_vision_enabled())
+            stock_in.status = 'pending'
+            stock_in.approval_status = 'pending'
+            db.session.commit()
+
+            from app.approval.service import submit_approval
+            success, message, instance = submit_approval('stockin', stock_in.id, project_id=project_id)
+            if success:
+                flash('入库单已提交审批。', 'success')
+            else:
+                flash(message, 'danger')
+            return redirect(url_for('stock_in.detail', id=stock_in.id))
+        elif action == 'approve_save':
+            stock_in.status = 'approved'
             stock_in.approval_status = 'passed'
             stock_in.quality_status = 'passed'
             if stock_in.stock_in_type in ('采购入库', '盘盈入库', '调拨入库'):
@@ -395,17 +442,19 @@ def create():
         if src and src.project_id == project_id:
             copy_stock_in = src
 
+    from app.approval.service import is_approval_enabled
     return render_template('stock_in/form.html', stock_in=copy_stock_in, contracts=contracts,
                            suppliers=suppliers, materials=materials,
                            default_code=_gen_stock_in_code(project_id),
                            is_copy=bool(copy_stock_in),
+                           approval_enabled=is_approval_enabled('stockin'),
                            ai_vision_enabled=_ai_vision_enabled())
 
 
 @bp.route('/<int:id>')
 @login_required
 def detail(id):
-    stock_in = StockIn.query.get_or_404(id)
+    stock_in = StockIn.query.filter(StockIn.status != 'voided').filter_by(id=id).first_or_404()
     from app.approval.service import get_instance_by_biz
     from app.utils import ConfigCache
     approval_instance = get_instance_by_biz('stockin', stock_in.id)
@@ -429,6 +478,10 @@ def edit(id):
     stock_in = StockIn.query.get_or_404(id)
     if stock_in.is_reconciled:
         flash('已对账的入库单禁止编辑。', 'danger')
+        return redirect(url_for('stock_in.detail', id=stock_in.id))
+
+    if stock_in.status not in ('draft', 'rejected'):
+        flash('仅草稿或已驳回状态的单据可编辑。', 'danger')
         return redirect(url_for('stock_in.detail', id=stock_in.id))
 
     from app.utils import ConfigCache
@@ -525,13 +578,43 @@ def edit(id):
         stock_in.estimated_amount = total_estimated
         stock_in.actual_amount = total_actual
 
-        # 质检逻辑：编辑后重新提交待检
-        if enable_qc:
-            stock_in.quality_status = 'pending'
-            stock_in.quality_checker = None
-            stock_in.quality_check_time = None
-            stock_in.quality_remark = None
-        else:
+        action = request.form.get('action', 'save')
+        if action == 'save':
+            stock_in.status = 'draft'
+            stock_in.approval_status = 'draft'
+            if enable_qc:
+                stock_in.quality_status = 'pending'
+                stock_in.quality_checker = None
+                stock_in.quality_check_time = None
+                stock_in.quality_remark = None
+            else:
+                stock_in.quality_status = 'passed'
+        elif action == 'submit':
+            if not supplier_id:
+                db.session.rollback()
+                flash('请选择供应商。', 'danger')
+                return redirect(url_for('stock_in.edit', id=stock_in.id))
+            if not stock_in.items:
+                db.session.rollback()
+                flash('请至少添加一条物资明细。', 'danger')
+                return redirect(url_for('stock_in.edit', id=stock_in.id))
+            stock_in.status = 'pending'
+            stock_in.approval_status = 'pending'
+            new_data = model_to_dict(stock_in)
+            record_changes('stock_ins', stock_in.id, old_data, new_data,
+                           changed_by=current_user.name or current_user.username)
+            db.session.commit()
+
+            from app.approval.service import submit_approval
+            success, message, instance = submit_approval('stockin', stock_in.id, project_id=stock_in.project_id)
+            if success:
+                flash('入库单已提交审批。', 'success')
+            else:
+                flash(message, 'danger')
+            return redirect(url_for('stock_in.detail', id=stock_in.id))
+        elif action == 'approve_save':
+            stock_in.status = 'approved'
+            stock_in.approval_status = 'passed'
             stock_in.quality_status = 'passed'
             if stock_in.stock_in_type in ('采购入库', '盘盈入库', '调拨入库'):
                 _apply_inventory(stock_in, 1)
@@ -546,15 +629,17 @@ def edit(id):
 
         db.session.commit()
         flash('入库单更新成功。', 'success')
-        if enable_qc:
+        if enable_qc and action == 'save':
             flash('已重新提交质量验收。', 'info')
         return redirect(url_for('stock_in.detail', id=stock_in.id))
 
     contracts = Contract.query.filter_by(project_id=stock_in.project_id).order_by(Contract.code).all()
     suppliers = get_project_suppliers(stock_in.project_id, common_only=True).all()
     materials = get_project_materials(stock_in.project_id, common_only=True).all()
+    from app.approval.service import is_approval_enabled
     return render_template('stock_in/form.html', stock_in=stock_in, contracts=contracts,
                            suppliers=suppliers, materials=materials,
+                           approval_enabled=is_approval_enabled('stockin'),
                            ai_vision_enabled=_ai_vision_enabled())
 
 
@@ -572,14 +657,18 @@ def delete(id):
         flash('已对账的入库单禁止作废。', 'danger')
         return redirect(url_for('stock_in.detail', id=stock_in.id))
 
+    if stock_in.status != 'draft':
+        flash('仅草稿状态的单据可作废。', 'danger')
+        return redirect(url_for('stock_in.detail', id=stock_in.id))
+
     from app.utils import ConfigCache
     enable_qc = ConfigCache.get('enable_quality_check') == 'true'
     if enable_qc and stock_in.quality_status == 'passed':
         flash('质检合格的入库单禁止作废。', 'danger')
         return redirect(url_for('stock_in.detail', id=stock_in.id))
 
-    # 仅在质检合格且已生效的才回滚库存
-    if stock_in.quality_status == 'passed' or (not enable_qc and stock_in.approval_status == 'passed'):
+    # 仅在已生效的才回滚库存
+    if stock_in.status == 'approved' or stock_in.quality_status == 'passed' or (not enable_qc and stock_in.approval_status == 'passed'):
         if stock_in.stock_in_type in ('采购入库', '盘盈入库', '调拨入库'):
             _apply_inventory(stock_in, -1)
             _update_contract_total_in(stock_in, -1)
@@ -588,9 +677,64 @@ def delete(id):
             _update_contract_total_in(stock_in, 1)
 
     stock_in.is_deleted = True
+    stock_in.status = 'voided'
     db.session.commit()
     flash('入库单已作废。', 'success')
     return redirect(url_for('stock_in.index'))
+
+
+@bp.route('/<int:id>/submit', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='stock_in', operation='提交审批')
+def submit(id):
+    """将草稿提交审批"""
+    stock_in = StockIn.query.get_or_404(id)
+    if stock_in.status != 'draft':
+        flash('仅草稿状态可提交审批。', 'warning')
+        return redirect(url_for('stock_in.detail', id=id))
+    if stock_in.is_reconciled:
+        flash('已对账的入库单禁止提交审批。', 'danger')
+        return redirect(url_for('stock_in.detail', id=stock_in.id))
+
+    from app.utils import ConfigCache
+    enable_qc = ConfigCache.get('enable_quality_check') == 'true'
+    if enable_qc and stock_in.quality_status != 'passed':
+        flash('请先完成质量验收后再提交审批。', 'warning')
+        return redirect(url_for('stock_in.detail', id=stock_in.id))
+
+    from app.approval.service import submit_approval
+    success, message, instance = submit_approval('stockin', stock_in.id, project_id=stock_in.project_id)
+    if success:
+        flash('已提交审批。', 'success')
+    else:
+        flash(message, 'danger')
+    return redirect(url_for('stock_in.detail', id=stock_in.id))
+
+
+@bp.route('/<int:id>/withdraw', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='stock_in', operation='撤回审批')
+def withdraw(id):
+    """撤回审批（回到草稿）"""
+    stock_in = StockIn.query.get_or_404(id)
+    if stock_in.status != 'pending':
+        flash('仅待审批状态可撤回。', 'warning')
+        return redirect(url_for('stock_in.detail', id=id))
+
+    from app.approval.service import get_instance_by_biz, withdraw as approval_withdraw
+    instance = get_instance_by_biz('stockin', stock_in.id)
+    if not instance or instance.status not in ('pending', 'approving'):
+        flash('未找到有效的审批实例。', 'warning')
+        return redirect(url_for('stock_in.detail', id=id))
+
+    success, message = approval_withdraw(instance.id)
+    if success:
+        flash('已撤回审批。', 'success')
+    else:
+        flash(message, 'danger')
+    return redirect(url_for('stock_in.detail', id=id))
 
 
 @bp.route('/<int:id>/restore', methods=['POST'])
@@ -908,17 +1052,18 @@ def batch_delete():
         if stock_in.is_reconciled:
             fail_count += 1
             continue
-        if stock_in.approval_status != 'draft':
+        if stock_in.status != 'draft':
             fail_count += 1
             continue
         try:
-            if stock_in.quality_status == 'passed' or (stock_in.approval_status == 'passed' and not stock_in.stock_in_type):
+            if stock_in.status == 'approved' or stock_in.quality_status == 'passed' or (stock_in.approval_status == 'passed' and not stock_in.stock_in_type):
                 _apply_inventory(stock_in, -1)
                 _update_contract_total_in(stock_in, -1)
             elif stock_in.approval_status == 'passed' and stock_in.stock_in_type == '退货入库':
                 _apply_inventory(stock_in, 1)
                 _update_contract_total_in(stock_in, 1)
             stock_in.is_deleted = True
+            stock_in.status = 'voided'
             success_count += 1
         except Exception:
             db.session.rollback()

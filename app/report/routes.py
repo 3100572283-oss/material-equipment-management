@@ -130,7 +130,7 @@ def stock_in_report():
                                category_l2=int(category_l2), category_l3=int(category_l3),
                                summary_data=[], detail_data=[])
 
-    query = StockIn.query.filter(StockIn.project_id == project_id)
+    query = StockIn.query.filter(StockIn.project_id == project_id, StockIn.status == 'approved')
     if start_date:
         query = query.filter(StockIn.stock_in_date >= start_date)
     if end_date:
@@ -314,7 +314,7 @@ def stock_out_report():
                                category_l2=int(category_l2), category_l3=int(category_l3),
                                summary_data=[], detail_data=[])
 
-    query = StockOut.query.filter(StockOut.project_id == project_id)
+    query = StockOut.query.filter(StockOut.project_id == project_id, StockOut.status == 'approved')
     if start_date:
         query = query.filter(StockOut.stock_out_date >= start_date)
     if end_date:
@@ -463,10 +463,12 @@ def material_movement():
             }
 
     stock_in_min = db.session.query(func.coalesce(func.min(StockIn.stock_in_date), datetime.now().date())).filter(
-        StockIn.project_id == project_id
+        StockIn.project_id == project_id,
+        StockIn.status == 'approved'
     ).scalar()
     stock_out_min = db.session.query(func.coalesce(func.min(StockOut.stock_out_date), datetime.now().date())).filter(
-        StockOut.project_id == project_id
+        StockOut.project_id == project_id,
+        StockOut.status == 'approved'
     ).scalar()
     start_date = min(stock_in_min, stock_out_min)
     current_date = datetime.now().date()
@@ -487,7 +489,8 @@ def material_movement():
     in_rows = db.session.query(
         StockInItem.contract_item_id, StockInItem.amount, StockIn.stock_in_date
     ).join(StockIn, StockInItem.stock_in_id == StockIn.id).filter(
-        StockIn.project_id == project_id
+        StockIn.project_id == project_id,
+        StockIn.status == 'approved'
     ).all()
     in_by_month = {}
     for contract_item_id, amount, in_date in in_rows:
@@ -504,7 +507,8 @@ def material_movement():
     out_rows = db.session.query(
         StockOutItem.quantity, StockOut.stock_out_date, StockOutItem.material_id
     ).join(StockOut, StockOutItem.stock_out_id == StockOut.id).filter(
-        StockOut.project_id == project_id
+        StockOut.project_id == project_id,
+        StockOut.status == 'approved'
     ).all()
     out_by_month = {}
     for qty, out_date, material_id in out_rows:
@@ -520,7 +524,8 @@ def material_movement():
     # 统计未对账入库笔数（暂估入库）
     unpriced_count = StockIn.query.filter(
         StockIn.project_id == project_id,
-        StockIn.is_reconciled == False
+        StockIn.is_reconciled == False,
+        StockIn.status == 'approved'
     ).count()
 
     months = []
@@ -639,7 +644,8 @@ def material_movement_detail():
     # 预构建合同明细税率映射
     contract_item_ids = set()
     for item in StockInItem.query.join(StockIn, StockInItem.stock_in_id == StockIn.id).filter(
-        StockIn.project_id == project_id
+        StockIn.project_id == project_id,
+        StockIn.status == 'approved'
     ).all():
         if item.contract_item_id:
             contract_item_ids.add(item.contract_item_id)
@@ -651,7 +657,8 @@ def material_movement_detail():
     # 统计未对账入库笔数
     unpriced_count = StockIn.query.filter(
         StockIn.project_id == project_id,
-        StockIn.is_reconciled == False
+        StockIn.is_reconciled == False,
+        StockIn.status == 'approved'
     ).count()
 
     movements = []
@@ -661,14 +668,16 @@ def material_movement_detail():
             StockIn, StockIn.id == StockInItem.stock_in_id
         ).filter(
             StockInItem.material_id == mat.id,
-            StockIn.stock_in_date < start_of_month
+            StockIn.stock_in_date < start_of_month,
+            StockIn.status == 'approved'
         ).scalar() or 0
 
         begin_out_qty = db.session.query(func.coalesce(func.sum(StockOutItem.quantity), 0)).join(
             StockOut, StockOut.id == StockOutItem.stock_out_id
         ).filter(
             StockOutItem.material_id == mat.id,
-            StockOut.stock_out_date < start_of_month
+            StockOut.stock_out_date < start_of_month,
+            StockOut.status == 'approved'
         ).scalar() or 0
 
         # 上月结存 - 金额（不含税）
@@ -676,7 +685,8 @@ def material_movement_detail():
             StockInItem.contract_item_id, StockInItem.amount
         ).join(StockIn, StockIn.id == StockInItem.stock_in_id).filter(
             StockInItem.material_id == mat.id,
-            StockIn.stock_in_date < start_of_month
+            StockIn.stock_in_date < start_of_month,
+            StockIn.status == 'approved'
         ).all()
         begin_in_amt = 0.0
         for contract_item_id, amount in begin_in_rows:
@@ -687,7 +697,8 @@ def material_movement_detail():
             StockOutItem.quantity, StockOutItem.material_id
         ).join(StockOut, StockOut.id == StockOutItem.stock_out_id).filter(
             StockOutItem.material_id == mat.id,
-            StockOut.stock_out_date < start_of_month
+            StockOut.stock_out_date < start_of_month,
+            StockOut.status == 'approved'
         ).all()
         begin_out_amt = 0.0
         for qty, mid in begin_out_rows:
@@ -703,7 +714,8 @@ def material_movement_detail():
         ).filter(
             StockInItem.material_id == mat.id,
             StockIn.stock_in_date >= start_of_month,
-            StockIn.stock_in_date <= end_of_month
+            StockIn.stock_in_date <= end_of_month,
+            StockIn.status == 'approved'
         ).scalar() or 0
 
         period_in_rows = db.session.query(
@@ -711,7 +723,8 @@ def material_movement_detail():
         ).join(StockIn, StockIn.id == StockInItem.stock_in_id).filter(
             StockInItem.material_id == mat.id,
             StockIn.stock_in_date >= start_of_month,
-            StockIn.stock_in_date <= end_of_month
+            StockIn.stock_in_date <= end_of_month,
+            StockIn.status == 'approved'
         ).all()
         period_in_amt = 0.0
         for contract_item_id, amount in period_in_rows:
@@ -724,7 +737,8 @@ def material_movement_detail():
         ).filter(
             StockOutItem.material_id == mat.id,
             StockOut.stock_out_date >= start_of_month,
-            StockOut.stock_out_date <= end_of_month
+            StockOut.stock_out_date <= end_of_month,
+            StockOut.status == 'approved'
         ).scalar() or 0
 
         period_out_rows = db.session.query(
@@ -732,7 +746,8 @@ def material_movement_detail():
         ).join(StockOut, StockOut.id == StockOutItem.stock_out_id).filter(
             StockOutItem.material_id == mat.id,
             StockOut.stock_out_date >= start_of_month,
-            StockOut.stock_out_date <= end_of_month
+            StockOut.stock_out_date <= end_of_month,
+            StockOut.status == 'approved'
         ).all()
         period_out_amt = 0.0
         for qty, mid in period_out_rows:
@@ -979,10 +994,12 @@ def export_material_movement():
 
     if view_type == 'summary':
         stock_in_min = db.session.query(func.coalesce(func.min(StockIn.stock_in_date), datetime.now().date())).filter(
-            StockIn.project_id == project_id
+            StockIn.project_id == project_id,
+            StockIn.status == 'approved'
         ).scalar()
         stock_out_min = db.session.query(func.coalesce(func.min(StockOut.stock_out_date), datetime.now().date())).filter(
-            StockOut.project_id == project_id
+            StockOut.project_id == project_id,
+            StockOut.status == 'approved'
         ).scalar()
         start_date = min(stock_in_min, stock_out_min)
 
@@ -1005,14 +1022,16 @@ def export_material_movement():
                 StockIn, StockIn.id == StockInItem.stock_in_id
             ).filter(
                 StockIn.project_id == project_id,
-                StockIn.stock_in_date < month_start
+                StockIn.stock_in_date < month_start,
+                StockIn.status == 'approved'
             ).scalar() or 0
 
             cumulative_out_before = db.session.query(func.coalesce(func.sum(StockOutItem.amount), 0)).join(
                 StockOut, StockOut.id == StockOutItem.stock_out_id
             ).filter(
                 StockOut.project_id == project_id,
-                StockOut.stock_out_date < month_start
+                StockOut.stock_out_date < month_start,
+                StockOut.status == 'approved'
             ).scalar() or 0
 
             last_month_balance = float(cumulative_in_before) - float(cumulative_out_before)
@@ -1022,14 +1041,16 @@ def export_material_movement():
             ).filter(
                 StockIn.project_id == project_id,
                 StockIn.stock_in_date >= month_start,
-                StockIn.stock_in_date <= month_end
+                StockIn.stock_in_date <= month_end,
+                StockIn.status == 'approved'
             ).scalar() or 0
 
             cumulative_in_amount = db.session.query(func.coalesce(func.sum(StockInItem.amount), 0)).join(
                 StockIn, StockIn.id == StockInItem.stock_in_id
             ).filter(
                 StockIn.project_id == project_id,
-                StockIn.stock_in_date <= month_end
+                StockIn.stock_in_date <= month_end,
+                StockIn.status == 'approved'
             ).scalar() or 0
 
             month_out_amount = db.session.query(func.coalesce(func.sum(StockOutItem.amount), 0)).join(
@@ -1037,14 +1058,16 @@ def export_material_movement():
             ).filter(
                 StockOut.project_id == project_id,
                 StockOut.stock_out_date >= month_start,
-                StockOut.stock_out_date <= month_end
+                StockOut.stock_out_date <= month_end,
+                StockOut.status == 'approved'
             ).scalar() or 0
 
             cumulative_out_amount = db.session.query(func.coalesce(func.sum(StockOutItem.amount), 0)).join(
                 StockOut, StockOut.id == StockOutItem.stock_out_id
             ).filter(
                 StockOut.project_id == project_id,
-                StockOut.stock_out_date <= month_end
+                StockOut.stock_out_date <= month_end,
+                StockOut.status == 'approved'
             ).scalar() or 0
 
             # 本月结存 = 上月结存 + 本期收料 - 本期发料
@@ -1097,16 +1120,20 @@ def export_material_movement():
             # 上月结存 - 数量与金额
             begin_in_qty = db.session.query(func.coalesce(func.sum(StockInItem.quantity), 0)).join(
                 StockIn, StockIn.id == StockInItem.stock_in_id
-            ).filter(StockInItem.material_id == mat.id, StockIn.stock_in_date < start_of_month).scalar() or 0
+            ).filter(StockInItem.material_id == mat.id, StockIn.stock_in_date < start_of_month,
+                      StockIn.status == 'approved').scalar() or 0
             begin_out_qty = db.session.query(func.coalesce(func.sum(StockOutItem.quantity), 0)).join(
                 StockOut, StockOut.id == StockOutItem.stock_out_id
-            ).filter(StockOutItem.material_id == mat.id, StockOut.stock_out_date < start_of_month).scalar() or 0
+            ).filter(StockOutItem.material_id == mat.id, StockOut.stock_out_date < start_of_month,
+                      StockOut.status == 'approved').scalar() or 0
             begin_in_amt = db.session.query(func.coalesce(func.sum(StockInItem.amount), 0)).join(
                 StockIn, StockIn.id == StockInItem.stock_in_id
-            ).filter(StockInItem.material_id == mat.id, StockIn.stock_in_date < start_of_month).scalar() or 0
+            ).filter(StockInItem.material_id == mat.id, StockIn.stock_in_date < start_of_month,
+                      StockIn.status == 'approved').scalar() or 0
             begin_out_amt = db.session.query(func.coalesce(func.sum(StockOutItem.amount), 0)).join(
                 StockOut, StockOut.id == StockOutItem.stock_out_id
-            ).filter(StockOutItem.material_id == mat.id, StockOut.stock_out_date < start_of_month).scalar() or 0
+            ).filter(StockOutItem.material_id == mat.id, StockOut.stock_out_date < start_of_month,
+                      StockOut.status == 'approved').scalar() or 0
 
             last_month_balance_qty = float(begin_in_qty) - float(begin_out_qty)
             last_month_balance_amt = float(begin_in_amt) - float(begin_out_amt)
@@ -1115,21 +1142,21 @@ def export_material_movement():
             period_in_qty = db.session.query(func.coalesce(func.sum(StockInItem.quantity), 0)).join(
                 StockIn, StockIn.id == StockInItem.stock_in_id
             ).filter(StockInItem.material_id == mat.id, StockIn.stock_in_date >= start_of_month,
-                      StockIn.stock_in_date <= end_of_month).scalar() or 0
+                      StockIn.stock_in_date <= end_of_month, StockIn.status == 'approved').scalar() or 0
             period_in_amt = db.session.query(func.coalesce(func.sum(StockInItem.amount), 0)).join(
                 StockIn, StockIn.id == StockInItem.stock_in_id
             ).filter(StockInItem.material_id == mat.id, StockIn.stock_in_date >= start_of_month,
-                      StockIn.stock_in_date <= end_of_month).scalar() or 0
+                      StockIn.stock_in_date <= end_of_month, StockIn.status == 'approved').scalar() or 0
 
             # 本期出库 - 数量与金额
             period_out_qty = db.session.query(func.coalesce(func.sum(StockOutItem.quantity), 0)).join(
                 StockOut, StockOut.id == StockOutItem.stock_out_id
             ).filter(StockOutItem.material_id == mat.id, StockOut.stock_out_date >= start_of_month,
-                      StockOut.stock_out_date <= end_of_month).scalar() or 0
+                      StockOut.stock_out_date <= end_of_month, StockOut.status == 'approved').scalar() or 0
             period_out_amt = db.session.query(func.coalesce(func.sum(StockOutItem.amount), 0)).join(
                 StockOut, StockOut.id == StockOutItem.stock_out_id
             ).filter(StockOutItem.material_id == mat.id, StockOut.stock_out_date >= start_of_month,
-                      StockOut.stock_out_date <= end_of_month).scalar() or 0
+                      StockOut.stock_out_date <= end_of_month, StockOut.status == 'approved').scalar() or 0
 
             # 本月结存 - 数量与金额
             this_month_balance_qty = last_month_balance_qty + float(period_in_qty) - float(period_out_qty)
@@ -1177,7 +1204,8 @@ def abc_analysis():
     ).filter(
         Material.project_id == project_id,
         StockIn.stock_in_date >= start_date,
-        StockIn.stock_in_date <= end_date
+        StockIn.stock_in_date <= end_date,
+        StockIn.status == 'approved'
     ).group_by(Material.id, Material.name, Material.specification, Material.unit).order_by(
         func.sum(StockInItem.amount).desc()
     ).all()
@@ -1246,14 +1274,16 @@ def turnover_rate():
             StockIn, StockIn.id == StockInItem.stock_in_id
         ).filter(
             StockInItem.material_id == mat.id,
-            StockIn.stock_in_date < start_of_month
+            StockIn.stock_in_date < start_of_month,
+            StockIn.status == 'approved'
         ).scalar() or 0
 
         begin_out = db.session.query(func.coalesce(func.sum(StockOutItem.quantity), 0)).join(
             StockOut, StockOut.id == StockOutItem.stock_out_id
         ).filter(
             StockOutItem.material_id == mat.id,
-            StockOut.stock_out_date < start_of_month
+            StockOut.stock_out_date < start_of_month,
+            StockOut.status == 'approved'
         ).scalar() or 0
 
         begin_qty = float(begin_in) - float(begin_out)
@@ -1263,7 +1293,8 @@ def turnover_rate():
         ).filter(
             StockInItem.material_id == mat.id,
             StockIn.stock_in_date >= start_of_month,
-            StockIn.stock_in_date <= end_of_month
+            StockIn.stock_in_date <= end_of_month,
+            StockIn.status == 'approved'
         ).scalar() or 0
 
         period_out = db.session.query(func.coalesce(func.sum(StockOutItem.quantity), 0)).join(
@@ -1271,7 +1302,8 @@ def turnover_rate():
         ).filter(
             StockOutItem.material_id == mat.id,
             StockOut.stock_out_date >= start_of_month,
-            StockOut.stock_out_date <= end_of_month
+            StockOut.stock_out_date <= end_of_month,
+            StockOut.status == 'approved'
         ).scalar() or 0
 
         end_qty = begin_qty + float(period_in) - float(period_out)
@@ -1341,7 +1373,8 @@ def price_trend():
                 StockInItem.material_id == int(material_id),
                 StockIn.project_id == project_id,
                 StockIn.stock_in_date >= m_start,
-                StockIn.stock_in_date <= m_end
+                StockIn.stock_in_date <= m_end,
+                StockIn.status == 'approved'
             ).scalar()
 
             chart_data.append({
@@ -1390,7 +1423,8 @@ def cost_composition():
     ).filter(
         Material.project_id == project_id,
         StockIn.stock_in_date >= start_date,
-        StockIn.stock_in_date <= end_date
+        StockIn.stock_in_date <= end_date,
+        StockIn.status == 'approved'
     ).group_by(Material.category_id).all()
 
     composition = {}
@@ -1429,7 +1463,8 @@ def cost_composition():
         ).filter(
             StockIn.project_id == project_id,
             StockIn.stock_in_date >= m_start,
-            StockIn.stock_in_date <= m_end
+            StockIn.stock_in_date <= m_end,
+            StockIn.status == 'approved'
         ).scalar() or 0
 
         trend_data.append({
@@ -1460,7 +1495,8 @@ def supplier_share():
     ).filter(
         StockIn.project_id == project_id,
         StockIn.stock_in_date >= start_date,
-        StockIn.stock_in_date <= end_date
+        StockIn.stock_in_date <= end_date,
+        StockIn.status == 'approved'
     ).group_by(Supplier.id, Supplier.name).order_by(
         func.sum(StockInItem.amount).desc()
     ).limit(10).all()

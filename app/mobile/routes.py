@@ -548,15 +548,17 @@ def portal_home():
     today = date.today()
     today_in = StockIn.query.filter(
         StockIn.project_id == project.id,
-        StockIn.stock_in_date == today
+        StockIn.stock_in_date == today,
+        StockIn.status == 'approved'
     ).all()
     today_out = StockOut.query.filter(
         StockOut.project_id == project.id,
-        StockOut.stock_out_date == today
+        StockOut.stock_out_date == today,
+        StockOut.status == 'approved'
     ).all()
 
     pending_qc = StockIn.query.filter_by(
-        project_id=project.id, quality_status='pending'
+        project_id=project.id, quality_status='pending', status='approved'
     ).count()
 
     # 问候语
@@ -1199,7 +1201,7 @@ def profile():
     pending_qc = 0
     if project:
         pending_qc = StockIn.query.filter_by(
-            project_id=project.id, quality_status='pending'
+            project_id=project.id, quality_status='pending', status='approved'
         ).count()
 
     # 待审批数量

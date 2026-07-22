@@ -117,6 +117,8 @@
                             <a href="{{ url_for('purchase_requisition.create', copy_from=pr.id) }}" class="btn btn-sm btn-outline-success" title="复制新增"><i class="bi bi-files"></i></a>
                             {% if pr.status in ('draft', 'rejected') %}
                             <a href="{{ url_for('purchase_requisition.edit', id=pr.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+                            {% endif %}
+                            {% if pr.status == 'draft' %}
                             <form method="POST" action="{{ url_for('purchase_requisition.delete', id=pr.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
                                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                             </form>

@@ -16,37 +16,50 @@
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0">
             <i class="bi bi-box-arrow-in-up me-2"></i>出库单详情 - {{ stock_out.code }}
-            {% if stock_out.approval_status == 'draft' %}<span class="badge bg-secondary ms-2">草稿</span>
-            {% elif stock_out.approval_status == 'pending' %}<span class="badge bg-warning text-dark ms-2">待审批</span>
-            {% elif stock_out.approval_status == 'approving' %}<span class="badge bg-warning text-dark ms-2">审批中</span>
-            {% elif stock_out.approval_status == 'passed' %}<span class="badge bg-success ms-2">已通过</span>
-            {% elif stock_out.approval_status == 'rejected' %}<span class="badge bg-danger ms-2">已驳回</span>
-            {% elif stock_out.approval_status == 'withdrawn' %}<span class="badge bg-secondary ms-2">已撤回</span>
+            {% if stock_out.status == 'draft' %}<span class="badge bg-secondary ms-2">草稿</span>
+            {% elif stock_out.status == 'pending' %}<span class="badge bg-warning text-dark ms-2">待审批</span>
+            {% elif stock_out.status == 'approved' %}<span class="badge bg-success ms-2">已生效</span>
+            {% elif stock_out.status == 'rejected' %}<span class="badge bg-danger ms-2">已驳回</span>
+            {% elif stock_out.status == 'voided' %}<span class="badge bg-dark ms-2">已作废</span>
             {% endif %}
         </h5>
         <div>
             <a href="{{ url_for('stock_out.create', copy_from=stock_out.id) }}" class="btn btn-sm btn-outline-success"><i class="bi bi-files me-1"></i>复制新增</a>
-            <a href="{{ url_for('stock_out.print_stock_out', id=stock_out.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-printer me-1"></i>打印</a>
-            {% if current_user.can_edit() and stock_out.approval_status == 'draft' %}
-            <form method="POST" action="{{ url_for('approval.submit', biz_type='stockout', biz_id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定提交审批？提交后将进入审批流程。');">
-                <input type="hidden" name="project_id" value="{{ stock_out.project_id }}">
-                <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-send me-1"></i>提交审批</button>
-            </form>
-            {% endif %}
-            {% if stock_out.approval_status in ('pending', 'approving') and approval_instance %}
-            <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}?from=stock_out_detail&from_id={{ stock_out.id }}" class="btn btn-sm btn-outline-info"><i class="bi bi-clipboard-check me-1"></i>查看审批</a>
-            {% endif %}
-            {% if current_user.can_edit() and stock_out.approval_status in ('rejected', 'withdrawn') %}
-            <form method="POST" action="{{ url_for('approval.submit', biz_type='stockout', biz_id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定重新提交审批？');">
-                <input type="hidden" name="project_id" value="{{ stock_out.project_id }}">
-                <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-arrow-repeat me-1"></i>重新提交审批</button>
-            </form>
-            {% endif %}
-            {% if current_user.can_edit() and not stock_out.is_reconciled %}
-            <a href="{{ url_for('stock_out.edit', id=stock_out.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
-            <form method="POST" action="{{ url_for('stock_out.delete', id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
-                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
-            </form>
+            {% if stock_out.status == 'draft' %}
+                {% if current_user.can_edit() and not stock_out.is_reconciled %}
+                <a href="{{ url_for('stock_out.edit', id=stock_out.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
+                <form method="POST" action="{{ url_for('stock_out.delete', id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
+                </form>
+                <form method="POST" action="{{ url_for('stock_out.submit', id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定提交审批？提交后将进入审批流程。');">
+                    <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-send me-1"></i>提交</button>
+                </form>
+                {% endif %}
+            {% elif stock_out.status == 'pending' %}
+                <a href="{{ url_for('stock_out.detail', id=stock_out.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye me-1"></i>查看</a>
+                {% if approval_instance %}
+                <a href="{{ url_for('approval.detail', instance_id=approval_instance.id) }}?from=stock_out_detail&from_id={{ stock_out.id }}" class="btn btn-sm btn-outline-info"><i class="bi bi-clipboard-check me-1"></i>查看审批</a>
+                {% endif %}
+                {% if current_user.can_edit() %}
+                <form method="POST" action="{{ url_for('stock_out.withdraw', id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定撤回审批？');">
+                    <button type="submit" class="btn btn-sm btn-warning text-dark"><i class="bi bi-arrow-counterclockwise me-1"></i>撤回</button>
+                </form>
+                {% endif %}
+            {% elif stock_out.status == 'approved' %}
+                <a href="{{ url_for('stock_out.detail', id=stock_out.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye me-1"></i>查看</a>
+                <a href="{{ url_for('stock_out.print_stock_out', id=stock_out.id) }}" target="_blank" class="btn btn-sm btn-outline-info"><i class="bi bi-printer me-1"></i>打印</a>
+            {% elif stock_out.status == 'rejected' %}
+                {% if current_user.can_edit() and not stock_out.is_reconciled %}
+                <a href="{{ url_for('stock_out.edit', id=stock_out.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
+                <form method="POST" action="{{ url_for('stock_out.delete', id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
+                </form>
+                <form method="POST" action="{{ url_for('stock_out.submit', id=stock_out.id) }}" class="d-inline" onsubmit="return confirm('确定重新提交审批？');">
+                    <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-arrow-repeat me-1"></i>重新提交</button>
+                </form>
+                {% endif %}
+            {% elif stock_out.status == 'voided' %}
+                <span class="badge bg-dark me-2">已作废</span>
             {% endif %}
             {% if stock_out.is_reconciled %}<span class="badge bg-secondary me-2">已对账</span>{% endif %}
             <button onclick="goBack('{{ url_for('stock_out.index') }}', 'stock_out_list')" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</button>

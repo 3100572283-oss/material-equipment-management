@@ -158,6 +158,27 @@ def create():
             db.session.add(item)
 
         db.session.commit()
+
+        action = request.form.get('action', 'save')
+        if action == 'submit':
+            from app.approval.service import submit_approval, is_approval_enabled
+            if not is_approval_enabled('material_transfer', project_id):
+                flash('调拨单保存成功，当前未启用审批流。', 'success')
+                return redirect(url_for('material_transfer.detail', id=transfer.id))
+            if transfer.items.count() == 0:
+                flash('请先添加调拨明细。', 'danger')
+                return redirect(url_for('material_transfer.detail', id=transfer.id))
+            success, msg, instance = submit_approval('material_transfer', transfer.id,
+                                                      applicant_id=current_user.id,
+                                                      project_id=project_id)
+            if success:
+                transfer.status = 'pending'
+                db.session.commit()
+                flash('调拨单已提交审批。', 'success')
+            else:
+                flash(f'提交审批失败：{msg}', 'danger')
+            return redirect(url_for('material_transfer.detail', id=transfer.id))
+
         flash('调拨单创建成功。', 'success')
         return redirect(url_for('material_transfer.detail', id=transfer.id))
 
@@ -172,10 +193,13 @@ def create():
             'unit': i.material.unit or ''
         }
     } for i in inventories_raw]
+    from app.approval.service import is_approval_enabled
+    approval_enabled = is_approval_enabled('material_transfer', project_id)
     return render_template('material_transfer/form.html', transfer=None,
                            other_projects=other_projects, inventories=inventories,
                            today_str=date.today().strftime('%Y-%m-%d'),
-                           default_transfer_no=_gen_transfer_no(project_id))
+                           default_transfer_no=_gen_transfer_no(project_id),
+                           approval_enabled=approval_enabled)
 
 
 @bp.route('/<int:id>')
@@ -297,14 +321,29 @@ def cancel(id):
 @log_audit(module='material_transfer', operation='删除')
 def delete(id):
     transfer = MaterialTransfer.query.get_or_404(id)
-    if transfer.status not in ('draft', 'cancelled'):
-        flash('只有草稿或已取消状态的调拨单才能删除。', 'danger')
+    if transfer.status != 'draft':
+        flash('只有草稿状态的调拨单才能删除。', 'danger')
         return redirect(url_for('material_transfer.detail', id=id))
 
     db.session.delete(transfer)
     db.session.commit()
     flash('调拨单已删除。', 'success')
     return redirect(url_for('material_transfer.index'))
+
+
+@bp.route('/<int:id>/withdraw', methods=['POST'])
+@login_required
+@editor_required
+@log_audit(module='material_transfer', operation='撤回')
+def withdraw(id):
+    transfer = MaterialTransfer.query.get_or_404(id)
+    if transfer.status != 'pending':
+        flash('只有待审批状态的调拨单才能撤回。', 'danger')
+        return redirect(url_for('material_transfer.detail', id=id))
+    transfer.status = 'draft'
+    db.session.commit()
+    flash('调拨单已撤回为草稿状态。', 'success')
+    return redirect(url_for('material_transfer.detail', id=id))
 
 
 @bp.route('/api/inventory/<int:project_id>')

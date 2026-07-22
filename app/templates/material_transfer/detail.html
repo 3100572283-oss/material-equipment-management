@@ -31,19 +31,24 @@
             </form>
             {% endif %}
             {% if transfer.status == 'pending' %}
+            <form method="POST" action="{{ url_for('material_transfer.withdraw', id=transfer.id) }}" class="d-inline" onsubmit="return confirm('确定撤回调拨单？');">
+                <button type="submit" class="btn btn-sm btn-warning"><i class="bi bi-arrow-counterclockwise me-1"></i>撤回</button>
+            </form>
+            {% endif %}
+            {% if transfer.status == 'pending' %}
             <form method="POST" action="{{ url_for('material_transfer.confirm_out', id=transfer.id) }}" class="d-inline" onsubmit="return confirm('确定确认出库？调出项目库存将扣减。');">
                 <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-box-arrow-right me-1"></i>确认出库</button>
             </form>
             {% endif %}
-            {% if transfer.status == 'out_done' %}
+            {% if transfer.status == 'in_transit' %}
             <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#confirmInModal"><i class="bi bi-box-arrow-in-down-left me-1"></i>确认入库</button>
             {% endif %}
             {% if transfer.status in ('draft', 'pending') %}
             <form method="POST" action="{{ url_for('material_transfer.cancel', id=transfer.id) }}" class="d-inline" onsubmit="return confirm('确定取消调拨？');">
-                <button type="submit" class="btn btn-sm btn-warning"><i class="bi bi-x-circle me-1"></i>取消</button>
+                <button type="submit" class="btn btn-sm btn-outline-warning"><i class="bi bi-x-circle me-1"></i>取消</button>
             </form>
             {% endif %}
-            {% if transfer.status in ('draft', 'cancelled') %}
+            {% if transfer.status == 'draft' %}
             <form method="POST" action="{{ url_for('material_transfer.delete', id=transfer.id) }}" class="d-inline" onsubmit="return confirm('确定删除？');">
                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>删除</button>
             </form>

@@ -54,7 +54,7 @@ def index():
         query = query.filter_by(project_id=project_id)
     query = apply_data_scope(query, MaterialScrap)
     if status:
-        query = query.filter(MaterialScrap.approval_status == status)
+        query = query.filter(MaterialScrap.status == status)
     if start_date:
         try:
             query = query.filter(MaterialScrap.scrap_date >= datetime.strptime(start_date, '%Y-%m-%d').date())
@@ -114,6 +114,7 @@ def create():
             usage_unit_id=usage_unit_id,
             reason=reason,
             remark=remark,
+            status='draft',
             approval_status='draft',
             applicant_id=current_user.id,
             applicant_name=current_user.name or current_user.username,
@@ -175,8 +176,8 @@ def create():
 
         db.session.commit()
 
-        # 如果是"提交并审批"按钮，自动提交审批流
-        if request.form.get('submit_type') == 'submit':
+        action = request.form.get('action', 'save')
+        if action == 'submit':
             return _submit_to_approval(scrap)
 
         flash('报废单创建成功，可继续编辑或提交审批。', 'success')
@@ -196,9 +197,11 @@ def _submit_to_approval(scrap):
     from app.approval.service import submit_approval, is_approval_enabled
     if not is_approval_enabled('scrap'):
         # 未启用审批流：直接通过并扣减库存
-        scrap.approval_status = 'pending'  # 标记为待处理（兼容历史直审）
+        scrap.status = 'pending'
+        scrap.approval_status = 'pending'
         from app.approval.service import _apply_scrap_inventory
         _apply_scrap_inventory(scrap)
+        scrap.status = 'approved'
         scrap.approval_status = 'passed'
         db.session.commit()
         flash('报废单已直接通过（未启用审批流），库存已扣减。', 'success')
@@ -207,6 +210,7 @@ def _submit_to_approval(scrap):
                                               applicant_id=current_user.id,
                                               project_id=scrap.project_id)
     if success:
+        scrap.status = 'pending'
         scrap.approval_status = 'pending'
         scrap.approval_instance_id = instance.id if instance else None
         db.session.commit()
@@ -222,10 +226,26 @@ def _submit_to_approval(scrap):
 def submit(id):
     """提交报废单到审批流"""
     scrap = MaterialScrap.query.get_or_404(id)
-    if scrap.approval_status not in ('draft', 'rejected'):
+    if scrap.status not in ('draft', 'rejected'):
         flash('当前状态不允许提交。', 'warning')
         return redirect(url_for('scrap.detail', id=scrap.id))
     return _submit_to_approval(scrap)
+
+
+@bp.route('/<int:id>/withdraw', methods=['POST'])
+@login_required
+@log_audit(module='scrap', operation='撤回')
+def withdraw(id):
+    """撤回报废单"""
+    scrap = MaterialScrap.query.get_or_404(id)
+    if scrap.status != 'pending':
+        flash('只有待审批状态的报废单才能撤回。', 'danger')
+        return redirect(url_for('scrap.detail', id=scrap.id))
+    scrap.status = 'draft'
+    scrap.approval_status = 'draft'
+    db.session.commit()
+    flash('报废单已撤回为草稿状态。', 'success')
+    return redirect(url_for('scrap.detail', id=scrap.id))
 
 
 @bp.route('/<int:id>')
@@ -242,7 +262,7 @@ def detail(id):
 def approve(id):
     """审批通过：扣减库存"""
     scrap = MaterialScrap.query.get_or_404(id)
-    if scrap.approval_status != 'draft':
+    if scrap.status not in ('draft', 'pending'):
         flash('当前报废单状态不允许审批。', 'danger')
         return redirect(url_for('scrap.detail', id=scrap.id))
 
@@ -289,6 +309,7 @@ def approve(id):
             if inv:
                 inv.quantity = to_decimal(inv.quantity) - to_decimal(item.quantity)
 
+    scrap.status = 'approved'
     scrap.approval_status = 'passed'
     db.session.commit()
     flash('审批通过，库存已扣减。', 'success')
@@ -301,10 +322,11 @@ def approve(id):
 def reject(id):
     """审批驳回"""
     scrap = MaterialScrap.query.get_or_404(id)
-    if scrap.approval_status != 'draft':
+    if scrap.status not in ('draft', 'pending'):
         flash('当前报废单状态不允许驳回。', 'danger')
         return redirect(url_for('scrap.detail', id=scrap.id))
 
+    scrap.status = 'rejected'
     scrap.approval_status = 'rejected'
     db.session.commit()
     flash('报废单已驳回。', 'warning')
@@ -328,7 +350,7 @@ def stats():
     ).join(MaterialScrapItem, MaterialScrapItem.scrap_id == MaterialScrap.id
     ).filter(
         MaterialScrap.project_id == project_id,
-        MaterialScrap.approval_status == 'passed'
+        MaterialScrap.status == 'approved'
     ).group_by(MaterialScrap.reason).all()
 
     reason_rows = []
@@ -352,7 +374,7 @@ def stats():
     ).outerjoin(Category, Material.category_id == Category.id
     ).filter(
         MaterialScrap.project_id == project_id,
-        MaterialScrap.approval_status == 'passed'
+        MaterialScrap.status == 'approved'
     ).group_by(Category.name).all()
 
     category_rows = []
@@ -372,7 +394,7 @@ def stats():
     ).join(MaterialScrapItem, MaterialScrapItem.scrap_id == MaterialScrap.id
     ).filter(
         MaterialScrap.project_id == project_id,
-        MaterialScrap.approval_status == 'passed'
+        MaterialScrap.status == 'approved'
     ).group_by(func.strftime('%Y-%m', MaterialScrap.scrap_date)
     ).order_by(func.strftime('%Y-%m', MaterialScrap.scrap_date).desc()).all()
 

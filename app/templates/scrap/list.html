@@ -17,8 +17,10 @@
                 <select class="form-select form-select-sm" name="status">
                     <option value="">全部状态</option>
                     <option value="draft" {% if status == 'draft' %}selected{% endif %}>草稿</option>
-                    <option value="passed" {% if status == 'passed' %}selected{% endif %}>已通过</option>
+                    <option value="pending" {% if status == 'pending' %}selected{% endif %}>待审批</option>
+                    <option value="approved" {% if status == 'approved' %}selected{% endif %}>已通过</option>
                     <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>已驳回</option>
+                    <option value="voided" {% if status == 'voided' %}selected{% endif %}>已作废</option>
                 </select>
             </div>
             <div class="col-md-3">
@@ -61,10 +63,12 @@
                             {% else %}<span class="badge bg-info">{{ label }}</span>{% endif %}
                         </td>
                         <td>
-                            {% if s.approval_status == 'draft' %}<span class="badge bg-secondary">草稿</span>
-                            {% elif s.approval_status == 'passed' %}<span class="badge bg-success">已通过</span>
-                            {% elif s.approval_status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
-                            {% endif %}
+                            {% if s.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif s.status == 'pending' %}<span class="badge bg-warning text-dark">待审批</span>
+                            {% elif s.status == 'approved' %}<span class="badge bg-success">已通过</span>
+                            {% elif s.status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
+                            {% elif s.status == 'voided' %}<span class="badge bg-dark">已作废</span>
+                            {% else %}<span class="badge bg-secondary">{{ s.status }}</span>{% endif %}
                         </td>
                         <td class="text-end">{{ s.total_quantity }}</td>
                         <td class="text-end fw-bold">{{ '%.2f'|format(s.total_amount or 0) }}</td>

@@ -48,7 +48,10 @@
                     </div>
                     <div class="form-actions">
                         <a href="{{ url_for('reconciliation.index') }}" class="btn btn-secondary">返回</a>
-                        <button type="submit" class="btn btn-primary">保存并进入详情</button>
+                        <button type="submit" name="action" value="save" class="btn btn-outline-primary">保存</button>
+                        {% if approval_enabled %}
+                        <button type="submit" name="action" value="submit" class="btn btn-primary">提交</button>
+                        {% endif %}
                     </div>
                 </form>
             </div>

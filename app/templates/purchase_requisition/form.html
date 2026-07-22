@@ -104,7 +104,10 @@
 
             <div class="form-actions">
                 <a href="{{ url_for('purchase_requisition.index') }}" class="btn btn-secondary">返回</a>
-                <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i>{% if pr %}保存修改{% else %}创建申请{% endif %}</button>
+                <button type="submit" name="action" value="save" class="btn btn-outline-primary"><i class="bi bi-save me-1"></i>保存</button>
+                {% if approval_enabled %}
+                <button type="submit" name="action" value="submit" class="btn btn-primary" onclick="return confirmSubmit()"><i class="bi bi-send me-1"></i>提交</button>
+                {% endif %}
             </div>
         </form>
     </div>
@@ -165,6 +168,23 @@ function removeItemRow(btn) {
         row.querySelector('td:first-child').textContent = idx + 1;
         row.dataset.rowIndex = idx + 1;
     });
+}
+
+function confirmSubmit() {
+    const rows = document.querySelectorAll('#itemsTable tbody tr');
+    let hasValidItem = false;
+    rows.forEach(row => {
+        const materialSelect = row.querySelector('select[name="material_id[]"]');
+        const qtyInput = row.querySelector('input[name="quantity[]"]');
+        if (materialSelect && materialSelect.value && qtyInput && parseFloat(qtyInput.value) > 0) {
+            hasValidItem = true;
+        }
+    });
+    if (!hasValidItem) {
+        alert('请先添加至少一条有效的申请明细');
+        return false;
+    }
+    return confirm('确定提交审批？提交后将进入审批流程。');
 }
 </script>
 {% endblock %}

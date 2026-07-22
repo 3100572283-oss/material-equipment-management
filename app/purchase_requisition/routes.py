@@ -135,6 +135,7 @@ def create():
         quantities = request.form.getlist('quantity[]')
         purposes = request.form.getlist('purpose[]')
 
+        has_items = False
         for idx, mid in enumerate(material_ids):
             if not mid:
                 continue
@@ -147,6 +148,7 @@ def create():
             mat = Material.query.get(int(mid))
             if not mat:
                 continue
+            has_items = True
             item = PurchaseRequisitionItem(
                 pr_id=pr.id,
                 material_id=mat.id,
@@ -159,10 +161,29 @@ def create():
             )
             db.session.add(item)
 
+        action = request.form.get('action')
+        if action == 'submit':
+            if not has_items:
+                db.session.rollback()
+                flash('请先添加申请明细。', 'danger')
+                return redirect(url_for('purchase_requisition.create'))
+            db.session.commit()
+            from app.approval.service import submit_approval
+            success, msg, instance = submit_approval('purchase_requisition', pr.id, project_id=pr.project_id)
+            if success:
+                pr.status = 'pending'
+                db.session.commit()
+                flash('采购申请已提交审批。', 'success')
+            else:
+                flash(f'提交审批失败：{msg}', 'danger')
+            return redirect(url_for('purchase_requisition.detail', id=pr.id))
+
         db.session.commit()
         flash('采购申请创建成功。', 'success')
         return redirect(url_for('purchase_requisition.detail', id=pr.id))
 
+    from app.approval.service import is_approval_enabled
+    approval_enabled = is_approval_enabled('purchase_requisition', project_id)
     categories = Category.query.filter_by(project_id=project_id, parent_id=0).order_by(Category.sort_order).all()
     materials_raw = get_project_materials(project_id, common_only=True).all()
     materials = [{'id': m.id, 'name': m.name, 'specification': m.specification or '', 'unit': m.unit or ''} for m in materials_raw]
@@ -178,7 +199,7 @@ def create():
                            categories=categories, materials=materials,
                            today_str=date.today().strftime('%Y-%m-%d'),
                            default_pr_no=_gen_pr_no(project_id),
-                           is_copy=bool(copy_pr))
+                           is_copy=bool(copy_pr), approval_enabled=approval_enabled)
 
 
 @bp.route('/<int:id>')
@@ -253,15 +274,34 @@ def edit(id):
             db.session.add(item)
 
         db.session.commit()
+
+        action = request.form.get('action')
+        if action == 'submit':
+            if pr.items.count() == 0:
+                flash('请先添加申请明细。', 'danger')
+                return redirect(url_for('purchase_requisition.detail', id=id))
+            from app.approval.service import submit_approval
+            success, msg, instance = submit_approval('purchase_requisition', pr.id, project_id=pr.project_id)
+            if success:
+                pr.status = 'pending'
+                db.session.commit()
+                flash('采购申请已提交审批。', 'success')
+            else:
+                flash(f'提交审批失败：{msg}', 'danger')
+            return redirect(url_for('purchase_requisition.detail', id=id))
+
         flash('采购申请已更新。', 'success')
         return redirect(url_for('purchase_requisition.detail', id=id))
 
+    from app.approval.service import is_approval_enabled
+    approval_enabled = is_approval_enabled('purchase_requisition', pr.project_id)
     categories = Category.query.filter_by(project_id=pr.project_id, parent_id=0).order_by(Category.sort_order).all()
     materials_raw = get_project_materials(pr.project_id, common_only=True).all()
     materials = [{'id': m.id, 'name': m.name, 'specification': m.specification or '', 'unit': m.unit or ''} for m in materials_raw]
     return render_template('purchase_requisition/form.html', pr=pr,
                            categories=categories, materials=materials,
-                           today_str=pr.apply_date.strftime('%Y-%m-%d') if pr.apply_date else date.today().strftime('%Y-%m-%d'))
+                           today_str=pr.apply_date.strftime('%Y-%m-%d') if pr.apply_date else date.today().strftime('%Y-%m-%d'),
+                           approval_enabled=approval_enabled)
 
 
 @bp.route('/<int:id>/submit', methods=['POST'])
@@ -270,8 +310,8 @@ def edit(id):
 @log_audit(module='purchase_requisition', operation='提交')
 def submit(id):
     pr = PurchaseRequisition.query.get_or_404(id)
-    if pr.status != 'draft':
-        flash('只有草稿状态的申请才能提交审批。', 'danger')
+    if pr.status not in ('draft', 'rejected'):
+        flash('只有草稿或已驳回状态的申请才能提交审批。', 'danger')
         return redirect(url_for('purchase_requisition.detail', id=id))
     if pr.items.count() == 0:
         flash('请先添加申请明细。', 'danger')
@@ -289,14 +329,41 @@ def submit(id):
     return redirect(url_for('purchase_requisition.detail', id=id))
 
 
+@bp.route('/<int:id>/withdraw', methods=['POST'])
+@login_required
+@log_audit(module='purchase_requisition', operation='撤回')
+def withdraw(id):
+    pr = PurchaseRequisition.query.get_or_404(id)
+    if pr.status != 'pending':
+        flash('只有待审批状态的申请才能撤回。', 'danger')
+        return redirect(url_for('purchase_requisition.detail', id=id))
+    if pr.apply_user != current_user.username and pr.apply_user != current_user.name and not current_user.is_admin():
+        flash('只能撤回自己的申请。', 'danger')
+        return redirect(url_for('purchase_requisition.detail', id=id))
+
+    from app.approval.service import withdraw as withdraw_approval, get_instance_by_biz
+    inst = get_instance_by_biz('purchase_requisition', pr.id)
+    if not inst:
+        flash('未找到审批记录。', 'danger')
+        return redirect(url_for('purchase_requisition.detail', id=id))
+
+    reason = request.form.get('reason', '').strip()
+    success, msg = withdraw_approval(inst.id, applicant_id=current_user.id, reason=reason)
+    if success:
+        pr.status = 'draft'
+        db.session.commit()
+    flash(msg, 'success' if success else 'danger')
+    return redirect(url_for('purchase_requisition.detail', id=id))
+
+
 @bp.route('/<int:id>/delete', methods=['POST'])
 @login_required
 @editor_required
 @log_audit(module='purchase_requisition', operation='删除')
 def delete(id):
     pr = PurchaseRequisition.query.get_or_404(id)
-    if pr.status not in ('draft', 'rejected'):
-        flash('只有草稿或已驳回状态的申请才能删除。', 'danger')
+    if pr.status != 'draft':
+        flash('只有草稿状态的申请才能删除。', 'danger')
         return redirect(url_for('purchase_requisition.detail', id=id))
 
     db.session.delete(pr)
@@ -481,7 +548,7 @@ def batch_delete():
         if not pr or pr.project_id != project_id:
             fail_count += 1
             continue
-        if pr.status not in ('draft', 'rejected'):
+        if pr.status != 'draft':
             fail_count += 1
             continue
         try:
@@ -495,7 +562,7 @@ def batch_delete():
 
     db.session.commit()
     if fail_count > 0:
-        flash(f'批量删除完成：成功{success_count}条，失败{fail_count}条（仅草稿或已驳回状态可删除）。', 'warning')
+        flash(f'批量删除完成：成功{success_count}条，失败{fail_count}条（仅草稿状态可删除）。', 'warning')
     else:
         flash(f'批量删除成功，共{success_count}条。', 'success')
     return redirect(url_for('purchase_requisition.index'))
