@@ -364,27 +364,44 @@ def create_dept():
     all_depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     all_projects = Project.query.filter_by(is_archived=False).all()
 
+    dept_map = {d.id: d for d in all_depts}
+
+    def get_dept_path(d):
+        path = []
+        current = d
+        while current:
+            path.insert(0, current.dept_name)
+            if current.parent_id and current.parent_id in dept_map:
+                current = dept_map[current.parent_id]
+            else:
+                current = None
+        return ' / '.join(path)
+
     def get_dept_depth(d):
         depth = 0
         current = d
         while current.parent_id != 0:
             depth += 1
-            current = SysDept.query.get(current.parent_id)
-            if not current:
+            if current.parent_id in dept_map:
+                current = dept_map[current.parent_id]
+            else:
                 break
         return depth
 
     for d in all_depts:
         d._depth = get_dept_depth(d)
+        d._path = get_dept_path(d)
 
     default_sort = 1
     parent_id_param = request.args.get('parent_id', type=int, default=0)
     max_sort = db.session.query(db.func.max(SysDept.sort)).filter_by(
-        parent_id=parent_id_param).scalar() or 0
+        parent_id=parent_id_param if parent_id_param else 0).scalar() or 0
     default_sort = max_sort + 1
 
+    parent_dept = dept_map.get(parent_id_param) if parent_id_param else None
+
     return render_template('system/dept_form.html', dept=None, all_depts=all_depts, all_projects=all_projects,
-                           default_sort=default_sort,
+                           default_sort=default_sort, parent_id=parent_id_param, parent_dept=parent_dept,
                            DEPT_TYPE_LABELS=SysDept._DEPT_TYPE_MAP if hasattr(SysDept, '_DEPT_TYPE_MAP') else {})
 
 
@@ -479,20 +496,36 @@ def edit_dept(id):
     all_depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     all_projects = Project.query.filter_by(is_archived=False).all()
 
+    dept_map = {d.id: d for d in all_depts}
+
+    def get_dept_path(d):
+        path = []
+        current = d
+        while current:
+            path.insert(0, current.dept_name)
+            if current.parent_id and current.parent_id in dept_map:
+                current = dept_map[current.parent_id]
+            else:
+                current = None
+        return ' / '.join(path)
+
     def get_dept_depth(d):
         depth = 0
         current = d
         while current.parent_id != 0:
             depth += 1
-            current = SysDept.query.get(current.parent_id)
-            if not current:
+            if current.parent_id in dept_map:
+                current = dept_map[current.parent_id]
+            else:
                 break
         return depth
 
     for d in all_depts:
         d._depth = get_dept_depth(d)
+        d._path = get_dept_path(d)
 
     return render_template('system/dept_form.html', dept=dept, all_depts=all_depts, all_projects=all_projects,
+                           parent_id=dept.parent_id, parent_dept=dept_map.get(dept.parent_id) if dept.parent_id else None,
                            DEPT_TYPE_LABELS=SysDept._DEPT_TYPE_MAP if hasattr(SysDept, '_DEPT_TYPE_MAP') else {})
 
 

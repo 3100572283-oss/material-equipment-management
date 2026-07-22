@@ -3,6 +3,29 @@
 {% set page_title = '新增部门' if not dept else '编辑部门' %}
 {% set active_menu = 'system.depts' %}
 
+{% block extra_css %}
+<style>
+.dept-tree-select .form-select {
+    user-select: none;
+}
+.dept-tree-item:hover {
+    background-color: rgba(13, 110, 253, 0.08);
+}
+.dept-tree-item.active {
+    background-color: rgba(13, 110, 253, 0.12) !important;
+}
+.hover-bg:hover {
+    background-color: var(--bs-tertiary-bg);
+}
+[data-bs-theme="dark"] .dept-tree-item:hover {
+    background-color: rgba(13, 110, 253, 0.15);
+}
+[data-bs-theme="dark"] .dept-tree-item.active {
+    background-color: rgba(13, 110, 253, 0.25) !important;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="row mb-3">
@@ -36,16 +59,75 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">上级部门</label>
-                        <select class="form-select" name="parent_id" id="parent_id">
-                            <option value="0">— 顶级部门 —</option>
-                            {% for d in all_depts %}
-                                {% if not dept or d.id != dept.id %}
-                            <option value="{{ d.id }}" {% if dept and dept.parent_id == d.id %}selected{% endif %}>
-                                {% for i in range(d._depth) %}—{% endfor %} {{ d.dept_name }}（{{ DEPT_TYPE_LABELS.get(d.dept_type, d.dept_type) }}）
-                            </option>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
+                        <input type="hidden" name="parent_id" id="parent_id" value="{{ parent_id if parent_id else 0 }}">
+                        <div class="dept-tree-select position-relative">
+                            <div class="form-select d-flex justify-content-between align-items-center" style="cursor:pointer;"
+                                 id="parentDeptDisplay" onclick="toggleDeptTreeSelect()">
+                                <span id="parentDeptLabel" class="text-truncate">
+                                    {%- if parent_dept -%}
+                                        {{ parent_dept._path }}
+                                    {%- else -%}
+                                        — 顶级部门 —
+                                    {%- endif -%}
+                                </span>
+                                <i class="bi bi-chevron-down text-muted ms-2"></i>
+                            </div>
+                            <div class="dept-tree-dropdown card shadow-sm border position-absolute w-100 mt-1 d-none"
+                                 id="parentDeptDropdown" style="z-index:1050; max-height:400px; overflow:hidden; display:flex; flex-direction:column;">
+                                <div class="p-2 border-bottom">
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" id="parentDeptSearch" class="form-control" placeholder="搜索部门..."
+                                               oninput="filterParentDeptTree(this.value)">
+                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                    </div>
+                                </div>
+                                <div class="dept-tree-list overflow-auto flex-grow-1 p-2" id="parentDeptTreeList">
+                                    <div class="dept-tree-item px-2 py-1 rounded hover-bg d-flex align-items-center"
+                                         style="cursor:pointer;" onclick="selectParentDept(0, '— 顶级部门 —')">
+                                        <i class="bi bi-folder2-open text-muted me-2"></i>
+                                        <span>— 顶级部门 —</span>
+                                    </div>
+                                    {% macro dept_option_tree(dept, level=0) %}
+                                    {% set children = all_depts | selectattr('parent_id', 'equalto', dept.id) | list %}
+                                    {% set has_children = children | length > 0 %}
+                                    {% set is_self = dept and dept.id == (dept.id if dept else 0) %}
+                                    <div class="dept-tree-node" data-id="{{ dept.id }}" data-name="{{ dept.dept_name }}"
+                                         data-path="{{ dept._path }}" data-level="{{ level }}">
+                                        <div class="dept-tree-item px-2 py-1 rounded hover-bg d-flex align-items-center
+                                                    {% if level < 2 %}expanded{% endif %}
+                                                    {% if parent_id and parent_id == dept.id %}active{% endif %}"
+                                             style="cursor:pointer; padding-left:{{ level * 20 + 8 }}px;"
+                                             onclick="selectParentDept({{ dept.id }}, '{{ dept._path | replace("'", "\\'") }}')">
+                                            {% if has_children %}
+                                            <i class="bi bi-caret-right-fill text-muted me-1 tree-toggle"
+                                               style="font-size:0.8rem;"
+                                               onclick="event.stopPropagation(); toggleTreeNode(this);"></i>
+                                            {% else %}
+                                            <span style="width:0.8rem; display:inline-block; margin-right:0.25rem;"></span>
+                                            {% endif %}
+                                            <i class="bi {% if dept.dept_type == 'company' %}bi-building-fill text-primary{% elif dept.dept_type == 'project' %}bi-geo-alt-fill text-success{% elif dept.dept_type == 'branch' %}bi-building text-info{% else %}bi-folder2{% endif %} me-2" style="font-size:0.9rem;"></i>
+                                            <span class="text-truncate">{{ dept.dept_name }}</span>
+                                            <span class="text-muted small ms-2">（{{ DEPT_TYPE_LABELS.get(dept.dept_type, dept.dept_type) }}）</span>
+                                        </div>
+                                        {% if has_children %}
+                                        <div class="dept-tree-children" style="display:{% if level < 2 %}block{% else %}none{% endif %};">
+                                            {% for child in children | sort(attribute='sort') %}
+                                                {% if not dept or child.id != dept.id %}
+                                                {{ dept_option_tree(child, level + 1) }}
+                                                {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% endmacro %}
+                                    {% for d in all_depts if d.parent_id == 0 %}
+                                        {% if not dept or d.id != dept.id %}
+                                        {{ dept_option_tree(d, 0) }}
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">部门类型</label>
@@ -224,5 +306,114 @@ deptTypeSelect.addEventListener('change', toggleProjectFields);
 
 // 初始化
 toggleProjectFields();
+
+// 上级部门树形选择器
+const parentDeptDisplay = document.getElementById('parentDeptDisplay');
+const parentDeptDropdown = document.getElementById('parentDeptDropdown');
+const parentDeptLabel = document.getElementById('parentDeptLabel');
+const parentDeptInput = document.getElementById('parent_id');
+
+function toggleDeptTreeSelect() {
+    parentDeptDropdown.classList.toggle('d-none');
+    if (!parentDeptDropdown.classList.contains('d-none')) {
+        document.getElementById('parentDeptSearch').focus();
+    }
+}
+
+document.addEventListener('click', function(e) {
+    if (!parentDeptDropdown.classList.contains('d-none') &&
+        !parentDeptDisplay.contains(e.target) &&
+        !parentDeptDropdown.contains(e.target)) {
+        parentDeptDropdown.classList.add('d-none');
+    }
+});
+
+function toggleTreeNode(icon) {
+    const item = icon.closest('.dept-tree-node');
+    const children = item.querySelector(':scope > .dept-tree-children');
+    if (children) {
+        children.style.display = children.style.display === 'none' ? 'block' : 'none';
+        icon.classList.toggle('bi-caret-right-fill');
+        icon.classList.toggle('bi-caret-down-fill');
+    }
+}
+
+function selectParentDept(id, path) {
+    parentDeptInput.value = id;
+    parentDeptLabel.textContent = path;
+    parentDeptDropdown.classList.add('d-none');
+    const items = parentDeptDropdown.querySelectorAll('.dept-tree-item');
+    items.forEach(it => it.classList.remove('active', 'text-primary', 'fw-semibold', 'bg-primary-subtle'));
+    const item = parentDeptDropdown.querySelector(`.dept-tree-node[data-id="${id}"] > .dept-tree-item`);
+    if (item) {
+        item.classList.add('active', 'text-primary', 'fw-semibold', 'bg-primary-subtle');
+    }
+}
+
+function filterParentDeptTree(keyword) {
+    keyword = keyword.trim().toLowerCase();
+    const nodes = parentDeptDropdown.querySelectorAll('#parentDeptTreeList > .dept-tree-node');
+    const allNodes = parentDeptDropdown.querySelectorAll('.dept-tree-node');
+
+    if (!keyword) {
+        allNodes.forEach(n => {
+            n.style.display = '';
+            const children = n.querySelector(':scope > .dept-tree-children');
+            const level = parseInt(n.dataset.level) || 0;
+            const icon = n.querySelector(':scope > .dept-tree-item .tree-toggle');
+            if (children && icon) {
+                if (level < 2) {
+                    children.style.display = 'block';
+                    icon.classList.remove('bi-caret-right-fill');
+                    icon.classList.add('bi-caret-down-fill');
+                } else {
+                    children.style.display = 'none';
+                    icon.classList.remove('bi-caret-down-fill');
+                    icon.classList.add('bi-caret-right-fill');
+                }
+            }
+        });
+        return;
+    }
+
+    allNodes.forEach(n => {
+        const name = (n.dataset.name || '').toLowerCase();
+        const match = name.includes(keyword);
+        if (match) {
+            n.style.display = '';
+            let parent = n.parentElement.closest('.dept-tree-node');
+            while (parent) {
+                parent.style.display = '';
+                const children = parent.querySelector(':scope > .dept-tree-children');
+                const icon = parent.querySelector(':scope > .dept-tree-item .tree-toggle');
+                if (children) children.style.display = 'block';
+                if (icon) {
+                    icon.classList.remove('bi-caret-right-fill');
+                    icon.classList.add('bi-caret-down-fill');
+                }
+                parent = parent.parentElement.closest('.dept-tree-node');
+            }
+            const children = n.querySelector(':scope > .dept-tree-children');
+            const icon = n.querySelector(':scope > .dept-tree-item .tree-toggle');
+            if (children) children.style.display = 'block';
+            if (icon) {
+                icon.classList.remove('bi-caret-right-fill');
+                icon.classList.add('bi-caret-down-fill');
+            }
+        } else {
+            let hasMatch = false;
+            const subNodes = n.querySelectorAll('.dept-tree-node');
+            subNodes.forEach(sn => {
+                const sname = (sn.dataset.name || '').toLowerCase();
+                if (sname.includes(keyword)) hasMatch = true;
+            });
+            if (hasMatch) {
+                n.style.display = '';
+            } else {
+                n.style.display = 'none';
+            }
+        }
+    });
+}
 </script>
 {% endblock %}

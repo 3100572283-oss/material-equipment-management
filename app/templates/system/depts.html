@@ -1,5 +1,28 @@
 {% extends "base.html" %}
 {% block title %}组织架构管理 - 物资设备管理系统{% endblock %}
+{% block extra_css %}
+<style>
+.dept-row:hover {
+    background-color: var(--bs-tertiary-bg);
+}
+.tree-view .dept-node {
+    position: relative;
+}
+.dept-node .dept-children {
+    position: relative;
+}
+.tree-toggle-icon {
+    transition: transform 0.2s ease;
+}
+[data-bs-theme="dark"] .dept-row:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+[data-bs-theme="dark"] .badge.bg-light.text-dark {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: var(--bs-light) !important;
+}
+</style>
+{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <nav aria-label="breadcrumb">
@@ -24,13 +47,15 @@
     <div class="card-body">
         {% macro dept_tree(dept, level=0) %}
         {% set children = dept.children.order_by(dept.__class__.sort.asc(), dept.__class__.created_at.asc()).all() %}
-        <div class="dept-node" data-name="{{ dept.dept_name }}" style="margin-left:{{ level * 24 }}px;">
+        {% set expanded = level < 2 %}
+        <div class="dept-node" data-name="{{ dept.dept_name }}" data-level="{{ level }}" style="margin-left:{{ level * 24 }}px;">
             <div class="d-flex align-items-center justify-content-between py-2 border-bottom dept-row">
                 <div class="d-flex align-items-center">
                     {% if children %}
-                    <i class="bi bi-caret-down-fill text-muted me-1 toggle-icon" style="cursor:pointer;" onclick="toggleDeptNode(this)"></i>
+                    <i class="bi {% if expanded %}bi-caret-down-fill{% else %}bi-caret-right-fill{% endif %} text-muted me-1 toggle-icon tree-toggle-icon"
+                       style="cursor:pointer;" onclick="toggleDeptNode(this)"></i>
                     {% else %}
-                    <i class="bi bi-dot text-muted me-1"></i>
+                    <span style="width:1rem; display:inline-block; margin-right:0.25rem;"></span>
                     {% endif %}
                     <i class="bi {% if dept.dept_type == 'company' %}bi-building-fill text-primary{% elif dept.dept_type == 'project' %}bi-geo-alt-fill text-success{% elif dept.dept_type == 'branch' %}bi-building text-info{% else %}bi-folder{% endif %} me-2"></i>
                     <span class="{% if level == 0 %}fw-bold{% endif %}">{{ dept.dept_name }}</span>
@@ -67,7 +92,7 @@
                 </div>
             </div>
             {% if children %}
-            <div class="dept-children">
+            <div class="dept-children" style="display:{% if expanded %}block{% else %}none{% endif %};">
                 {% for child in children %}
                 {{ dept_tree(child, level + 1) }}
                 {% endfor %}
@@ -97,7 +122,7 @@
 <script>
 function toggleDeptNode(icon) {
     const node = icon.closest('.dept-node');
-    const children = node.querySelector('.dept-children');
+    const children = node.querySelector(':scope > .dept-children');
     if (children) {
         children.style.display = children.style.display === 'none' ? '' : 'none';
         icon.classList.toggle('bi-caret-down-fill');
@@ -105,18 +130,76 @@ function toggleDeptNode(icon) {
     }
 }
 
+function expandDeptNode(node) {
+    const children = node.querySelector(':scope > .dept-children');
+    const icon = node.querySelector(':scope > .dept-row .toggle-icon');
+    if (children && children.style.display === 'none') {
+        children.style.display = '';
+        if (icon) {
+            icon.classList.remove('bi-caret-right-fill');
+            icon.classList.add('bi-caret-down-fill');
+        }
+    }
+}
+
+function collapseDeptNode(node) {
+    const children = node.querySelector(':scope > .dept-children');
+    const icon = node.querySelector(':scope > .dept-row .toggle-icon');
+    const level = parseInt(node.dataset.level) || 0;
+    if (children && level >= 2) {
+        children.style.display = 'none';
+        if (icon) {
+            icon.classList.remove('bi-caret-down-fill');
+            icon.classList.add('bi-caret-right-fill');
+        }
+    }
+}
+
 function filterDeptTree(keyword) {
     keyword = keyword.trim().toLowerCase();
     const nodes = document.querySelectorAll('#deptTree .dept-node');
     if (!keyword) {
-        nodes.forEach(n => n.style.display = '');
+        nodes.forEach(n => {
+            n.style.display = '';
+            n.style.backgroundColor = '';
+            const level = parseInt(n.dataset.level) || 0;
+            const children = n.querySelector(':scope > .dept-children');
+            const icon = n.querySelector(':scope > .dept-row .toggle-icon');
+            if (children && icon) {
+                if (level < 2) {
+                    children.style.display = '';
+                    icon.classList.remove('bi-caret-right-fill');
+                    icon.classList.add('bi-caret-down-fill');
+                } else {
+                    children.style.display = 'none';
+                    icon.classList.remove('bi-caret-down-fill');
+                    icon.classList.add('bi-caret-right-fill');
+                }
+            }
+        });
         return;
     }
+
+    const matchMap = new Map();
     nodes.forEach(n => {
         const name = (n.dataset.name || '').toLowerCase();
-        if (name.includes(keyword)) {
+        matchMap.set(n, name.includes(keyword));
+    });
+
+    nodes.forEach(n => {
+        const isMatch = matchMap.get(n);
+        let descendantMatch = false;
+        const descendants = n.querySelectorAll('.dept-node');
+        descendants.forEach(d => {
+            if (matchMap.get(d)) descendantMatch = true;
+        });
+
+        if (isMatch || descendantMatch) {
             n.style.display = '';
-            n.style.backgroundColor = '#fff3cd';
+            n.style.backgroundColor = isMatch ? 'rgba(255, 193, 7, 0.15)' : '';
+            if (descendantMatch) {
+                expandDeptNode(n);
+            }
         } else {
             n.style.display = 'none';
             n.style.backgroundColor = '';
