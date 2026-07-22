@@ -7,7 +7,16 @@
             <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>公司物资分类</h5>
             <small class="text-muted">公司级统一分类，全公司所有项目共用，共三级，仅末级可关联物资</small>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('master.category_export') }}">
+                <i class="bi bi-download me-1"></i>导出
+            </a>
+            <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
+                <i class="bi bi-upload me-1"></i>批量导入
+            </button>
+            <button class="btn btn-outline-danger btn-sm" id="btnBatchDelete" disabled onclick="batchDelete()">
+                <i class="bi bi-trash me-1"></i>批量删除
+            </button>
             <button class="btn btn-outline-secondary btn-sm" id="btnBatchAdd" data-bs-toggle="modal" data-bs-target="#batchModal">
                 <i class="bi bi-list-plus me-1"></i>批量新增
             </button>
@@ -23,12 +32,15 @@
             <table class="table table-hover table-sm mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width:18%;">分类编码</th>
+                        <th style="width:40px;">
+                            <input type="checkbox" class="form-check-input" id="checkAll" onchange="toggleAll(this)">
+                        </th>
+                        <th style="width:16%;">分类编码</th>
                         <th>分类名称</th>
-                        <th class="text-center" style="width:12%;">层级</th>
-                        <th class="text-center" style="width:10%;">排序号</th>
-                        <th class="text-center" style="width:15%;">关联数量</th>
-                        <th class="text-end" style="width:25%;">操作</th>
+                        <th class="text-center" style="width:10%;">层级</th>
+                        <th class="text-center" style="width:8%;">排序号</th>
+                        <th class="text-center" style="width:12%;">关联数量</th>
+                        <th class="text-end" style="width:22%;">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -40,6 +52,10 @@
                             {% set has_children = node.children %}
                             {% set has_materials = c.level == 3 and material_count > 0 %}
                             <tr class="category-row" data-id="{{ c.id }}" data-level="{{ c.level }}" data-parent-id="{{ parent_id }}">
+                                <td>
+                                    <input type="checkbox" class="form-check-input cat-checkbox" value="{{ c.id }}"
+                                           onchange="updateBatchButton()">
+                                </td>
                                 <td>
                                     <code class="font-monospace text-primary fw-bold">{{ c.category_code or '-' }}</code>
                                 </td>
@@ -253,6 +269,44 @@
         </div>
     </div>
 </div>
+
+<!-- 批量导入模态框 -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('master.category_import') }}" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title">批量导入分类</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 mb-3">
+                        <i class="bi bi-info-circle me-1"></i>
+                        支持 .xlsx 格式文件导入，请先下载模板，按模板格式填写后上传。
+                    </div>
+                    <div class="mb-3">
+                        <a href="{{ url_for('master.category_template') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-file-earmark-excel me-1"></i>下载导入模板
+                        </a>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">选择文件 <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" name="file" accept=".xlsx" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">开始导入</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 批量删除确认表单 -->
+<form method="POST" id="batchDeleteForm" action="{{ url_for('master.category_batch_delete') }}" style="display:none;">
+    <input type="hidden" name="ids" id="batchDeleteIds">
+</form>
 {% endblock %}
 
 {% block extra_js %}
@@ -356,5 +410,43 @@
         });
     });
 })();
+
+function toggleAll(checkbox) {
+    var checkboxes = document.querySelectorAll('.cat-checkbox');
+    checkboxes.forEach(function (cb) {
+        var row = cb.closest('.category-row');
+        if (row && row.style.display !== 'none') {
+            cb.checked = checkbox.checked;
+        }
+    });
+    updateBatchButton();
+}
+
+function updateBatchButton() {
+    var checked = document.querySelectorAll('.cat-checkbox:checked');
+    var btn = document.getElementById('btnBatchDelete');
+    if (btn) {
+        btn.disabled = checked.length === 0;
+    }
+}
+
+function batchDelete() {
+    var checked = document.querySelectorAll('.cat-checkbox:checked');
+    if (checked.length === 0) {
+        alert('请先选择要删除的分类。');
+        return;
+    }
+    var ids = [];
+    checked.forEach(function (cb) {
+        ids.push(cb.value);
+    });
+    if (!confirm('确定要删除选中的 ' + ids.length + ' 个分类吗？\n子分类也会一并删除，请确认操作。')) {
+        return;
+    }
+    var form = document.getElementById('batchDeleteForm');
+    var input = document.getElementById('batchDeleteIds');
+    input.value = ids.join(',');
+    form.submit();
+}
 </script>
 {% endblock %}

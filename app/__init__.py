@@ -170,6 +170,8 @@ def init_db_schema():
 
     # 增强阶段一：入库质检
     _add_column_if_missing('stock_ins', 'quality_status', "VARCHAR(16) DEFAULT 'draft'")
+    _add_column_if_missing('stock_ins', 'status', "VARCHAR(16) DEFAULT 'approved'")
+    _add_column_if_missing('stock_outs', 'status', "VARCHAR(16) DEFAULT 'approved'")
     _add_column_if_missing('stock_ins', 'quality_checker', 'VARCHAR(64)')
     _add_column_if_missing('stock_ins', 'quality_check_time', 'DATETIME')
     _add_column_if_missing('stock_ins', 'quality_remark', 'TEXT')

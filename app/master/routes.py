@@ -1291,3 +1291,376 @@ def category_api_children(parent_id):
         'parent_id': c.parent_id,
         'sort_order': c.sort_order,
     } for c in categories])
+
+
+@master_bp.route('/category/template')
+@login_required
+@admin_required
+def category_template():
+    """下载公司物资分类导入模板"""
+    from io import BytesIO
+    from flask import send_file
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '物资分类'
+
+    headers = ['分类编码', '分类名称', '上级分类编码', '排序号', '备注']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color='E8F0FE', end_color='E8F0FE', fill_type='solid')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    examples = [
+        ['MC01', '钢材', '', '1', '一级分类示例'],
+        ['MC0101', '钢筋', 'MC01', '1', '二级分类示例'],
+        ['MC010101', 'HRB400螺纹钢', 'MC0101', '1', '三级分类示例，可关联物资'],
+    ]
+    for row_idx, row_data in enumerate(examples, 2):
+        for col_idx, value in enumerate(row_data, 1):
+            ws.cell(row=row_idx, column=col_idx, value=value)
+
+    ws2 = wb.create_sheet('填写说明')
+    notes = [
+        ['字段', '是否必填', '说明'],
+        ['分类编码', '可选', '不填则自动生成；填写需确保唯一，如 MC01、MC0101'],
+        ['分类名称', '必填', '分类名称，同一父级下不可重复'],
+        ['上级分类编码', '可选', '空表示顶级分类；填父级编码则为其子分类'],
+        ['排序号', '可选', '数字越小越靠前，默认 99'],
+        ['备注', '可选', '备注说明'],
+        ['', '', ''],
+        ['注意事项', '', ''],
+        ['1', '', '最多支持三级分类'],
+        ['2', '', '通过编码建立层级关系，如 MC01 是 MC0101 的父级'],
+        ['3', '', '导入前会校验编码唯一性和上级分类是否存在'],
+        ['4', '', '校验不通过不会导入任何数据，需修正后重新导入'],
+    ]
+    for row_idx, row_data in enumerate(notes, 1):
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws2.cell(row=row_idx, column=col_idx, value=value)
+            if row_idx == 1:
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color='E8F0FE', end_color='E8F0FE', fill_type='solid')
+
+    for col_letter in ['A', 'B', 'C', 'D', 'E']:
+        ws.column_dimensions[col_letter].width = 20
+    ws2.column_dimensions['A'].width = 15
+    ws2.column_dimensions['B'].width = 12
+    ws2.column_dimensions['C'].width = 50
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='公司物资分类导入模板.xlsx'
+    )
+
+
+@master_bp.route('/category/import', methods=['POST'])
+@login_required
+@admin_required
+@log_audit(module='master_category', operation='批量导入')
+def category_import():
+    """批量导入公司物资分类"""
+    if 'file' not in request.files:
+        flash('请选择要导入的Excel文件。', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    file = request.files['file']
+    if not file.filename:
+        flash('请选择要导入的Excel文件。', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    if not file.filename.endswith('.xlsx'):
+        flash('仅支持 .xlsx 格式的文件。', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    try:
+        wb = openpyxl.load_workbook(file, data_only=True)
+        ws = wb.active
+    except Exception as e:
+        flash(f'文件读取失败：{str(e)}', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    if not rows:
+        flash('Excel文件中没有数据。', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    project_id = _get_company_project_id()
+    if not project_id:
+        flash('系统未找到任何项目，无法导入分类。', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    errors = []
+    import_data = []
+    code_set = set()
+    name_by_parent = {}
+
+    existing_categories = Category.query.filter_by(source='company').all()
+    existing_codes = {c.category_code: c for c in existing_categories if c.category_code}
+
+    for idx, row in enumerate(rows, start=2):
+        if not row or all(v is None or str(v).strip() == '' for v in row):
+            continue
+
+        code = str(row[0]).strip() if row[0] else ''
+        name = str(row[1]).strip() if row[1] else ''
+        parent_code = str(row[2]).strip() if row[2] else ''
+        sort_val = row[3]
+        remark = str(row[4]).strip() if len(row) > 4 and row[4] else ''
+
+        if not name:
+            errors.append(f'第{idx}行：分类名称不能为空')
+            continue
+
+        if code and code in existing_codes:
+            errors.append(f'第{idx}行：分类编码"{code}"已存在')
+            continue
+
+        if code and code in code_set:
+            errors.append(f'第{idx}行：分类编码"{code}"在导入文件中重复')
+            continue
+
+        parent_id = 0
+        level = 1
+        if parent_code:
+            if parent_code not in existing_codes and parent_code not in [d['code'] for d in import_data]:
+                errors.append(f'第{idx}行：上级分类编码"{parent_code}"不存在')
+                continue
+            if parent_code in existing_codes:
+                parent = existing_codes[parent_code]
+                parent_id = parent.id
+                level = parent.level + 1
+            else:
+                for d in import_data:
+                    if d['code'] == parent_code:
+                        parent_id = d.get('id', 0)
+                        level = d['level'] + 1
+                        break
+
+        if level > 3:
+            errors.append(f'第{idx}行：分类层级超过三级限制')
+            continue
+
+        try:
+            sort_order = int(sort_val) if sort_val else 99
+        except (ValueError, TypeError):
+            sort_order = 99
+
+        parent_key = f"{parent_id}_{name}"
+        if parent_key in name_by_parent:
+            errors.append(f'第{idx}行：分类名称"{name}"在同一父级下重复')
+            continue
+        name_by_parent[parent_key] = True
+
+        code_set.add(code if code else f'_auto_{idx}')
+        import_data.append({
+            'code': code,
+            'name': name,
+            'parent_id': parent_id,
+            'parent_code': parent_code,
+            'level': level,
+            'sort_order': sort_order,
+            'remark': remark,
+            'row_idx': idx,
+        })
+
+    if errors:
+        error_msg = '导入失败，共发现 {} 个错误：<br>'.format(len(errors))
+        error_msg += '<br>'.join(errors[:20])
+        if len(errors) > 20:
+            error_msg += f'<br>... 还有 {len(errors) - 20} 个错误'
+        flash(error_msg, 'danger')
+        return redirect(url_for('master.category_index'))
+
+    success_count = 0
+    created_map = {}
+
+    for data in import_data:
+        parent_id = data['parent_id']
+        if data['parent_code'] and data['parent_code'] in created_map:
+            parent_id = created_map[data['parent_code']]
+
+        code = data['code']
+        if not code:
+            if parent_id == 0:
+                prefix = 'MC'
+                existing = Category.query.filter(
+                    Category.source == 'company',
+                    Category.parent_id == 0
+                ).all()
+                existing_codes_same_level = [c.category_code for c in existing if c.category_code]
+                existing_codes_same_level += [d['code'] for d in import_data if d['code'] and d['parent_id'] == 0]
+                seq = len(existing_codes_same_level) + 1
+                while True:
+                    candidate = f'{prefix}{seq:02d}'
+                    if candidate not in existing_codes and candidate not in code_set:
+                        code = candidate
+                        break
+                    seq += 1
+            else:
+                parent_obj = Category.query.get(parent_id)
+                if not parent_obj:
+                    for d in import_data:
+                        if d.get('id') == parent_id:
+                            parent_obj_data = d
+                            break
+                    continue
+                parent_code_val = parent_obj.category_code if parent_obj else ''
+                existing_same_parent = Category.query.filter(
+                    Category.source == 'company',
+                    Category.parent_id == parent_id
+                ).all()
+                seq = len(existing_same_parent) + 1
+                while True:
+                    candidate = f'{parent_code_val}{seq:02d}'
+                    if candidate not in existing_codes and candidate not in code_set:
+                        code = candidate
+                        break
+                    seq += 1
+
+        category = Category(
+            project_id=project_id,
+            parent_id=parent_id,
+            level=data['level'],
+            category_code=code,
+            name=data['name'],
+            sort_order=data['sort_order'],
+            source='company',
+        )
+        db.session.add(category)
+        db.session.flush()
+        created_map[code] = category.id
+        data['id'] = category.id
+        success_count += 1
+
+    db.session.commit()
+    flash(f'导入成功！共导入 {success_count} 条分类数据。', 'success')
+    return redirect(url_for('master.category_index'))
+
+
+@master_bp.route('/category/batch_delete', methods=['POST'])
+@login_required
+@admin_required
+@log_audit(module='master_category', operation='批量删除')
+def category_batch_delete():
+    """批量删除公司物资分类（递归删除子分类，检查物资引用）"""
+    ids = request.form.getlist('ids')
+    if not ids:
+        ids_str = request.form.get('ids', '')
+        if ids_str:
+            ids = [i.strip() for i in ids_str.split(',') if i.strip()]
+    if not ids:
+        flash('请选择要删除的分类。', 'warning')
+        return redirect(url_for('master.category_index'))
+
+    ids = [int(i) for i in ids if i.isdigit()]
+    if not ids:
+        flash('请选择有效的分类。', 'warning')
+        return redirect(url_for('master.category_index'))
+
+    def get_all_child_ids(parent_ids):
+        all_ids = set(parent_ids)
+        current = set(parent_ids)
+        while current:
+            children = Category.query.filter(
+                Category.parent_id.in_(current),
+                Category.source == 'company'
+            ).all()
+            child_ids = {c.id for c in children}
+            new_ids = child_ids - all_ids
+            if not new_ids:
+                break
+            all_ids.update(new_ids)
+            current = new_ids
+        return all_ids
+
+    all_ids = get_all_child_ids(ids)
+
+    materials = Material.query.filter(
+        Material.category_id.in_(all_ids),
+        Material.source == 'company'
+    ).all()
+
+    if materials:
+        cat_names = set()
+        for m in materials[:5]:
+            if m.category:
+                cat_names.add(m.category.name)
+        flash(f'选中分类下存在物资（如 {", ".join(cat_names)} 等），无法删除。', 'danger')
+        return redirect(url_for('master.category_index'))
+
+    categories = Category.query.filter(
+        Category.id.in_(all_ids),
+        Category.source == 'company'
+    ).all()
+
+    for cat in categories:
+        db.session.delete(cat)
+
+    db.session.commit()
+    flash(f'删除成功！共删除 {len(categories)} 个分类。', 'success')
+    return redirect(url_for('master.category_index'))
+
+
+@master_bp.route('/category/export')
+@login_required
+@admin_required
+def category_export():
+    """导出公司物资分类"""
+    from io import BytesIO
+    from flask import send_file
+
+    categories = Category.query.filter_by(source='company').order_by(
+        Category.sort_order.asc(), Category.created_at.asc()
+    ).all()
+
+    code_to_cat = {c.category_code: c for c in categories if c.category_code}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '物资分类'
+
+    headers = ['分类编码', '分类名称', '上级分类编码', '排序号', '备注']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color='E8F0FE', end_color='E8F0FE', fill_type='solid')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    for row_idx, cat in enumerate(categories, 2):
+        parent_code = ''
+        if cat.parent_id and cat.parent_id in [c.id for c in categories]:
+            parent = code_to_cat.get(cat.category_code)
+            if cat.parent_id:
+                for c in categories:
+                    if c.id == cat.parent_id:
+                        parent_code = c.category_code or ''
+                        break
+
+        ws.cell(row=row_idx, column=1, value=cat.category_code or '')
+        ws.cell(row=row_idx, column=2, value=cat.name)
+        ws.cell(row=row_idx, column=3, value=parent_code)
+        ws.cell(row=row_idx, column=4, value=cat.sort_order)
+        ws.cell(row=row_idx, column=5, value='')
+
+    for col_letter in ['A', 'B', 'C', 'D', 'E']:
+        ws.column_dimensions[col_letter].width = 20
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'公司物资分类_{timestamp}.xlsx'
+    )
