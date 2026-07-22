@@ -72,7 +72,7 @@
         <div class="value">{{ biz_obj.remark }}</div>
     </div>
     {% endif %}
-    {% if biz_obj.total_amount is not none %}
+    {% if biz_obj.total_amount is defined and biz_obj.total_amount is not none %}
     <div class="m-info-row">
         <div class="label">金额</div>
         <div class="value" style="color:#dc3545; font-weight:700;">
@@ -80,7 +80,7 @@
         </div>
     </div>
     {% endif %}
-    {% if biz_obj.total_quantity is not none %}
+    {% if biz_obj.total_quantity is defined and biz_obj.total_quantity is not none %}
     <div class="m-info-row">
         <div class="label">数量</div>
         <div class="value">{{ '%.3f'|format(biz_obj.total_quantity|float) }}</div>
