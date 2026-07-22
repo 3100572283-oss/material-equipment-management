@@ -34,8 +34,8 @@ class User(UserMixin, db.Model):
     last_login_ip = db.Column(db.String(64), nullable=True)
     must_change_password = db.Column(db.Boolean, default=False)
 
-    dept = db.relationship('SysDept', backref='users')
-    role_obj = db.relationship('SysRole', backref='users')
+    dept = db.relationship('SysDept', backref=db.backref('users', lazy='dynamic'))
+    role_obj = db.relationship('SysRole', backref=db.backref('users', lazy='dynamic'))
 
     def is_admin(self):
         if self.role_obj and self.role_obj.role_code == 'super_admin':

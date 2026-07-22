@@ -28,37 +28,61 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (e) {}
     }
 
-    function openSidebar() {
+    // 桌面端：折叠侧边栏（内容区铺满）
+    function collapseSidebarDesktop() {
         if (wrapper) wrapper.classList.add('toggled');
         saveCollapsedState(true);
-        if (sidebarOverlay) sidebarOverlay.classList.add('show');
-        document.body.style.overflow = 'hidden';
+        if (sidebarOverlay) sidebarOverlay.classList.remove('show');
+        document.body.style.overflow = '';
     }
 
-    function closeSidebar() {
+    // 桌面端：展开侧边栏
+    function expandSidebarDesktop() {
         if (wrapper) wrapper.classList.remove('toggled');
         saveCollapsedState(false);
         if (sidebarOverlay) sidebarOverlay.classList.remove('show');
         document.body.style.overflow = '';
     }
 
+    // 移动端：打开侧边栏
+    function openSidebarMobile() {
+        if (wrapper) wrapper.classList.add('toggled');
+        if (sidebarOverlay) sidebarOverlay.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    }
+
+    // 移动端：关闭侧边栏
+    function closeSidebarMobile() {
+        if (wrapper) wrapper.classList.remove('toggled');
+        if (sidebarOverlay) sidebarOverlay.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+
     function toggleSidebar() {
-        if (wrapper.classList.contains('toggled')) {
-            closeSidebar();
+        if (isDesktop()) {
+            if (wrapper && wrapper.classList.contains('toggled')) {
+                expandSidebarDesktop();
+            } else {
+                collapseSidebarDesktop();
+            }
         } else {
-            openSidebar();
+            if (wrapper && wrapper.classList.contains('toggled')) {
+                closeSidebarMobile();
+            } else {
+                openSidebarMobile();
+            }
         }
     }
 
     // 初始化侧边栏状态
     if (isDesktop()) {
         if (getSavedCollapsedState()) {
-            openSidebar();
+            collapseSidebarDesktop();
         } else {
-            closeSidebar();
+            expandSidebarDesktop();
         }
     } else if (isMobile()) {
-        openSidebar();
+        closeSidebarMobile();
     }
 
     if (sidebarToggle) {
@@ -68,9 +92,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 点击遮罩层关闭
+    // 点击遮罩层关闭（仅移动端）
     if (sidebarOverlay) {
-        sidebarOverlay.addEventListener('click', closeSidebar);
+        sidebarOverlay.addEventListener('click', function() {
+            if (!isDesktop()) {
+                closeSidebarMobile();
+            }
+        });
     }
 
     // 点击菜单项后，在移动端自动关闭侧边栏
@@ -85,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             if (window.innerWidth < 1199.98) {
                 // 延迟关闭，让页面有机会跳转
-                setTimeout(closeSidebar, 150);
+                setTimeout(closeSidebarMobile, 150);
             }
         });
     });
@@ -102,7 +130,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // ESC 键关闭侧边栏
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && wrapper && wrapper.classList.contains('toggled')) {
-            closeSidebar();
+            if (isDesktop()) {
+                expandSidebarDesktop();
+            } else {
+                closeSidebarMobile();
+            }
         }
     });
 
@@ -110,17 +142,19 @@ document.addEventListener('DOMContentLoaded', function() {
     window.addEventListener('resize', function() {
         if (isDesktop()) {
             if (getSavedCollapsedState()) {
-                wrapper.classList.add('toggled');
+                collapseSidebarDesktop();
             } else {
-                wrapper.classList.remove('toggled');
+                expandSidebarDesktop();
             }
+        } else {
+            closeSidebarMobile();
         }
     });
 
     // ========== 侧边栏分组折叠菜单 ==========
     const SIDEBAR_STATE_KEY = 'sidebar_group_state';
     const groups = document.querySelectorAll('.sidebar-group');
-    const isMobile = window.innerWidth < 768;
+    const isMobileView = window.innerWidth < 768;
 
     function saveGroupState() {
         const state = {};
@@ -180,7 +214,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const isActive = group.classList.contains('active');
         let shouldExpand = false;
 
-        if (isMobile) {
+        if (isMobileView) {
             // 手机端默认全部折叠，除非当前页面在该分组内
             shouldExpand = isActive;
         } else {
@@ -314,7 +348,7 @@ document.addEventListener('DOMContentLoaded', function() {
             a.innerHTML = el.dataset.title + '<span class="fav-remove" title="移除"><i class="bi bi-x-lg"></i></span>';
             a.addEventListener('click', function() {
                 if (window.innerWidth < 1199.98) {
-                    setTimeout(closeSidebar, 150);
+                    setTimeout(closeSidebarMobile, 150);
                 }
             });
             container.appendChild(a);

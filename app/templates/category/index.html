@@ -33,21 +33,21 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% macro render_tree(nodes, level=1) %}
+                    {% macro render_tree(nodes, level=1, parent_id=0) %}
                         {% for node in nodes %}
                             {% set c = node.category %}
                             {% set child_count = node.children|length %}
                             {% set material_count = node.material_count %}
                             {% set has_children = node.children %}
                             {% set has_materials = c.level == 3 and material_count > 0 %}
-                            <tr class="category-row" data-id="{{ c.id }}" data-level="{{ c.level }}">
+                            <tr class="category-row" data-id="{{ c.id }}" data-level="{{ c.level }}" data-parent-id="{{ parent_id }}">
                                 <td>
                                     <code class="font-monospace text-primary fw-bold">{{ c.category_code or '-' }}</code>
                                 </td>
                                 <td>
                                     <div class="d-flex align-items-center" style="padding-left: {{ (level - 1) * 20 }}px;">
                                         {% if has_children %}
-                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 me-1 toggle-node" data-id="{{ c.id }}">
+                                            <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 me-1 toggle-node" data-id="{{ c.id }}" aria-expanded="true">
                                                 <i class="bi bi-caret-down-fill"></i>
                                             </button>
                                         {% else %}
@@ -109,11 +109,7 @@
                                 </td>
                             </tr>
                             {% if has_children %}
-                                <tr class="category-children" id="children-{{ c.id }}">
-                                    <td colspan="6">
-                                        {{ render_tree(node.children, level + 1) }}
-                                    </td>
-                                </tr>
+                                {{ render_tree(node.children, level + 1, c.id) }}
                             {% endif %}
                         {% endfor %}
                     {% endmacro %}
@@ -300,20 +296,68 @@
         });
     }
 
+    function isNodeCollapsed(id) {
+        var btn = document.querySelector('.toggle-node[data-id="' + id + '"]');
+        if (!btn) return false;
+        return btn.getAttribute('aria-expanded') !== 'true';
+    }
+
+    function hasAncestorCollapsed(row) {
+        var parentId = row.getAttribute('data-parent-id');
+        while (parentId && parentId !== '0') {
+            if (isNodeCollapsed(parentId)) {
+                return true;
+            }
+            var parentRow = document.querySelector('.category-row[data-id="' + parentId + '"]');
+            if (!parentRow) break;
+            parentId = parentRow.getAttribute('data-parent-id');
+        }
+        return false;
+    }
+
+    function refreshVisibility() {
+        var allRows = document.querySelectorAll('.category-row');
+        allRows.forEach(function (row) {
+            var level = row.getAttribute('data-level');
+            if (level === '1') {
+                row.style.display = '';
+            } else {
+                if (hasAncestorCollapsed(row)) {
+                    row.style.display = 'none';
+                } else {
+                    row.style.display = '';
+                }
+            }
+        });
+    }
+
+    function collapseNode(btn) {
+        var icon = btn.querySelector('i');
+        btn.setAttribute('aria-expanded', 'false');
+        if (icon) {
+            icon.classList.remove('bi-caret-down-fill');
+            icon.classList.add('bi-caret-right-fill');
+        }
+        refreshVisibility();
+    }
+
+    function expandNode(btn) {
+        var icon = btn.querySelector('i');
+        btn.setAttribute('aria-expanded', 'true');
+        if (icon) {
+            icon.classList.remove('bi-caret-right-fill');
+            icon.classList.add('bi-caret-down-fill');
+        }
+        refreshVisibility();
+    }
+
     document.querySelectorAll('.toggle-node').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            var id = this.getAttribute('data-id');
-            var children = document.getElementById('children-' + id);
-            if (!children) return;
-            var icon = this.querySelector('i');
-            if (children.style.display === 'none') {
-                children.style.display = '';
-                icon.classList.remove('bi-caret-right-fill');
-                icon.classList.add('bi-caret-down-fill');
+            var expanded = this.getAttribute('aria-expanded') === 'true';
+            if (expanded) {
+                collapseNode(this);
             } else {
-                children.style.display = 'none';
-                icon.classList.remove('bi-caret-down-fill');
-                icon.classList.add('bi-caret-right-fill');
+                expandNode(this);
             }
         });
     });

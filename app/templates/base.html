@@ -9,8 +9,8 @@
     <title>{% block title %}物资设备管理系统{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/datepicker.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}?v=20260721b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/datepicker.css') }}?v=20260721b">
     <script>
         // 提前加载主题，防止页面闪烁
         // 支持 'light' / 'dark' / 'auto' 三种模式，默认 'auto' 跟随系统
@@ -22,6 +22,22 @@
                 document.documentElement.setAttribute('data-theme', 'dark');
             }
         })();
+
+        // 清除旧版 Service Worker 缓存（防止 JS/CSS 更新不生效）
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                registrations.forEach(function(registration) {
+                    registration.unregister();
+                });
+            });
+        }
+        if ('caches' in window) {
+            caches.keys().then(function(names) {
+                names.forEach(function(name) {
+                    caches.delete(name);
+                });
+            });
+        }
     </script>
     <style>
     {% if is_system_page() %}
@@ -653,8 +669,8 @@
         });
     })();
     </script>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/datepicker.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}?v=20260721e"></script>
+    <script src="{{ url_for('static', filename='js/datepicker.js') }}?v=20260721e"></script>
     <script>
     // ========== 项目切换器 ==========
     document.addEventListener('DOMContentLoaded', function() {

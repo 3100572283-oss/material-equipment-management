@@ -262,7 +262,8 @@ h5.card-title, .card-header h5, .card-header h6 {
     min-width: 0;
     width: 100%;
     margin-left: var(--sidebar-width);
-    transition: margin 0.25s ease-out;
+    transition: margin-left 0.3s ease;
+    -webkit-transition: margin-left 0.3s ease;
 }
 
 /* 页面内容区紧凑 */
@@ -434,9 +435,11 @@ body.density-standard .dashboard-stat-card .stat-label {
 
 #wrapper.toggled #sidebar-wrapper {
     transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    -webkit-transition: transform 0.3s ease;
 }
 #wrapper.toggled #page-content-wrapper {
-    margin-left: 0;
+    margin-left: 0 !important;
 }
 
 /* 遮罩层 */

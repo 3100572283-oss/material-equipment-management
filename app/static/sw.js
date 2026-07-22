@@ -6,7 +6,7 @@
 //   - API/POST 请求 → 直走网络
 //   - 业务图片上传/同步 → 直走网络
 
-var CACHE_VERSION = 'mobile-v2.0.0-20260719';
+var CACHE_VERSION = 'mobile-v2.0.1-20260721';
 var STATIC_CACHE = CACHE_VERSION + '-static';
 var PAGE_CACHE = CACHE_VERSION + '-pages';
 
@@ -83,8 +83,13 @@ self.addEventListener('fetch', function(event){
         return;
     }
 
-    // 静态资源走缓存优先
+    // 静态资源：JS/CSS 走网络优先（确保更新及时），其他走缓存优先
     if (url.pathname.startsWith('/static/')) {
+        if (url.pathname.match(/\.(js|css)$/)) {
+            // JS/CSS 文件：网络优先，避免缓存旧版本
+            event.respondWith(networkFirst(req, STATIC_CACHE));
+            return;
+        }
         event.respondWith(cacheFirst(req, STATIC_CACHE));
         return;
     }
