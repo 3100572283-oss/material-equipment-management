@@ -25,7 +25,7 @@
                     <option value="0">请选择物资</option>
                     {% for m in materials %}
                     <option value="{{ m.id }}" {% if m.id == material_id %}selected{% endif %}>
-                        {{ m.code or '' }} - {{ m.name }}{% if m.specification %} ({{ m.specification }}){% endif %}
+                        {{ m.name }} - {{ m.specification or '-' }} - {{ m.unit }}
                     </option>
                     {% endfor %}
                 </select>

@@ -213,7 +213,7 @@ function loadConcreteMaterials() {
                 data.forEach(function(m) {
                     const option = document.createElement('option');
                     option.value = m.id;
-                    option.textContent = m.name + (m.specification ? ' / ' + m.specification : '');
+                    option.textContent = m.name + ' - ' + (m.specification || '-') + ' - ' + (m.unit || '');
                     if (m.id === currentMaterialId) option.selected = true;
                     materialSelect.appendChild(option);
                 });

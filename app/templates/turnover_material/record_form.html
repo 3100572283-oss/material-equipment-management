@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', function() {
     materials.forEach(m => {
         const opt = document.createElement('option');
         opt.value = m.id;
-        opt.textContent = m.name + ' (' + (m.specification || '无规格') + ')';
+        opt.textContent = m.name + ' - ' + (m.specification || '-') + ' - ' + (m.unit || '');
         opt.dataset.stock = 0;
         opt.dataset.unit = m.unit || '';
         if ('{{ record.material_id if record else "" }}' == m.id) {

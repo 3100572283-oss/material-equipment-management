@@ -268,7 +268,7 @@ function loadConcreteMaterials() {
             data.forEach(function(m) {
                 var option = document.createElement('option');
                 option.value = m.id;
-                option.textContent = m.name + (m.specification ? ' / ' + m.specification : '');
+                option.textContent = m.name + ' - ' + (m.specification || '-') + ' - ' + (m.unit || '');
                 materialSelect.appendChild(option);
             });
             var last = sessionStorage.getItem('last_concrete_material');

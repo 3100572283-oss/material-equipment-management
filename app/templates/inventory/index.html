@@ -187,7 +187,7 @@
                                 <select class="form-select" name="material_id" required>
                                     <option value="">-- 请选择物资 --</option>
                                     {% for m in materials if materials %}
-                                    <option value="{{ m.id }}" data-code="{{ m.code or '' }}" data-spec="{{ m.specification or '' }}" data-unit="{{ m.unit }}">{{ m.name }}</option>
+                                    <option value="{{ m.id }}" data-code="{{ m.code or '' }}" data-spec="{{ m.specification or '' }}" data-unit="{{ m.unit }}">{{ m.name }} - {{ m.specification or '-' }} - {{ m.unit }}</option>
                                     {% endfor %}
                                 </select>
                             </div>

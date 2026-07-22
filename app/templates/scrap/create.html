@@ -91,7 +91,7 @@
 {% endblock %}
 {% block extra_js %}
 <script>
-const materialsOptions = `{% for m in materials %}<option value="{{ m.id }}" data-spec="{{ m.specification or '' }}" data-unit="{{ m.unit }}">{{ m.name }}{% if m.specification %} ({{ m.specification }}){% endif %}</option>{% endfor %}`;
+const materialsOptions = `{% for m in materials %}<option value="{{ m.id }}" data-spec="{{ m.specification or '' }}" data-unit="{{ m.unit }}">{{ m.name }} - {{ m.specification or '-' }} - {{ m.unit }}</option>{% endfor %}`;
 
 function buildRow() {
     const tr = document.createElement('tr');

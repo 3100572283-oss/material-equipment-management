@@ -60,7 +60,7 @@
                                     <select class="form-select form-select-sm" name="material_id[]" required onchange="updateMaterialInfo(this)">
                                         <option value="">-- 选择物资 --</option>
                                         {% for m in materials %}
-                                        <option value="{{ m.id }}" {% if m.id == item.material_id %}selected{% endif %}>{{ m.name }}</option>
+                                        <option value="{{ m.id }}" {% if m.id == item.material_id %}selected{% endif %}>{{ m.name }} - {{ m.specification or '-' }} - {{ m.unit }}</option>
                                         {% endfor %}
                                     </select>
                                 </td>
@@ -82,7 +82,7 @@
                                     <select class="form-select form-select-sm" name="material_id[]" required onchange="updateMaterialInfo(this)">
                                         <option value="">-- 选择物资 --</option>
                                         {% for m in materials %}
-                                        <option value="{{ m.id }}">{{ m.name }}</option>
+                                        <option value="{{ m.id }}">{{ m.name }} - {{ m.specification or '-' }} - {{ m.unit }}</option>
                                         {% endfor %}
                                     </select>
                                 </td>
@@ -143,7 +143,7 @@ function addItemRow() {
     html += `<td><select class="form-select form-select-sm" name="material_id[]" required onchange="updateMaterialInfo(this)">`;
     html += `<option value="">-- 选择物资 --</option>`;
     materialsData.forEach(m => {
-        html += `<option value="${m.id}">${m.name}</option>`;
+        html += `<option value="${m.id}">${m.name} - ${m.specification || '-'} - ${m.unit}</option>`;
     });
     html += `</select></td>`;
     html += `<td><input type="text" class="form-control form-control-sm spec-input" readonly></td>`;

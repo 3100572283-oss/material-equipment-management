@@ -224,7 +224,7 @@ function loadConcreteMaterials() {
                     option.value = m.id;
                     option.dataset.spec = m.specification || '';
                     option.dataset.unit = m.unit || '';
-                    option.textContent = m.name + (m.specification ? ' / ' + m.specification : '');
+                    option.textContent = m.name + ' - ' + (m.specification || '-') + ' - ' + (m.unit || '');
                     materialSelect.appendChild(option);
                 });
                 const last = sessionStorage.getItem('last_concrete_material');

@@ -133,10 +133,7 @@
         }
         var html = '<option value="">请选择物资</option>';
         filtered.forEach(function(m) {
-            var label = m.name;
-            if (m.code) label += ' [' + m.code + ']';
-            if (m.spec) label += ' ' + m.spec;
-            if (m.unit) label += ' /' + m.unit;
+            var label = m.name + ' - ' + (m.spec || '-') + ' - ' + (m.unit || '');
             html += '<option value="' + m.id + '" data-unit="' + (m.unit || '') + '">' +
                     label + '</option>';
         });

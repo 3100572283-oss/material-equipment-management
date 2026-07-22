@@ -139,7 +139,7 @@
                         <select class="form-select form-select-sm" name="material_id" required>
                             <option value="">请选择物资</option>
                             {% for m in materials %}
-                            <option value="{{ m.id }}">{{ m.name }}（{{ m.code or '-' }}）{{ m.specification or '' }}</option>
+                            <option value="{{ m.id }}">{{ m.name }} - {{ m.specification or '-' }} - {{ m.unit }}</option>
                             {% endfor %}
                         </select>
                     </div>

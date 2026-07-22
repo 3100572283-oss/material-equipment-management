@@ -156,10 +156,10 @@
                                             </div>
                                             <div class="custom-select-options">
                                                 {% for m in materials %}
-                                                <div class="custom-select-option" data-id="{{ m.id }}" data-spec="{{ m.specification or '' }}" 
+                                                <div class="custom-select-option" data-id="{{ m.id }}" data-spec="{{ m.specification or '' }}"
                                                      data-unit="{{ m.unit }}" data-name="{{ m.name }}"
-                                                     onclick="selectRowMaterial(this, '{{ m.name }}')">
-                                                    {{ m.name }}
+                                                     onclick="selectRowMaterial(this, '{{ m.name }} - {{ m.specification or '-' }} - {{ m.unit }}')">
+                                                    {{ m.name }} - {{ m.specification or '-' }} - {{ m.unit }}
                                                 </div>
                                                 {% endfor %}
                                             </div>
@@ -237,7 +237,7 @@ const materialsData = [{% for m in materials %}{{ {'id': m.id, 'name': m.name, '
 function generateMaterialOptions() {
     let html = '';
     materialsData.forEach(m => {
-        html += `<div class="custom-select-option" data-id="${m.id}" data-spec="${m.spec}" data-unit="${m.unit}" data-name="${m.name}" onclick="selectRowMaterial(this, '${m.name}')">${m.name}</div>`;
+        html += `<div class="custom-select-option" data-id="${m.id}" data-spec="${m.spec}" data-unit="${m.unit}" data-name="${m.name}" onclick="selectRowMaterial(this, '${m.name} - ${m.spec || '-'} - ${m.unit}')">${m.name} - ${m.spec || '-'} - ${m.unit}</div>`;
     });
     return html;
 }

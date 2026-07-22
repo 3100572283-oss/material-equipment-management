@@ -177,6 +177,7 @@ def history(material_id):
 
     stock_ins = db.session.query(
         StockIn.code.label('code'),
+        StockIn.id.label('record_id'),
         StockIn.stock_in_date.label('date'),
         StockIn.stock_in_type.label('type'),
         StockInItem.quantity.label('quantity'),
@@ -190,6 +191,7 @@ def history(material_id):
 
     stock_outs = db.session.query(
         StockOut.code.label('code'),
+        StockOut.id.label('record_id'),
         StockOut.stock_out_date.label('date'),
         StockOut.stock_out_type.label('type'),
         StockOutItem.quantity.label('quantity'),
