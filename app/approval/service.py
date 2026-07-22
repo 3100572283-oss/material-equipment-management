@@ -66,7 +66,7 @@ def get_flow_by_biz_type(biz_type, project_id=None):
     
     if project_id:
         project = Project.query.get(project_id)
-        if project and hasattr(project, 'module_approval') and not project.module_approval:
+        if project and not project.is_module_enabled('module_approval'):
             return None
     
     if project_id:
@@ -110,9 +110,7 @@ def is_project_approval_enabled(project_id):
     project = Project.query.get(project_id)
     if not project:
         return True
-    if hasattr(project, 'module_approval'):
-        return project.module_approval
-    return True
+    return project.is_module_enabled('module_approval')
 
 
 def get_biz_title(biz_type, biz_id):

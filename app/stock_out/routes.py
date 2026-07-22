@@ -293,10 +293,17 @@ def create():
                 _apply_stock(project_id, item.material_id, float(item.quantity))
             db.session.commit()
 
-            from app.approval.service import submit_approval
+            from app.approval.service import submit_approval, is_project_approval_enabled
             success, message, instance = submit_approval('stockout', stock_out.id, project_id=project_id)
             if success:
                 flash('出库单已提交审批。', 'success')
+            elif is_project_approval_enabled(project_id) is False or '已关闭审批模块' in message:
+                for item in stock_out.items:
+                    _apply_stock(project_id, item.material_id, -float(item.quantity))
+                stock_out.status = 'approved'
+                stock_out.approval_status = 'passed'
+                db.session.commit()
+                flash('出库单已直接生效（项目未启用审批模块）。', 'success')
             else:
                 flash(message, 'danger')
             return redirect(url_for('stock_out.detail', id=stock_out.id))
@@ -326,7 +333,7 @@ def create():
                            work_numbers=work_numbers, materials=materials,
                            default_code=_gen_stock_out_code(project_id),
                            is_copy=bool(copy_stock_out),
-                           approval_enabled=is_approval_enabled('stockout'))
+                           approval_enabled=is_approval_enabled('stockout', project_id=project_id))
 
 
 @bp.route('/<int:id>')
@@ -476,10 +483,17 @@ def edit(id):
             stock_out.approval_status = 'pending'
             db.session.commit()
 
-            from app.approval.service import submit_approval
+            from app.approval.service import submit_approval, is_project_approval_enabled
             success, message, instance = submit_approval('stockout', stock_out.id, project_id=stock_out.project_id)
             if success:
                 flash('出库单已提交审批。', 'success')
+            elif is_project_approval_enabled(stock_out.project_id) is False or '已关闭审批模块' in message:
+                for item in stock_out.items:
+                    _apply_stock(stock_out.project_id, item.material_id, -float(item.quantity))
+                stock_out.status = 'approved'
+                stock_out.approval_status = 'passed'
+                db.session.commit()
+                flash('出库单已直接生效（项目未启用审批模块）。', 'success')
             else:
                 flash(message, 'danger')
             return redirect(url_for('stock_out.detail', id=stock_out.id))
@@ -497,7 +511,7 @@ def edit(id):
     from app.approval.service import is_approval_enabled
     return render_template('stock_out/form.html', stock_out=stock_out, usage_units=usage_units,
                            work_numbers=work_numbers, materials=materials,
-                           approval_enabled=is_approval_enabled('stockout'))
+                           approval_enabled=is_approval_enabled('stockout', project_id=stock_out.project_id))
 
 
 @bp.route('/<int:id>/delete', methods=['POST'])
@@ -539,10 +553,17 @@ def submit(id):
         flash('已对账的出库单禁止提交审批。', 'danger')
         return redirect(url_for('stock_out.detail', id=stock_out.id))
 
-    from app.approval.service import submit_approval
+    from app.approval.service import submit_approval, is_project_approval_enabled
     success, message, instance = submit_approval('stockout', stock_out.id, project_id=stock_out.project_id)
     if success:
         flash('已提交审批。', 'success')
+    elif is_project_approval_enabled(stock_out.project_id) is False or '已关闭审批模块' in message:
+        for item in stock_out.items:
+            _apply_stock(stock_out.project_id, item.material_id, -float(item.quantity))
+        stock_out.status = 'approved'
+        stock_out.approval_status = 'passed'
+        db.session.commit()
+        flash('出库单已直接生效（项目未启用审批模块）。', 'success')
     else:
         flash(message, 'danger')
     return redirect(url_for('stock_out.detail', id=stock_out.id))

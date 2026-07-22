@@ -168,12 +168,17 @@ def create():
                 flash('请先添加申请明细。', 'danger')
                 return redirect(url_for('purchase_requisition.create'))
             db.session.commit()
-            from app.approval.service import submit_approval
+            from app.approval.service import submit_approval, is_project_approval_enabled
             success, msg, instance = submit_approval('purchase_requisition', pr.id, project_id=pr.project_id)
             if success:
                 pr.status = 'pending'
                 db.session.commit()
                 flash('采购申请已提交审批。', 'success')
+            elif is_project_approval_enabled(pr.project_id) is False or (msg and '已关闭审批模块' in msg):
+                pr.status = 'approved'
+                pr.approval_status = 'passed'
+                db.session.commit()
+                flash('采购申请已直接生效（项目未启用审批模块）。', 'success')
             else:
                 flash(f'提交审批失败：{msg}', 'danger')
             return redirect(url_for('purchase_requisition.detail', id=pr.id))
@@ -280,12 +285,17 @@ def edit(id):
             if pr.items.count() == 0:
                 flash('请先添加申请明细。', 'danger')
                 return redirect(url_for('purchase_requisition.detail', id=id))
-            from app.approval.service import submit_approval
+            from app.approval.service import submit_approval, is_project_approval_enabled
             success, msg, instance = submit_approval('purchase_requisition', pr.id, project_id=pr.project_id)
             if success:
                 pr.status = 'pending'
                 db.session.commit()
                 flash('采购申请已提交审批。', 'success')
+            elif is_project_approval_enabled(pr.project_id) is False or (msg and '已关闭审批模块' in msg):
+                pr.status = 'approved'
+                pr.approval_status = 'passed'
+                db.session.commit()
+                flash('采购申请已直接生效（项目未启用审批模块）。', 'success')
             else:
                 flash(f'提交审批失败：{msg}', 'danger')
             return redirect(url_for('purchase_requisition.detail', id=id))
@@ -317,12 +327,17 @@ def submit(id):
         flash('请先添加申请明细。', 'danger')
         return redirect(url_for('purchase_requisition.detail', id=id))
 
-    from app.approval.service import submit_approval
+    from app.approval.service import submit_approval, is_project_approval_enabled
     success, msg, instance = submit_approval('purchase_requisition', pr.id, project_id=pr.project_id)
     if success:
         pr.status = 'pending'
         db.session.commit()
         flash('采购申请已提交审批。', 'success')
+    elif is_project_approval_enabled(pr.project_id) is False or (msg and '已关闭审批模块' in msg):
+        pr.status = 'approved'
+        pr.approval_status = 'passed'
+        db.session.commit()
+        flash('采购申请已直接生效（项目未启用审批模块）。', 'success')
     else:
         flash(f'提交审批失败：{msg}', 'danger')
 

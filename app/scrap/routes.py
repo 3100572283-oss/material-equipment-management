@@ -195,7 +195,7 @@ def create():
 def _submit_to_approval(scrap):
     """提交报废单到审批流"""
     from app.approval.service import submit_approval, is_approval_enabled
-    if not is_approval_enabled('scrap'):
+    if not is_approval_enabled('scrap', project_id=scrap.project_id):
         # 未启用审批流：直接通过并扣减库存
         scrap.status = 'pending'
         scrap.approval_status = 'pending'
@@ -215,6 +215,13 @@ def _submit_to_approval(scrap):
         scrap.approval_instance_id = instance.id if instance else None
         db.session.commit()
         flash('报废单已提交审批。', 'success')
+    elif msg and '已关闭审批模块' in msg:
+        scrap.status = 'approved'
+        scrap.approval_status = 'passed'
+        from app.approval.service import _apply_scrap_inventory
+        _apply_scrap_inventory(scrap)
+        db.session.commit()
+        flash('报废单已直接生效（项目未启用审批模块）。', 'success')
     else:
         flash(f'提交审批失败：{msg}', 'danger')
     return redirect(url_for('scrap.detail', id=scrap.id))

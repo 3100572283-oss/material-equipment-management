@@ -26,33 +26,34 @@ def index():
     category_l2 = request.args.get('category_l2', 0, type=int)
     category_l3 = request.args.get('category_l3', 0, type=int)
 
-    subq_query = db.session.query(
-        Material.id,
-        func.coalesce(func.sum(StockInItem.quantity), 0).label('total_in'),
-        func.coalesce(func.sum(StockOutItem.quantity), 0).label('total_out')
-    ).outerjoin(StockInItem, StockInItem.material_id == Material.id).outerjoin(
-        StockIn, StockIn.id == StockInItem.stock_in_id
-    ).outerjoin(StockOutItem, StockOutItem.material_id == Material.id).outerjoin(
-        StockOut, StockOut.id == StockOutItem.stock_out_id
-    )
-    if project_id:
-        subq_query = subq_query.filter(Material.project_id == project_id)
-        subq_query = subq_query.filter(
-            db.or_(StockIn.status == 'approved', StockIn.status == None)
-        ).filter(
-            db.or_(StockOut.status == 'approved', StockOut.status == None)
-        )
-    subq = subq_query.group_by(Material.id).subquery()
+    # 用独立子查询分别计算入库和出库总量，避免笛卡尔积
+    in_subq = db.session.query(
+        StockInItem.material_id.label('material_id'),
+        func.sum(StockInItem.quantity).label('total_in')
+    ).join(StockIn, StockIn.id == StockInItem.stock_in_id).filter(
+        db.or_(StockIn.status == 'approved', StockIn.status == None)
+    ).group_by(StockInItem.material_id).subquery()
+
+    out_subq = db.session.query(
+        StockOutItem.material_id.label('material_id'),
+        func.sum(StockOutItem.quantity).label('total_out')
+    ).join(StockOut, StockOut.id == StockOutItem.stock_out_id).filter(
+        db.or_(StockOut.status == 'approved', StockOut.status == None)
+    ).group_by(StockOutItem.material_id).subquery()
 
     query = db.session.query(
         Material,
         Category,
-        func.coalesce(Inventory.quantity, 0).label('current_stock'),
+        (func.coalesce(in_subq.c.total_in, 0) - func.coalesce(out_subq.c.total_out, 0)).label('current_stock'),
         func.coalesce(Inventory.in_transit_qty, 0).label('in_transit_qty'),
         func.coalesce(Inventory.estimated_amount, 0).label('estimated_amount'),
         func.coalesce(Inventory.actual_amount, 0).label('actual_amount')
     ).outerjoin(Category, Category.id == Material.category_id).outerjoin(
         Inventory, Inventory.material_id == Material.id
+    ).outerjoin(
+        in_subq, in_subq.c.material_id == Material.id
+    ).outerjoin(
+        out_subq, out_subq.c.material_id == Material.id
     )
     if project_id:
         query = query.filter(Material.project_id == project_id)
@@ -104,28 +105,29 @@ def export():
     writer = csv.writer(output)
     writer.writerow(['物资编码', '物资名称', '规格型号', '物资分类', '单位', '当前库存'])
 
-    subq = db.session.query(
-        Material.id,
-        func.coalesce(func.sum(StockInItem.quantity), 0).label('total_in'),
-        func.coalesce(func.sum(StockOutItem.quantity), 0).label('total_out')
-    ).outerjoin(StockInItem, StockInItem.material_id == Material.id).outerjoin(
-        StockIn, StockIn.id == StockInItem.stock_in_id
-    ).outerjoin(StockOutItem, StockOutItem.material_id == Material.id).outerjoin(
-        StockOut, StockOut.id == StockOutItem.stock_out_id
-    ).filter(
-        Material.project_id == project_id,
+    in_subq = db.session.query(
+        StockInItem.material_id.label('material_id'),
+        func.sum(StockInItem.quantity).label('total_in')
+    ).join(StockIn, StockIn.id == StockInItem.stock_in_id).filter(
         db.or_(StockIn.status == 'approved', StockIn.status == None)
-    ).filter(
+    ).group_by(StockInItem.material_id).subquery()
+
+    out_subq = db.session.query(
+        StockOutItem.material_id.label('material_id'),
+        func.sum(StockOutItem.quantity).label('total_out')
+    ).join(StockOut, StockOut.id == StockOutItem.stock_out_id).filter(
         db.or_(StockOut.status == 'approved', StockOut.status == None)
-    ).group_by(Material.id).subquery()
+    ).group_by(StockOutItem.material_id).subquery()
 
     query = db.session.query(
         Material,
         Category,
-        func.coalesce(Inventory.quantity, 0).label('current_stock')
+        (func.coalesce(in_subq.c.total_in, 0) - func.coalesce(out_subq.c.total_out, 0)).label('current_stock')
     ).outerjoin(Category, Category.id == Material.category_id).outerjoin(
-        Inventory, Inventory.material_id == Material.id
-    ).outerjoin(subq, subq.c.id == Material.id).filter(Material.project_id == project_id)
+        in_subq, in_subq.c.material_id == Material.id
+    ).outerjoin(
+        out_subq, out_subq.c.material_id == Material.id
+    ).filter(Material.project_id == project_id)
 
     keyword = request.args.get('keyword', '', type=str)
     category_l1 = request.args.get('category_l1', 0, type=int)

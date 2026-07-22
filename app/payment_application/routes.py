@@ -159,7 +159,7 @@ def create():
 
         if action == 'submit':
             from app.approval.service import submit_approval, is_approval_enabled
-            if not is_approval_enabled('payment_application'):
+            if not is_approval_enabled('payment_application', project_id=project_id):
                 application.status = 'passed'
                 application.approval_status = 'passed'
                 _generate_payment(application)
@@ -260,7 +260,7 @@ def edit(id):
             db.session.commit()
 
             from app.approval.service import submit_approval, is_approval_enabled
-            if not is_approval_enabled('payment_application'):
+            if not is_approval_enabled('payment_application', project_id=application.project_id):
                 application.status = 'passed'
                 application.approval_status = 'passed'
                 _generate_payment(application)
@@ -304,7 +304,7 @@ def submit_approval(id):
         return redirect(url_for('payment_application.detail', id=application.id))
 
     from app.approval.service import submit_approval, is_approval_enabled
-    if not is_approval_enabled('payment_application'):
+    if not is_approval_enabled('payment_application', project_id=application.project_id):
         # 未启用审批流，直接通过并生成付款
         application.status = 'passed'
         application.approval_status = 'passed'

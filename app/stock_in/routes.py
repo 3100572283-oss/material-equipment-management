@@ -346,7 +346,7 @@ def create():
                                        default_code=_gen_stock_in_code(project_id),
                                        over_items=over_items, form_data=request.form,
                                        is_admin=is_admin,
-                                       approval_enabled=is_approval_enabled('stockin'),
+                                       approval_enabled=is_approval_enabled('stockin', project_id=project_id),
                                        ai_vision_enabled=_ai_vision_enabled())
 
         # 强制超量入库时标记明细行
@@ -384,7 +384,7 @@ def create():
                                        suppliers=suppliers, materials=materials,
                                        default_code=_gen_stock_in_code(project_id),
                                        form_data=request.form, is_admin=is_admin,
-                                       approval_enabled=is_approval_enabled('stockin'),
+                                       approval_enabled=is_approval_enabled('stockin', project_id=project_id),
                                        ai_vision_enabled=_ai_vision_enabled())
             if not stock_in.items:
                 db.session.rollback()
@@ -398,16 +398,29 @@ def create():
                                        suppliers=suppliers, materials=materials,
                                        default_code=_gen_stock_in_code(project_id),
                                        form_data=request.form, is_admin=is_admin,
-                                       approval_enabled=is_approval_enabled('stockin'),
+                                       approval_enabled=is_approval_enabled('stockin', project_id=project_id),
                                        ai_vision_enabled=_ai_vision_enabled())
             stock_in.status = 'pending'
             stock_in.approval_status = 'pending'
             db.session.commit()
 
-            from app.approval.service import submit_approval
+            from app.approval.service import submit_approval, is_project_approval_enabled
             success, message, instance = submit_approval('stockin', stock_in.id, project_id=project_id)
             if success:
                 flash('入库单已提交审批。', 'success')
+            elif is_project_approval_enabled(project_id) is False or '已关闭审批模块' in message:
+                # 项目关闭了审批模块，单据直接生效
+                stock_in.status = 'approved'
+                stock_in.approval_status = 'passed'
+                stock_in.quality_status = 'passed'
+                if stock_in.stock_in_type in ('采购入库', '盘盈入库', '调拨入库'):
+                    _apply_inventory(stock_in, 1)
+                    _update_contract_total_in(stock_in, 1)
+                elif stock_in.stock_in_type == '退货入库':
+                    _apply_inventory(stock_in, -1)
+                    _update_contract_total_in(stock_in, -1)
+                db.session.commit()
+                flash('入库单已直接生效（项目未启用审批模块）。', 'success')
             else:
                 flash(message, 'danger')
             return redirect(url_for('stock_in.detail', id=stock_in.id))
@@ -447,7 +460,7 @@ def create():
                            suppliers=suppliers, materials=materials,
                            default_code=_gen_stock_in_code(project_id),
                            is_copy=bool(copy_stock_in),
-                           approval_enabled=is_approval_enabled('stockin'),
+                           approval_enabled=is_approval_enabled('stockin', project_id=project_id),
                            ai_vision_enabled=_ai_vision_enabled())
 
 
@@ -605,10 +618,22 @@ def edit(id):
                            changed_by=current_user.name or current_user.username)
             db.session.commit()
 
-            from app.approval.service import submit_approval
+            from app.approval.service import submit_approval, is_project_approval_enabled
             success, message, instance = submit_approval('stockin', stock_in.id, project_id=stock_in.project_id)
             if success:
                 flash('入库单已提交审批。', 'success')
+            elif is_project_approval_enabled(stock_in.project_id) is False or '已关闭审批模块' in message:
+                stock_in.status = 'approved'
+                stock_in.approval_status = 'passed'
+                stock_in.quality_status = 'passed'
+                if stock_in.stock_in_type in ('采购入库', '盘盈入库', '调拨入库'):
+                    _apply_inventory(stock_in, 1)
+                    _update_contract_total_in(stock_in, 1)
+                elif stock_in.stock_in_type == '退货入库':
+                    _apply_inventory(stock_in, -1)
+                    _update_contract_total_in(stock_in, -1)
+                db.session.commit()
+                flash('入库单已直接生效（项目未启用审批模块）。', 'success')
             else:
                 flash(message, 'danger')
             return redirect(url_for('stock_in.detail', id=stock_in.id))
@@ -639,7 +664,7 @@ def edit(id):
     from app.approval.service import is_approval_enabled
     return render_template('stock_in/form.html', stock_in=stock_in, contracts=contracts,
                            suppliers=suppliers, materials=materials,
-                           approval_enabled=is_approval_enabled('stockin'),
+                           approval_enabled=is_approval_enabled('stockin', project_id=stock_in.project_id),
                            ai_vision_enabled=_ai_vision_enabled())
 
 
@@ -703,10 +728,22 @@ def submit(id):
         flash('请先完成质量验收后再提交审批。', 'warning')
         return redirect(url_for('stock_in.detail', id=stock_in.id))
 
-    from app.approval.service import submit_approval
+    from app.approval.service import submit_approval, is_project_approval_enabled
     success, message, instance = submit_approval('stockin', stock_in.id, project_id=stock_in.project_id)
     if success:
         flash('已提交审批。', 'success')
+    elif is_project_approval_enabled(stock_in.project_id) is False or '已关闭审批模块' in message:
+        stock_in.status = 'approved'
+        stock_in.approval_status = 'passed'
+        stock_in.quality_status = 'passed'
+        if stock_in.stock_in_type in ('采购入库', '盘盈入库', '调拨入库'):
+            _apply_inventory(stock_in, 1)
+            _update_contract_total_in(stock_in, 1)
+        elif stock_in.stock_in_type == '退货入库':
+            _apply_inventory(stock_in, -1)
+            _update_contract_total_in(stock_in, -1)
+        db.session.commit()
+        flash('入库单已直接生效（项目未启用审批模块）。', 'success')
     else:
         flash(message, 'danger')
     return redirect(url_for('stock_in.detail', id=stock_in.id))
@@ -772,7 +809,7 @@ def quality_pass(id):
     stock_in.quality_remark = request.form.get('quality_remark', '').strip() or None
 
     from app.approval.service import is_approval_enabled
-    if not is_approval_enabled('stockin'):
+    if not is_approval_enabled('stockin', project_id=stock_in.project_id):
         stock_in.approval_status = 'passed'
         if stock_in.stock_in_type in ('采购入库', '盘盈入库', '调拨入库'):
             _apply_inventory(stock_in, 1)
@@ -783,7 +820,7 @@ def quality_pass(id):
 
     db.session.commit()
     flash('质检合格。', 'success')
-    if not is_approval_enabled('stockin'):
+    if not is_approval_enabled('stockin', project_id=stock_in.project_id):
         flash('入库单已生效，库存已更新。', 'info')
     else:
         flash('请提交审批以完成入库。', 'info')

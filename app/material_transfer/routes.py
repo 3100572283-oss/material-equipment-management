@@ -227,12 +227,17 @@ def submit(id):
         flash('请先添加调拨明细。', 'danger')
         return redirect(url_for('material_transfer.detail', id=id))
 
-    from app.approval.service import submit_approval
+    from app.approval.service import submit_approval, is_project_approval_enabled
     success, msg, instance = submit_approval('material_transfer', transfer.id, project_id=transfer.from_project_id)
     if success:
         transfer.status = 'pending'
         db.session.commit()
         flash('调拨单已提交审批。', 'success')
+    elif is_project_approval_enabled(transfer.from_project_id) is False or (msg and '已关闭审批模块' in msg):
+        transfer.status = 'approved'
+        transfer.approval_status = 'passed'
+        db.session.commit()
+        flash('调拨单已直接生效（项目未启用审批模块）。', 'success')
     else:
         flash(f'提交审批失败：{msg}', 'danger')
 
