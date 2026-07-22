@@ -105,6 +105,21 @@ def create_user():
 
     depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
+
+    dept_map = {d.id: d for d in depts}
+    def get_dept_path(d):
+        path = []
+        current = d
+        while current:
+            path.insert(0, current.dept_name)
+            if current.parent_id and current.parent_id in dept_map:
+                current = dept_map[current.parent_id]
+            else:
+                current = None
+        return ' / '.join(path)
+    for d in depts:
+        d._path = get_dept_path(d)
+
     return render_template('admin/user_form.html', user=None, depts=depts, roles=roles)
 
 
@@ -137,6 +152,21 @@ def edit_user(id):
 
     depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
+
+    dept_map = {d.id: d for d in depts}
+    def get_dept_path(d):
+        path = []
+        current = d
+        while current:
+            path.insert(0, current.dept_name)
+            if current.parent_id and current.parent_id in dept_map:
+                current = dept_map[current.parent_id]
+            else:
+                current = None
+        return ' / '.join(path)
+    for d in depts:
+        d._path = get_dept_path(d)
+
     from app.utils import get_config
     default_password = get_config('default_password', 'Abc@123456')
     return render_template('admin/user_form.html', user=user, depts=depts, roles=roles, default_password=default_password)

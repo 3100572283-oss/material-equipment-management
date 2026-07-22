@@ -25,9 +25,10 @@
                 <div class="form-text">将复制该角色的菜单权限和数据权限</div>
             </div>
             <div class="mb-3">
-                <label class="form-label">新角色编码 <span class="text-danger">*</span></label>
-                <input type="text" class="form-control" name="role_code" required
-                       value="{{ src_role.role_code }}_copy" placeholder="请输入角色编码">
+                <label class="form-label">新角色编码</label>
+                <input type="text" class="form-control" name="role_code" readonly
+                       value="{{ default_role_code or '' }}">
+                <div class="form-text">保存后自动生成</div>
             </div>
             <div class="mb-3">
                 <label class="form-label">新角色名称 <span class="text-danger">*</span></label>

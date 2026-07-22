@@ -333,7 +333,7 @@
                                 {% endif %}
                                 {% if current_project_id %}
                                 <div class="project-switcher-divider"></div>
-                                {% set can_config_project = current_user.is_admin() or current_user.get_role_code() == 'project_admin' or current_user.has_permission('project:config') %}
+                                {% set can_config_project = current_user.is_authenticated and (current_user.is_admin() or current_user.get_role_code() == 'project_admin' or current_user.has_permission('project:config')) %}
                                 <a class="project-switcher-item project-switcher-settings"
                                    href="{{ url_for('project.modules', id=current_project_id) if can_config_project else '#' }}"
                                    {% if not can_config_project %}onclick="return false;" title="您没有权限配置项目"{% endif %}>
@@ -432,6 +432,7 @@
                         </div>
 
                         <!-- User Dropdown -->
+                        {% if current_user.is_authenticated %}
                         <div class="dropdown">
                             <button class="btn btn-light dropdown-toggle d-flex align-items-center" type="button" data-bs-toggle="dropdown">
                                 <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width:32px;height:32px;font-size:14px;">
@@ -447,6 +448,11 @@
                                 <li><a class="dropdown-item text-danger" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right me-1"></i>退出登录</a></li>
                             </ul>
                         </div>
+                        {% else %}
+                        <a href="{{ url_for('auth.login') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-box-arrow-in-right me-1"></i>登录
+                        </a>
+                        {% endif %}
                     </div>
                 </div>
             </nav>

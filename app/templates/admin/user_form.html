@@ -1,5 +1,24 @@
 {% extends "base.html" %}
 {% block title %}{{ '编辑用户' if user else '新增用户' }} - 物资设备管理系统{% endblock %}
+{% block extra_css %}
+<style>
+.dept-tree-select .form-select {
+    user-select: none;
+}
+.dept-tree-item:hover {
+    background-color: rgba(13, 110, 253, 0.08);
+}
+.dept-tree-item.active {
+    background-color: rgba(13, 110, 253, 0.12) !important;
+}
+[data-bs-theme="dark"] .dept-tree-item:hover {
+    background-color: rgba(13, 110, 253, 0.15);
+}
+[data-bs-theme="dark"] .dept-tree-item.active {
+    background-color: rgba(13, 110, 253, 0.25) !important;
+}
+</style>
+{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
@@ -18,14 +37,70 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">所属部门</label>
-                            <select class="form-select" name="dept_id">
-                                <option value="">请选择部门</option>
-                                {% for dept in depts %}
-                                <option value="{{ dept.id }}" {% if user and user.dept_id == dept.id %}selected{% endif %}>
-                                    {{ dept.dept_name }}
-                                </option>
-                                {% endfor %}
-                            </select>
+                            <input type="hidden" name="dept_id" id="dept_id" value="{{ user.dept_id if user and user.dept_id else '' }}">
+                            <div class="dept-tree-select position-relative">
+                                <div class="form-select d-flex justify-content-between align-items-center" style="cursor:pointer;"
+                                     id="deptDisplay" onclick="toggleDeptSelect()">
+                                    <span id="deptLabel" class="text-truncate">
+                                        {%- if user and user.dept_id -%}
+                                            {%- set ns = namespace(path='') -%}
+                                            {%- for d in depts if d.id == user.dept_id -%}{{ d._path }}{%- endfor -%}
+                                        {%- else -%}
+                                            请选择部门
+                                        {%- endif -%}
+                                    </span>
+                                    <i class="bi bi-chevron-down text-muted ms-2"></i>
+                                </div>
+                                <div class="dept-tree-dropdown card shadow-sm border position-absolute w-100 mt-1 d-none"
+                                     id="deptDropdown" style="z-index:1050; max-height:400px; overflow:hidden; display:flex; flex-direction:column;">
+                                    <div class="p-2 border-bottom">
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" id="deptSearch" class="form-control" placeholder="搜索部门..."
+                                                   oninput="filterDeptTree(this.value)">
+                                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                        </div>
+                                    </div>
+                                    <div class="dept-tree-list overflow-auto flex-grow-1 p-2" id="deptTreeList">
+                                        <div class="dept-tree-item px-2 py-1 rounded hover-bg d-flex align-items-center"
+                                             style="cursor:pointer;" onclick="selectDept('', '请选择部门')">
+                                            <i class="bi bi-x-circle text-muted me-2"></i>
+                                            <span class="text-muted">不选择部门</span>
+                                        </div>
+                                        {% macro dept_option_tree(dept, level=0) %}
+                                        {% set children = depts | selectattr('parent_id', 'equalto', dept.id) | list %}
+                                        {% set has_children = children | length > 0 %}
+                                        <div class="dept-tree-node" data-id="{{ dept.id }}" data-name="{{ dept.dept_name }}"
+                                             data-path="{{ dept._path }}" data-level="{{ level }}">
+                                            <div class="dept-tree-item px-2 py-1 rounded hover-bg d-flex align-items-center
+                                                        {% if level < 2 %}expanded{% endif %}
+                                                        {% if user and user.dept_id == dept.id %}active{% endif %}"
+                                                 style="cursor:pointer; padding-left:{{ level * 20 + 8 }}px;"
+                                                 onclick="selectDept({{ dept.id }}, '{{ dept._path | replace("'", "\\'") }}')">
+                                                {% if has_children %}
+                                                <i class="bi bi-caret-right-fill text-muted me-1 tree-toggle"
+                                                   style="font-size:0.8rem;"
+                                                   onclick="event.stopPropagation(); toggleTreeItem(this);"></i>
+                                                {% else %}
+                                                <span style="width:0.8rem; display:inline-block; margin-right:0.25rem;"></span>
+                                                {% endif %}
+                                                <i class="bi {% if dept.dept_type == 'company' %}bi-building-fill text-primary{% elif dept.dept_type == 'project' %}bi-geo-alt-fill text-success{% elif dept.dept_type == 'branch' %}bi-building text-info{% else %}bi-folder2{% endif %} me-2" style="font-size:0.9rem;"></i>
+                                                <span class="text-truncate">{{ dept.dept_name }}</span>
+                                            </div>
+                                            {% if has_children %}
+                                            <div class="dept-tree-children" style="display:{% if level < 2 %}block{% else %}none{% endif %};">
+                                                {% for child in children | sort(attribute='sort') %}
+                                                {{ dept_option_tree(child, level + 1) }}
+                                                {% endfor %}
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                        {% endmacro %}
+                                        {% for d in depts if d.parent_id == 0 %}
+                                        {{ dept_option_tree(d, 0) }}
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">角色 <span class="text-danger">*</span></label>
@@ -135,9 +210,113 @@
 {% endif %}
 {% endblock %}
 
-{% if user %}
 {% block extra_js %}
 <script>
+// 部门树形选择器
+const deptDisplay = document.getElementById('deptDisplay');
+const deptDropdown = document.getElementById('deptDropdown');
+const deptLabel = document.getElementById('deptLabel');
+const deptInput = document.getElementById('dept_id');
+
+function toggleDeptSelect() {
+    deptDropdown.classList.toggle('d-none');
+    if (!deptDropdown.classList.contains('d-none')) {
+        document.getElementById('deptSearch').focus();
+    }
+}
+
+document.addEventListener('click', function(e) {
+    if (!deptDropdown.classList.contains('d-none') &&
+        !deptDisplay.contains(e.target) &&
+        !deptDropdown.contains(e.target)) {
+        deptDropdown.classList.add('d-none');
+    }
+});
+
+function toggleTreeItem(icon) {
+    const node = icon.closest('.dept-tree-node');
+    const children = node.querySelector(':scope > .dept-tree-children');
+    if (children) {
+        children.style.display = children.style.display === 'none' ? 'block' : 'none';
+        icon.classList.toggle('bi-caret-right-fill');
+        icon.classList.toggle('bi-caret-down-fill');
+    }
+}
+
+function selectDept(id, path) {
+    deptInput.value = id;
+    deptLabel.textContent = path;
+    deptDropdown.classList.add('d-none');
+    const items = deptDropdown.querySelectorAll('.dept-tree-item');
+    items.forEach(it => it.classList.remove('active', 'text-primary', 'fw-semibold', 'bg-primary-subtle'));
+    const item = deptDropdown.querySelector(`.dept-tree-node[data-id="${id}"] > .dept-tree-item`);
+    if (item) {
+        item.classList.add('active', 'text-primary', 'fw-semibold', 'bg-primary-subtle');
+    }
+}
+
+function filterDeptTree(keyword) {
+    keyword = keyword.trim().toLowerCase();
+    const allNodes = deptDropdown.querySelectorAll('.dept-tree-node');
+
+    if (!keyword) {
+        allNodes.forEach(n => {
+            n.style.display = '';
+            const children = n.querySelector(':scope > .dept-tree-children');
+            const level = parseInt(n.dataset.level) || 0;
+            const icon = n.querySelector(':scope > .dept-tree-item .tree-toggle');
+            if (children && icon) {
+                if (level < 2) {
+                    children.style.display = 'block';
+                    icon.classList.remove('bi-caret-right-fill');
+                    icon.classList.add('bi-caret-down-fill');
+                } else {
+                    children.style.display = 'none';
+                    icon.classList.remove('bi-caret-down-fill');
+                    icon.classList.add('bi-caret-right-fill');
+                }
+            }
+        });
+        return;
+    }
+
+    allNodes.forEach(n => {
+        const name = (n.dataset.name || '').toLowerCase();
+        const match = name.includes(keyword);
+        if (match) {
+            n.style.display = '';
+            let parent = n.parentElement.closest('.dept-tree-node');
+            while (parent) {
+                parent.style.display = '';
+                const children = parent.querySelector(':scope > .dept-tree-children');
+                const icon = parent.querySelector(':scope > .dept-tree-item .tree-toggle');
+                if (children) children.style.display = 'block';
+                if (icon) {
+                    icon.classList.remove('bi-caret-right-fill');
+                    icon.classList.add('bi-caret-down-fill');
+                }
+                parent = parent.parentElement.closest('.dept-tree-node');
+            }
+            const children = n.querySelector(':scope > .dept-tree-children');
+            const icon = n.querySelector(':scope > .dept-tree-item .tree-toggle');
+            if (children) children.style.display = 'block';
+            if (icon) {
+                icon.classList.remove('bi-caret-right-fill');
+                icon.classList.add('bi-caret-down-fill');
+            }
+        } else {
+            let hasMatch = false;
+            const subNodes = n.querySelectorAll('.dept-tree-node');
+            subNodes.forEach(sn => {
+                const sname = (sn.dataset.name || '').toLowerCase();
+                if (sname.includes(keyword)) hasMatch = true;
+            });
+            n.style.display = hasMatch ? '' : 'none';
+        }
+    });
+}
+
+{% if user %}
 (function() {
     var defaultPwd = "{{ default_password }}";
     var newPwd = document.getElementById('resetPwdNew');
@@ -180,6 +359,6 @@
         }
     });
 })();
+{% endif %}
 </script>
 {% endblock %}
-{% endif %}

@@ -20,11 +20,11 @@
     <div class="card-body">
         <form method="POST" action="">
             <div class="row mb-3">
-                <label class="col-sm-2 col-form-label">角色编码 <span class="text-danger">*</span></label>
+                <label class="col-sm-2 col-form-label">角色编码</label>
                 <div class="col-sm-10">
-                    <input type="text" class="form-control" name="role_code" required
-                           {% if role and role.role_code == 'super_admin' %}readonly{% endif %}
-                           value="{{ role.role_code if role else '' }}" placeholder="请输入角色编码">
+                    <input type="text" class="form-control" name="role_code" readonly
+                           value="{{ role.role_code if role else (default_role_code or '') }}">
+                    {% if not role %}<small class="text-muted">保存后自动生成</small>{% endif %}
                 </div>
             </div>
             <div class="row mb-3">

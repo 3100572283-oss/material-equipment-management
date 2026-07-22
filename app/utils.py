@@ -163,6 +163,32 @@ def gen_unit_code():
         return f"YL{seq:05d}"
 
 
+def gen_role_code():
+    """生成角色编码: ROLE{3位流水号}，流水号全局递增，跳过非自动生成的编码"""
+    from app import db
+    from app.models import SysRole
+    from sqlalchemy import func
+
+    with _code_gen_lock:
+        max_code = db.session.query(func.max(SysRole.role_code)).filter(
+            SysRole.role_code.like('ROLE%')
+        ).scalar()
+        if max_code:
+            try:
+                seq = int(max_code[4:]) + 1
+            except ValueError:
+                seq = 1
+        else:
+            seq = 1
+        for attempt in range(_CODE_GEN_MAX_RETRY):
+            candidate = f"ROLE{seq:03d}"
+            exists = db.session.query(SysRole.role_code).filter_by(role_code=candidate).first()
+            if not exists:
+                return candidate
+            seq += 1
+        return f"ROLE{seq:04d}"
+
+
 def to_decimal(value, default=0):
     try:
         if value is None or value == '':

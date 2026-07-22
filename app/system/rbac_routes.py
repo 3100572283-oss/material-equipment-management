@@ -7,7 +7,7 @@ from app import db
 from app.system import bp
 from app.models import SysDept, SysRole, SysMenu, SysRoleMenu, SysRoleDept, User, Project
 from app.decorators import admin_required, log_audit
-from app.utils import gen_dept_code, gen_project_code
+from app.utils import gen_dept_code, gen_project_code, gen_role_code
 import json as _json
 
 
@@ -590,19 +590,16 @@ def roles():
 def create_role():
     """新增角色"""
     if request.method == 'POST':
-        role_code = request.form.get('role_code', '').strip()
         role_name = request.form.get('role_name', '').strip()
         data_scope = request.form.get('data_scope', 'all')
         sort_input = request.form.get('sort', type=int, default=None)
         remark = request.form.get('remark', '').strip()
 
-        if not role_code or not role_name:
-            flash('角色编码和名称不能为空', 'error')
+        if not role_name:
+            flash('角色名称不能为空', 'error')
             return redirect(url_for('system.create_role'))
 
-        if SysRole.query.filter_by(role_code=role_code).first():
-            flash('角色编码已存在', 'error')
-            return redirect(url_for('system.create_role'))
+        role_code = gen_role_code()
 
         if sort_input is None:
             max_sort = db.session.query(db.func.max(SysRole.sort)).scalar() or 0
@@ -622,7 +619,8 @@ def create_role():
 
     max_sort = db.session.query(db.func.max(SysRole.sort)).scalar() or 0
     default_sort = max_sort + 1
-    return render_template('system/role_form.html', role=None, default_sort=default_sort)
+    default_role_code = gen_role_code()
+    return render_template('system/role_form.html', role=None, default_sort=default_sort, default_role_code=default_role_code)
 
 
 @bp.route('/roles/<int:id>/edit', methods=['GET', 'POST'])
@@ -633,21 +631,15 @@ def edit_role(id):
     """编辑角色"""
     role = SysRole.query.get_or_404(id)
     if request.method == 'POST':
-        role_code = request.form.get('role_code', '').strip()
         role_name = request.form.get('role_name', '').strip()
         data_scope = request.form.get('data_scope', 'all')
         sort = request.form.get('sort', type=int, default=0)
         remark = request.form.get('remark', '').strip()
 
-        if not role_code or not role_name:
-            flash('角色编码和名称不能为空', 'error')
+        if not role_name:
+            flash('角色名称不能为空', 'error')
             return redirect(url_for('system.edit_role', id=id))
 
-        if SysRole.query.filter(SysRole.role_code == role_code, SysRole.id != id).first():
-            flash('角色编码已存在', 'error')
-            return redirect(url_for('system.edit_role', id=id))
-
-        role.role_code = role_code
         role.role_name = role_name
         role.data_scope = data_scope
         role.sort = sort
@@ -1001,15 +993,12 @@ def api_has_permission(permission):
 def copy_role(id):
     src_role = SysRole.query.get_or_404(id)
     if request.method == 'POST':
-        role_code = request.form.get('role_code', '').strip()
         role_name = request.form.get('role_name', '').strip()
-        if not role_code or not role_name:
-            flash('角色编码和名称不能为空', 'error')
-            return redirect(url_for('system.copy_role', id=id))
-        if SysRole.query.filter_by(role_code=role_code).first():
-            flash('角色编码已存在', 'error')
+        if not role_name:
+            flash('角色名称不能为空', 'error')
             return redirect(url_for('system.copy_role', id=id))
 
+        role_code = gen_role_code()
         max_sort = db.session.query(db.func.max(SysRole.sort)).scalar() or 0
         new_role = SysRole(
             role_code=role_code,
@@ -1034,4 +1023,5 @@ def copy_role(id):
         flash('角色复制成功', 'success')
         return redirect(url_for('system.roles'))
 
-    return render_template('system/role_copy.html', src_role=src_role)
+    default_role_code = gen_role_code()
+    return render_template('system/role_copy.html', src_role=src_role, default_role_code=default_role_code)
