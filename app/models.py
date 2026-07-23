@@ -84,7 +84,7 @@ class User(UserMixin, db.Model):
         """检查用户是否拥有指定按钮权限
 
         Args:
-            permission: 权限标识,如 'stock_in:create' 或菜单ID
+            permission: 权限标识,如 'stock_in:create' 或菜单ID或 'menu_id:operation'
 
         Returns:
             bool: 是否有权限
@@ -103,6 +103,17 @@ class User(UserMixin, db.Model):
             if len(parts) == 2:
                 perm_code = parts[0]
                 operation = parts[1]
+                try:
+                    menu_id = int(perm_code)
+                    exists = SysRoleMenu.query.filter(
+                        SysRoleMenu.role_id == self.role_id,
+                        SysRoleMenu.menu_id == menu_id,
+                        SysRoleMenu.operation == operation
+                    ).first()
+                    if exists:
+                        return True
+                except ValueError:
+                    pass
                 menus = SysMenu.query.filter_by(permission=perm_code).all()
                 if menus:
                     menu_ids = [m.id for m in menus]
@@ -113,14 +124,6 @@ class User(UserMixin, db.Model):
                     ).first()
                     if exists:
                         return True
-            menus = SysMenu.query.filter_by(permission=permission).all()
-            if menus:
-                menu_ids = [m.id for m in menus]
-                exists = SysRoleMenu.query.filter(
-                    SysRoleMenu.role_id == self.role_id,
-                    SysRoleMenu.menu_id.in_(menu_ids)
-                ).first()
-                return exists is not None
             return False
         try:
             menu_id = int(permission)
