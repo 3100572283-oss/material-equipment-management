@@ -309,7 +309,7 @@ def import_users():
             return redirect(url_for('admin.import_users'))
 
         # 预加载部门和角色映射
-        dept_map = {d.code: d.id for d in SysDept.query.all() if d.code}
+        dept_map = {d.dept_code: d.id for d in SysDept.query.all() if d.dept_code}
         role_map = {r.role_code: r.id for r in SysRole.query.all()}
         default_password = '123456'
 
