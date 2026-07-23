@@ -88,19 +88,50 @@ def create_user():
             return redirect(url_for('admin.create_user'))
 
         from werkzeug.security import generate_password_hash
+        
+        auto_project_ids = []
+        auto_main_project_id = None
+        
+        if dept_id:
+            dept = SysDept.query.get(dept_id)
+            if dept and dept.dept_type == 'project' and dept.project_id:
+                auto_project_ids.append(dept.project_id)
+                auto_main_project_id = dept.project_id
+        
+        form_project_ids = request.form.getlist('project_ids', type=int)
+        form_main_project_id = request.form.get('main_project_id', type=int)
+        
+        all_project_ids = list(set(auto_project_ids + form_project_ids))
+        
+        if form_main_project_id:
+            final_main_project_id = form_main_project_id
+        elif auto_main_project_id:
+            final_main_project_id = auto_main_project_id
+        elif all_project_ids:
+            final_main_project_id = all_project_ids[0]
+        else:
+            final_main_project_id = None
+        
         user = User(
             username=username,
             password_hash=generate_password_hash(password, method='pbkdf2:sha256'),
             role='viewer',
             role_id=role_id,
             dept_id=dept_id,
-            project_id=project_id,
+            project_id=final_main_project_id,
             name=name or None,
             department=request.form.get('department', '').strip() or None,
             email=request.form.get('email', '').strip() or None,
             phone=request.form.get('phone', '').strip() or None,
         )
         db.session.add(user)
+        db.session.flush()
+        
+        for pid in all_project_ids:
+            is_main = (pid == final_main_project_id)
+            up = SysUserProject(user_id=user.id, project_id=pid, is_main=is_main)
+            db.session.add(up)
+        
         db.session.commit()
         flash('用户创建成功', 'success')
         return redirect(url_for('admin.users'))

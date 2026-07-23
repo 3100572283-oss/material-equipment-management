@@ -703,7 +703,14 @@ def role_permissions(id):
     
     menus = SysMenu.query.filter(SysMenu.parent_id == 0).order_by(SysMenu.sort).all()
     
-    checked_menu_ids = [rm.menu_id for rm in SysRoleMenu.query.filter_by(role_id=id).all()]
+    role_permissions = SysRoleMenu.query.filter_by(role_id=id).all()
+    menu_op_map = {}
+    for rp in role_permissions:
+        if rp.menu_id not in menu_op_map:
+            menu_op_map[rp.menu_id] = set()
+        menu_op_map[rp.menu_id].add(rp.operation)
+    
+    checked_menu_ids = list(menu_op_map.keys())
     checked_set = set(checked_menu_ids)
     
     all_operations = ['view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print']
@@ -722,12 +729,14 @@ def role_permissions(id):
         tree = []
         for item in items:
             if item.parent_id == parent_id:
+                ops = menu_op_map.get(item.id, set())
                 node = {
                     'menu': item,
                     'level': level,
                     'children': build_menu_tree(items, item.id, level + 1),
                     'has_children': len(item.children.all()) > 0,
                     'checked': item.id in checked_set,
+                    'operations': ops,
                 }
                 tree.append(node)
         return tree
@@ -738,6 +747,7 @@ def role_permissions(id):
     return render_template('system/role_permissions.html',
                            role=role, menu_tree=menu_tree, 
                            checked_ids=checked_menu_ids, checked_set=checked_set,
+                           menu_op_map=menu_op_map,
                            operations=all_operations, op_labels=op_labels)
 
 
@@ -747,19 +757,24 @@ def role_permissions(id):
 @log_audit(module='rbac', operation='保存角色权限')
 def save_role_permissions(id):
     """保存角色菜单权限"""
-    menu_ids_raw = request.form.getlist('menu_ids')
+    menu_ops_raw = request.form.getlist('menu_ops')
     
-    unique_ids = set()
-    for menu_id in menu_ids_raw:
-        try:
-            unique_ids.add(int(menu_id))
-        except ValueError:
-            pass
+    unique_ops = set()
+    for item in menu_ops_raw:
+        if ':' in item:
+            parts = item.split(':')
+            if len(parts) == 2:
+                try:
+                    menu_id = int(parts[0])
+                    operation = parts[1]
+                    unique_ops.add((menu_id, operation))
+                except ValueError:
+                    pass
     
     SysRoleMenu.query.filter_by(role_id=id).delete()
     
-    for menu_id in unique_ids:
-        rm = SysRoleMenu(role_id=id, menu_id=menu_id)
+    for menu_id, operation in unique_ops:
+        rm = SysRoleMenu(role_id=id, menu_id=menu_id, operation=operation)
         db.session.add(rm)
     
     db.session.commit()

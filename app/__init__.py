@@ -189,6 +189,9 @@ def init_db_schema():
     # 物资报废相关字段
     _add_column_if_missing('material_scrap', 'status', "VARCHAR(16) DEFAULT 'draft'")
 
+    # 权限系统增强：角色菜单权限表增加操作类型字段
+    _add_column_if_missing('sys_role_menu', 'operation', "VARCHAR(16) DEFAULT 'view'")
+
     # 增强阶段三：DataChangeLog 新字段
     _add_column_if_missing('data_change_log', 'module', 'VARCHAR(64)')
     _add_column_if_missing('data_change_log', 'operation', 'VARCHAR(32)')
@@ -918,12 +921,13 @@ def create_app(config_class=Config):
         project_module_config = {}
         allowed_endpoints = set()
         try:
-            # 非管理员需按角色权限过滤菜单
+            # 非管理员需按角色权限过滤菜单（只显示有view权限的菜单）
             if current_user.is_authenticated and not current_user.is_admin():
                 role_menus = db.session.query(SysMenu.menu_code).join(
                     SysRoleMenu, SysRoleMenu.menu_id == SysMenu.id
                 ).filter(
                     SysRoleMenu.role_id == current_user.role_id,
+                    SysRoleMenu.operation == 'view',
                     SysMenu.menu_code.isnot(None)
                 ).all()
                 allowed_endpoints = {row[0] for row in role_menus if row[0]}

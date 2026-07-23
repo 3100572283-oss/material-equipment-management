@@ -23,6 +23,20 @@ def editor_required(f):
     return decorated_function
 
 
+def permission_required(permission):
+    """权限校验装饰器，检查用户是否拥有指定操作权限"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                abort(403)
+            if not current_user.has_permission(permission):
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
 def log_audit(module, operation):
     """审计日志装饰器，自动记录请求参数和耗时"""
     def decorator(f):

@@ -84,32 +84,61 @@ class User(UserMixin, db.Model):
         """检查用户是否拥有指定按钮权限
 
         Args:
-            permission: 权限标识,如 'stock_in:create'
+            permission: 权限标识,如 'stock_in:create' 或菜单ID
 
         Returns:
             bool: 是否有权限
         """
         if not permission:
             return True
-        # 超级管理员拥有所有权限
         if self.is_admin():
             return True
         if not self.role_id:
-            # 旧角色体系: 管理员/录入员拥有所有编辑权限,查看员无编辑权限
             if self.role in ('admin', 'editor'):
                 return True
             return False
-        # 查询角色是否关联了对应权限的菜单
         from app.models import SysMenu, SysRoleMenu
-        menus = SysMenu.query.filter_by(permission=permission).all()
-        if not menus:
+        if ':' in permission:
+            parts = permission.split(':')
+            if len(parts) == 2:
+                perm_code = parts[0]
+                operation = parts[1]
+                menus = SysMenu.query.filter_by(permission=perm_code).all()
+                if menus:
+                    menu_ids = [m.id for m in menus]
+                    exists = SysRoleMenu.query.filter(
+                        SysRoleMenu.role_id == self.role_id,
+                        SysRoleMenu.menu_id.in_(menu_ids),
+                        SysRoleMenu.operation == operation
+                    ).first()
+                    if exists:
+                        return True
+            menus = SysMenu.query.filter_by(permission=permission).all()
+            if menus:
+                menu_ids = [m.id for m in menus]
+                exists = SysRoleMenu.query.filter(
+                    SysRoleMenu.role_id == self.role_id,
+                    SysRoleMenu.menu_id.in_(menu_ids)
+                ).first()
+                return exists is not None
             return False
-        menu_ids = [m.id for m in menus]
-        exists = SysRoleMenu.query.filter(
-            SysRoleMenu.role_id == self.role_id,
-            SysRoleMenu.menu_id.in_(menu_ids)
-        ).first()
-        return exists is not None
+        try:
+            menu_id = int(permission)
+            exists = SysRoleMenu.query.filter(
+                SysRoleMenu.role_id == self.role_id,
+                SysRoleMenu.menu_id == menu_id
+            ).first()
+            return exists is not None
+        except ValueError:
+            menus = SysMenu.query.filter_by(permission=permission).all()
+            if menus:
+                menu_ids = [m.id for m in menus]
+                exists = SysRoleMenu.query.filter(
+                    SysRoleMenu.role_id == self.role_id,
+                    SysRoleMenu.menu_id.in_(menu_ids)
+                ).first()
+                return exists is not None
+        return False
 
     def get_allowed_projects(self):
         """获取用户可访问的项目ID列表
@@ -319,9 +348,10 @@ class SysRoleMenu(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     role_id = db.Column(db.Integer, db.ForeignKey('sys_role.id'), nullable=False)
     menu_id = db.Column(db.Integer, db.ForeignKey('sys_menu.id'), nullable=False)
+    operation = db.Column(db.String(16), nullable=False, default='view')
 
     __table_args__ = (
-        db.UniqueConstraint('role_id', 'menu_id', name='uq_role_menu'),
+        db.UniqueConstraint('role_id', 'menu_id', 'operation', name='uq_role_menu_op'),
     )
 
 

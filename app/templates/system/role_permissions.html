@@ -107,9 +107,9 @@ input[type="checkbox"].op-checkbox {
                             {% for op in operations %}
                             <td class="text-center">
                                 {% set perm_id = "%d_%s" % (m.id, op) %}
-                                {% set is_op_checked = m.id in checked_set %}
+                                {% set is_op_checked = op in node.get('operations', []) %}
                                 <input type="checkbox" class="form-check-input op-checkbox"
-                                       name="menu_ids" value="{{ m.id }}"
+                                       name="menu_ops" value="{{ m.id }}:{{ op }}"
                                        {% if is_op_checked %}checked{% endif %}
                                        data-menu-id="{{ m.id }}" data-op="{{ op }}">
                             </td>
@@ -207,7 +207,8 @@ input[type="checkbox"].op-checkbox {
         document.querySelectorAll('.row-select-cb').forEach(cb => {
             cb.addEventListener('change', function() {
                 const menuId = this.value;
-                document.querySelectorAll('.op-checkbox[data-menu-id="' + menuId + '"]').forEach(opCb => {
+                const allOpCbs = document.querySelectorAll('.op-checkbox[data-menu-id="' + menuId + '"]');
+                allOpCbs.forEach(opCb => {
                     opCb.checked = this.checked;
                     opCb.indeterminate = false;
                 });

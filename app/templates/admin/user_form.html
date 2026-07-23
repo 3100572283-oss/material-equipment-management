@@ -120,15 +120,36 @@
                         </div>
                         {% if projects %}
                         <div class="col-md-6">
-                            <label class="form-label">主项目</label>
-                            <select class="form-select" name="project_id" id="projectSelect">
-                                <option value="">请选择主项目</option>
+                            <label class="form-label">可访问项目</label>
+                            <div class="project-multi-select" style="max-height: 200px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem; padding: 4px;">
                                 {% for p in projects %}
-                                <option value="{{ p.id }}" {% if user and user.project_id == p.id %}selected{% endif %}>
-                                    {{ p.code }} - {{ p.name }}
-                                </option>
+                                <div class="form-check px-3 py-1">
+                                    <input type="checkbox" class="form-check-input project-checkbox" name="project_ids" value="{{ p.id }}"
+                                           id="project_{{ p.id }}"
+                                           {% if user and p.id in [up.project_id for up in user.user_projects] %}checked{% endif %}
+                                           onchange="updateMainProjectOptions()">
+                                    <label class="form-check-label" for="project_{{ p.id }}">
+                                        {{ p.code }} - {{ p.name }}
+                                    </label>
+                                </div>
                                 {% endfor %}
-                            </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">主项目</label>
+                            <div class="main-project-select" style="max-height: 200px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem; padding: 4px;">
+                                {% for p in projects %}
+                                <div class="form-check px-3 py-1">
+                                    <input type="radio" class="form-check-input main-project-radio" name="main_project_id" value="{{ p.id }}"
+                                           id="main_project_{{ p.id }}"
+                                           {% if user and p.id == user.project_id %}checked{% endif %}
+                                           {% if not user or p.id not in [up.project_id for up in user.user_projects] %}disabled{% endif %}>
+                                    <label class="form-check-label" for="main_project_{{ p.id }}">
+                                        {{ p.code }} - {{ p.name }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
                         </div>
                         {% endif %}
                         <div class="col-md-6">
@@ -273,11 +294,34 @@ function selectDept(id, path, projectId) {
     }
     
     if (projectId && projectId !== 'null') {
-        const projectSelect = document.getElementById('projectSelect');
-        if (projectSelect) {
-            projectSelect.value = projectId;
+        const projectCb = document.getElementById('project_' + projectId);
+        if (projectCb) {
+            projectCb.checked = true;
         }
+        const mainProjectRadio = document.getElementById('main_project_' + projectId);
+        if (mainProjectRadio) {
+            mainProjectRadio.disabled = false;
+            mainProjectRadio.checked = true;
+        }
+        updateMainProjectOptions();
     }
+}
+
+function updateMainProjectOptions() {
+    const checkedProjects = document.querySelectorAll('.project-checkbox:checked');
+    const checkedIds = new Set();
+    checkedProjects.forEach(cb => {
+        checkedIds.add(cb.value);
+    });
+    
+    document.querySelectorAll('.main-project-radio').forEach(radio => {
+        if (checkedIds.has(radio.value)) {
+            radio.disabled = false;
+        } else {
+            radio.disabled = true;
+            radio.checked = false;
+        }
+    });
 }
 
 function filterDeptTree(keyword) {
