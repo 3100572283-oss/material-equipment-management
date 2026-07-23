@@ -390,7 +390,7 @@ def material_template():
     ws = wb.active
     ws.title = '物资导入模板'
 
-    headers = ['物资编码', '物资名称', '规格型号', '物资分类编码', '单位', '备注']
+    headers = ['物资编码', '物资名称', '规格型号', '物资分类（编码或名称）', '单位', '备注']
     ws.append(headers)
 
     red_fill = PatternFill(start_color='FFE6E6', end_color='FFE6E6', fill_type='solid')
@@ -401,7 +401,7 @@ def material_template():
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal='center')
 
-    ws.append(['', '示例钢筋 HRB400', 'HRB400 Φ12', 'MC010601', '吨', '主体结构用'])
+    ws.append(['', '示例钢筋 HRB400', 'HRB400 Φ12', 'MC010601 或 主要材料/钢材/板材', '吨', '主体结构用'])
 
     ws2 = wb.create_sheet('填写说明')
     ws2.append(['字段', '是否必填', '说明'])
@@ -410,7 +410,7 @@ def material_template():
     ws2.append(['物资编码', '选填', '不填则系统自动生成；填写则使用指定编码，不能与现有编码重复'])
     ws2.append(['物资名称', '必填', '物资名称，同一分类下不可重复'])
     ws2.append(['规格型号', '选填', '如：HRB400 Φ12'])
-    ws2.append(['物资分类编码', '必填', '三级分类编码，如 MC010601，需与系统分类一致'])
+    ws2.append(['物资分类（编码或名称）', '必填', '支持两种填写方式：① 分类编码（如 MC010601）按编码精确匹配；② 分类名称路径（如 主要材料/钢材/板材）按名称逐级匹配，多级用/分隔'])
     ws2.append(['单位', '必填', '计量单位，如：吨、个、米、m³'])
     ws2.append(['备注', '选填', '其他说明信息'])
 
@@ -430,6 +430,55 @@ def material_template():
     return send_from_directory(upload_dir, filename, as_attachment=True)
 
 
+def _find_category_by_path(path_parts, source='company'):
+    """按名称路径查找分类
+
+    Args:
+        path_parts: 名称列表，如 ['主要材料', '钢材', '板材']
+        source: 数据来源（company/project）
+
+    Returns:
+        Category 对象 - 成功匹配
+        str - 错误信息（分类不唯一、不存在等）
+        None - 路径为空
+
+    规则：
+        - 逐级匹配，每级在指定 parent_id 下查找同名分类
+        - 同级同名分类超过1个：返回错误提示用户填写完整路径
+        - 找不到时返回错误信息
+    """
+    if not path_parts:
+        return None
+
+    parent_id = 0
+    current_category = None
+    matched_path = []
+
+    for level, part_name in enumerate(path_parts, start=1):
+        part_name = part_name.strip()
+        if not part_name:
+            return f'分类路径第{level}级名称为空'
+
+        candidates = Category.query.filter(
+            Category.source == source,
+            Category.parent_id == parent_id,
+            Category.name == part_name
+        ).all()
+
+        if len(candidates) == 0:
+            full_path = '/'.join(matched_path + [part_name])
+            return f'分类"{part_name}"在路径"{full_path}"中不存在'
+        if len(candidates) > 1:
+            full_path = '/'.join(matched_path + [part_name])
+            return f'分类名称"{part_name}"在同一父级下不唯一，请填写完整路径（如："{full_path}"）'
+
+        current_category = candidates[0]
+        parent_id = current_category.id
+        matched_path.append(part_name)
+
+    return current_category
+
+
 @master_bp.route('/material/import', methods=['POST'])
 @login_required
 @admin_required
@@ -440,6 +489,10 @@ def material_import():
     编码规则：
     - 用户填写了编码：使用用户编码，检查重复
     - 用户未填写编码：系统自动生成（分类编码 + 3位流水号）
+
+    分类匹配规则：
+    - 优先按分类编码精确匹配
+    - 编码未填写时按分类名称匹配，支持多级路径（用/分隔）
     """
     file = request.files.get('file')
     if not file:
@@ -477,17 +530,40 @@ def material_import():
                 errors.append(f'第{idx}行：单位不能为空')
                 continue
             if not cat_code:
-                errors.append(f'第{idx}行：物资分类编码不能为空')
+                errors.append(f'第{idx}行：物资分类不能为空，请填写分类编码或分类名称（多级用/分隔）')
                 continue
 
-            category = Category.query.filter_by(
-                source='company', category_code=cat_code
-            ).first()
-            if not category:
-                errors.append(f'第{idx}行：物资分类编码"{cat_code}"不存在')
-                continue
+            # 分类匹配：优先按编码精确匹配，否则按名称路径匹配
+            category = None
+            cat_value_upper = cat_code.upper()
+            # 判断是否为编码（系统分类编码都是大写字母+数字组合）
+            is_code = cat_code.replace('_', '').isalnum() and cat_value_upper == cat_code and any(c.isalpha() for c in cat_code)
+
+            if is_code:
+                # 按编码精确匹配
+                category = Category.query.filter_by(
+                    source='company', category_code=cat_code
+                ).first()
+                if not category:
+                    errors.append(f'第{idx}行：物资分类编码"{cat_code}"不存在')
+                    continue
+            else:
+                # 按名称路径匹配（支持 "一级/二级/三级" 格式）
+                if '/' in cat_code:
+                    path_parts = [p.strip() for p in cat_code.split('/') if p.strip()]
+                else:
+                    path_parts = [cat_code]
+                category = _find_category_by_path(path_parts, source='company')
+                if category is None:
+                    errors.append(f'第{idx}行：分类"{cat_code}"不存在，请检查分类编码或名称路径')
+                    continue
+                if isinstance(category, str):
+                    # 返回的是错误信息
+                    errors.append(f'第{idx}行：{category}')
+                    continue
+
             if category.level != 3:
-                errors.append(f'第{idx}行：物资分类"{cat_code}"不是三级分类')
+                errors.append(f'第{idx}行：分类"{cat_code}"不是三级分类，无法关联物资')
                 continue
 
             if code:
