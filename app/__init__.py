@@ -75,8 +75,63 @@ def _migrate_price_formula_fields():
         db.session.rollback()
 
 
+def _migrate_sys_role_menu_constraint():
+    """迁移 sys_role_menu 表约束：从 (role_id, menu_id) 改为 (role_id, menu_id, operation)"""
+    from sqlalchemy import text
+    try:
+        # 检查当前约束
+        result = db.session.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='sys_role_menu'")).fetchone()
+        if result:
+            sql = result[0]
+            # 如果旧约束存在，需要重建表
+            if 'CONSTRAINT uq_role_menu UNIQUE (role_id, menu_id)' in sql:
+                print("Migrating sys_role_menu constraint...")
+                # 备份数据
+                db.session.execute(text("""
+                    CREATE TABLE sys_role_menu_backup AS SELECT * FROM sys_role_menu
+                """))
+                db.session.commit()
+
+                # 删除旧表
+                db.session.execute(text("DROP TABLE sys_role_menu"))
+                db.session.commit()
+
+                # 创建新表（使用正确的约束）
+                db.session.execute(text("""
+                    CREATE TABLE sys_role_menu (
+                        id INTEGER NOT NULL,
+                        role_id INTEGER NOT NULL,
+                        menu_id INTEGER NOT NULL,
+                        operation VARCHAR(16) DEFAULT 'view',
+                        PRIMARY KEY (id),
+                        CONSTRAINT uq_role_menu_op UNIQUE (role_id, menu_id, operation),
+                        FOREIGN KEY(role_id) REFERENCES sys_role (id),
+                        FOREIGN KEY(menu_id) REFERENCES sys_menu (id)
+                    )
+                """))
+                db.session.commit()
+
+                # 恢复数据（旧数据每个 menu_id 只有一条，默认设为 view）
+                db.session.execute(text("""
+                    INSERT INTO sys_role_menu (id, role_id, menu_id, operation)
+                    SELECT id, role_id, menu_id, 'view' FROM sys_role_menu_backup
+                """))
+                db.session.commit()
+
+                # 删除备份表
+                db.session.execute(text("DROP TABLE sys_role_menu_backup"))
+                db.session.commit()
+                print("sys_role_menu constraint migrated successfully")
+    except Exception as e:
+        print(f"Error migrating sys_role_menu constraint: {e}")
+        db.session.rollback()
+
+
 def init_db_schema():
     """数据库表结构初始化/迁移"""
+    # 迁移 sys_role_menu 约束
+    _migrate_sys_role_menu_constraint()
+
     _add_column_if_missing('users', 'last_login_at', 'DATETIME')
     _add_column_if_missing('stock_ins', 'is_reconciled', 'BOOLEAN DEFAULT 0')
     _add_column_if_missing('stock_outs', 'is_reconciled', 'BOOLEAN DEFAULT 0')
