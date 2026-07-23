@@ -180,6 +180,7 @@ def init_db_schema():
     _add_column_if_missing('users', 'failed_login_count', 'INTEGER DEFAULT 0')
     _add_column_if_missing('users', 'locked_until', 'DATETIME')
     _add_column_if_missing('users', 'last_login_ip', 'VARCHAR(64)')
+    _add_column_if_missing('users', 'project_id', 'INTEGER')
 
     # 增强阶段三：DataChangeLog 新字段
     _add_column_if_missing('data_change_log', 'module', 'VARCHAR(64)')

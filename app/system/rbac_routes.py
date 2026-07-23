@@ -704,9 +704,41 @@ def role_permissions(id):
     menus = SysMenu.query.filter(SysMenu.parent_id == 0).order_by(SysMenu.sort).all()
     
     checked_menu_ids = [rm.menu_id for rm in SysRoleMenu.query.filter_by(role_id=id).all()]
+    checked_set = set(checked_menu_ids)
+    
+    all_operations = ['view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print']
+    op_labels = {
+        'view': '查看',
+        'create': '新增',
+        'edit': '编辑',
+        'delete': '删除',
+        'import': '导入',
+        'export': '导出',
+        'approve': '审批',
+        'print': '打印',
+    }
+    
+    def build_menu_tree(items, parent_id=0, level=0):
+        tree = []
+        for item in items:
+            if item.parent_id == parent_id:
+                node = {
+                    'menu': item,
+                    'level': level,
+                    'children': build_menu_tree(items, item.id, level + 1),
+                    'has_children': len(item.children.all()) > 0,
+                    'checked': item.id in checked_set,
+                }
+                tree.append(node)
+        return tree
+    
+    all_menu_items = SysMenu.query.order_by(SysMenu.sort).all()
+    menu_tree = build_menu_tree(all_menu_items)
     
     return render_template('system/role_permissions.html',
-                           role=role, menus=menus, checked_ids=checked_menu_ids)
+                           role=role, menu_tree=menu_tree, 
+                           checked_ids=checked_menu_ids, checked_set=checked_set,
+                           operations=all_operations, op_labels=op_labels)
 
 
 @bp.route('/roles/<int:id>/permissions/save', methods=['POST'])

@@ -18,6 +18,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default='viewer')  # 兼容旧数据，逐步迁移到role_id
     role_id = db.Column(db.Integer, db.ForeignKey('sys_role.id'), nullable=True)
     dept_id = db.Column(db.Integer, db.ForeignKey('sys_dept.id'), nullable=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
     name = db.Column(db.String(64), nullable=True)
     department = db.Column(db.String(64), nullable=True)  # 兼容旧数据
     email = db.Column(db.String(128), nullable=True)

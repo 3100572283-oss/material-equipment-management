@@ -76,6 +76,7 @@ def create_user():
         password = request.form.get('password', '')
         role_id = request.form.get('role_id', type=int)
         dept_id = request.form.get('dept_id', type=int)
+        project_id = request.form.get('project_id', type=int)
         name = request.form.get('name', '').strip()
 
         if not username or not password:
@@ -93,6 +94,7 @@ def create_user():
             role='viewer',
             role_id=role_id,
             dept_id=dept_id,
+            project_id=project_id,
             name=name or None,
             department=request.form.get('department', '').strip() or None,
             email=request.form.get('email', '').strip() or None,
@@ -105,6 +107,7 @@ def create_user():
 
     depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
+    projects = Project.query.filter_by(is_archived=False).order_by(Project.code).all()
 
     dept_map = {d.id: d for d in depts}
     def get_dept_path(d):
@@ -120,7 +123,13 @@ def create_user():
     for d in depts:
         d._path = get_dept_path(d)
 
-    return render_template('admin/user_form.html', user=None, depts=depts, roles=roles)
+    dept_project_map = {}
+    for d in depts:
+        if d.dept_type == 'project' and d.project_id:
+            dept_project_map[d.id] = d.project_id
+
+    return render_template('admin/user_form.html', user=None, depts=depts, roles=roles,
+                           projects=projects, dept_project_map=dept_project_map)
 
 
 @bp.route('/users/<int:id>/edit', methods=['GET', 'POST'])

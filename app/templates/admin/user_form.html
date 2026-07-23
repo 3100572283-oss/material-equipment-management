@@ -70,12 +70,14 @@
                                         {% set children = depts | selectattr('parent_id', 'equalto', dept.id) | list %}
                                         {% set has_children = children | length > 0 %}
                                         <div class="dept-tree-node" data-id="{{ dept.id }}" data-name="{{ dept.dept_name }}"
-                                             data-path="{{ dept._path }}" data-level="{{ level }}">
+                                             data-path="{{ dept._path }}" data-level="{{ level }}"
+                                             data-project-id="{{ dept.project_id if dept.dept_type == 'project' else '' }}"
+                                             data-dept-type="{{ dept.dept_type }}">
                                             <div class="dept-tree-item px-2 py-1 rounded hover-bg d-flex align-items-center
                                                         {% if level < 2 %}expanded{% endif %}
                                                         {% if user and user.dept_id == dept.id %}active{% endif %}"
                                                  style="cursor:pointer; padding-left:{{ level * 20 + 8 }}px;"
-                                                 onclick="selectDept({{ dept.id }}, '{{ dept._path | replace("'", "\\'") }}')">
+                                                 onclick="selectDept({{ dept.id }}, '{{ dept._path | replace("'", "\\'") }}', {{ dept.project_id if dept.dept_type == 'project' else 'null' }})">
                                                 {% if has_children %}
                                                 <i class="bi bi-caret-right-fill text-muted me-1 tree-toggle"
                                                    style="font-size:0.8rem;"
@@ -85,6 +87,9 @@
                                                 {% endif %}
                                                 <i class="bi {% if dept.dept_type == 'company' %}bi-building-fill text-primary{% elif dept.dept_type == 'project' %}bi-geo-alt-fill text-success{% elif dept.dept_type == 'branch' %}bi-building text-info{% else %}bi-folder2{% endif %} me-2" style="font-size:0.9rem;"></i>
                                                 <span class="text-truncate">{{ dept.dept_name }}</span>
+                                                {% if dept.dept_type == 'project' %}
+                                                <span class="badge bg-success text-white text-xs ms-1">项目</span>
+                                                {% endif %}
                                             </div>
                                             {% if has_children %}
                                             <div class="dept-tree-children" style="display:{% if level < 2 %}block{% else %}none{% endif %};">
@@ -113,6 +118,19 @@
                                 {% endfor %}
                             </select>
                         </div>
+                        {% if projects %}
+                        <div class="col-md-6">
+                            <label class="form-label">主项目</label>
+                            <select class="form-select" name="project_id" id="projectSelect">
+                                <option value="">请选择主项目</option>
+                                {% for p in projects %}
+                                <option value="{{ p.id }}" {% if user and user.project_id == p.id %}selected{% endif %}>
+                                    {{ p.code }} - {{ p.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
                         <div class="col-md-6">
                             <label class="form-label">邮箱</label>
                             <input type="email" class="form-control" name="email" value="{{ user.email if user else '' }}">
@@ -243,7 +261,7 @@ function toggleTreeItem(icon) {
     }
 }
 
-function selectDept(id, path) {
+function selectDept(id, path, projectId) {
     deptInput.value = id;
     deptLabel.textContent = path;
     deptDropdown.classList.add('d-none');
@@ -252,6 +270,13 @@ function selectDept(id, path) {
     const item = deptDropdown.querySelector(`.dept-tree-node[data-id="${id}"] > .dept-tree-item`);
     if (item) {
         item.classList.add('active', 'text-primary', 'fw-semibold', 'bg-primary-subtle');
+    }
+    
+    if (projectId && projectId !== 'null') {
+        const projectSelect = document.getElementById('projectSelect');
+        if (projectSelect) {
+            projectSelect.value = projectId;
+        }
     }
 }
 

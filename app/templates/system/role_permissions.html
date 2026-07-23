@@ -1,5 +1,38 @@
 {% extends "base.html" %}
 {% block title %}权限配置 - {{ role.role_name }} - 物资设备管理系统{% endblock %}
+{% block extra_css %}
+<style>
+.permission-table-container {
+    overflow-x: auto;
+}
+.permission-table {
+    min-width: 900px;
+}
+.menu-name-cell {
+    min-width: 200px;
+}
+.menu-indent-0 { padding-left: 12px; }
+.menu-indent-1 { padding-left: 32px; }
+.menu-indent-2 { padding-left: 52px; }
+.menu-indent-3 { padding-left: 72px; }
+
+.op-header-checkbox {
+    min-width: 60px;
+}
+
+input[type="checkbox"].op-checkbox {
+    margin: 0 auto;
+}
+
+.checkbox-all-rows {
+    min-width: 40px;
+}
+
+[disabled] {
+    opacity: 0.5;
+}
+</style>
+{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <nav aria-label="breadcrumb">
@@ -27,75 +60,71 @@
     </div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('system.save_role_permissions', id=role.id) }}" id="permissionForm">
-            <div class="permission-tree">
-                {% for menu in menus %}
-                <div class="tree-item">
-                    <div class="d-flex align-items-center py-3 border-bottom">
-                        <input type="checkbox" class="form-check-input me-3 checkbox-all"
-                               name="menu_ids"
-                               value="{{ menu.id }}" {% if menu.id in checked_ids %}checked{% endif %}
-                               data-parent-id="0">
-                        <div>
-                            <div class="font-medium">
-                                {% if menu.icon %}<i class="bi {{ menu.icon }} me-2"></i>{% endif %}
-                                {{ menu.menu_name }}
-                                <span class="badge bg-info text-dark ms-2">{{ menu.menu_type }}</span>
-                            </div>
-                            {% if menu.permission %}
-                            <small class="text-muted">{{ menu.permission }}</small>
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% set menu_children = menu.children.order_by(menu.__class__.sort).all() %}
-                    {% if menu_children %}
-                    <div class="ml-4">
-                        {% for child in menu_children %}
-                        <div class="tree-item">
-                            <div class="d-flex align-items-center py-2 border-bottom">
-                                <input type="checkbox" class="form-check-input me-3 checkbox-item"
-                                       name="menu_ids"
-                                       value="{{ child.id }}" {% if child.id in checked_ids %}checked{% endif %}
-                                       data-parent-id="{{ menu.id }}">
-                                <div>
-                                    <div>
-                                        {% if child.icon %}<i class="bi {{ child.icon }} me-2"></i>{% endif %}
-                                        {{ child.menu_name }}
-                                        <span class="badge bg-info text-dark ms-2">{{ child.menu_type }}</span>
-                                    </div>
-                                    {% if child.permission %}
-                                    <small class="text-muted">{{ child.permission }}</small>
+            <div class="permission-table-container">
+                <table class="table table-hover table-sm permission-table">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="checkbox-all-rows">
+                                <input type="checkbox" class="form-check-input" id="headerSelectAll">
+                            </th>
+                            <th class="menu-name-cell">菜单/功能名称</th>
+                            {% for op in operations %}
+                            <th class="op-header-checkbox text-center">
+                                <div class="d-flex flex-column align-items-center">
+                                    <input type="checkbox" class="form-check-input op-header-cb" 
+                                           data-op="{{ op }}" id="headerCb_{{ op }}">
+                                    <span class="text-xs text-muted mt-0.5">{{ op_labels[op] }}</span>
+                                </div>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% macro render_menu(node) %}
+                        {% set m = node['menu'] %}
+                        {% set level = node['level'] %}
+                        {% set is_checked = m.id in checked_set %}
+                        <tr class="menu-row" data-menu-id="{{ m.id }}" data-parent-id="{{ m.parent_id }}" data-level="{{ level }}">
+                            <td>
+                                <input type="checkbox" class="form-check-input row-select-cb"
+                                       value="{{ m.id }}" {% if is_checked %}checked{% endif %}>
+                            </td>
+                            <td class="menu-name-cell">
+                                <div class="d-flex align-items-center menu-indent-{{ level }}">
+                                    {% if node['has_children'] %}
+                                    <i class="bi bi-caret-right-fill text-muted me-1 tree-toggle cursor-pointer"
+                                       style="font-size:0.8rem;" data-node-id="{{ m.id }}"></i>
+                                    {% else %}
+                                    <span style="width:0.8rem; display:inline-block; margin-right:0.25rem;"></span>
+                                    {% endif %}
+                                    {% if m.icon %}<i class="bi {{ m.icon }} me-2 text-muted"></i>{% endif %}
+                                    <span>{{ m.menu_name }}</span>
+                                    {% if m.menu_type == 'button' %}
+                                    <span class="badge bg-secondary text-white text-xs ms-1">按钮</span>
                                     {% endif %}
                                 </div>
-                            </div>
-                            {% set child_children = child.children.order_by(child.__class__.sort).all() %}
-                            {% if child_children %}
-                            <div class="ml-4">
-                                {% for sub in child_children %}
-                                <div class="d-flex align-items-center py-2 border-bottom">
-                                    <input type="checkbox" class="form-check-input me-3 checkbox-item"
-                                       name="menu_ids"
-                                       value="{{ sub.id }}" {% if sub.id in checked_ids %}checked{% endif %}
-                                       data-parent-id="{{ child.id }}">
-                                    <div>
-                                        <div>
-                                            {% if sub.icon %}<i class="bi {{ sub.icon }} me-2"></i>{% endif %}
-                                            {{ sub.menu_name }}
-                                            <span class="badge bg-info text-dark ms-2">{{ sub.menu_type }}</span>
-                                        </div>
-                                        {% if sub.permission %}
-                                        <small class="text-muted">{{ sub.permission }}</small>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
-                        </div>
+                            </td>
+                            {% for op in operations %}
+                            <td class="text-center">
+                                {% set perm_id = "%d_%s" % (m.id, op) %}
+                                {% set is_op_checked = m.id in checked_set %}
+                                <input type="checkbox" class="form-check-input op-checkbox"
+                                       name="menu_ids" value="{{ m.id }}"
+                                       {% if is_op_checked %}checked{% endif %}
+                                       data-menu-id="{{ m.id }}" data-op="{{ op }}">
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% for child in node['children'] %}
+                        {{ render_menu(child) }}
                         {% endfor %}
-                    </div>
-                    {% endif %}
-                </div>
-                {% endfor %}
+                        {% endmacro %}
+                        
+                        {% for node in menu_tree %}
+                        {{ render_menu(node) }}
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
             
             <div class="mt-4 text-center">
@@ -110,93 +139,169 @@
 
 {% block extra_js %}
 <script>
-function updateParentState(childCb) {
-    const parentId = childCb.dataset.parentId;
-    const parentCb = document.querySelector('.checkbox-all[value="' + parentId + '"]') || 
-                     document.querySelector('.checkbox-item[value="' + parentId + '"]');
-    if (parentCb) {
-        const siblings = document.querySelectorAll('.checkbox-item[data-parent-id="' + parentId + '"]');
-        const checkedCount = Array.from(siblings).filter(s => s.checked).length;
-        const totalCount = siblings.length;
+(function() {
+    document.addEventListener('DOMContentLoaded', function() {
+        initTreeToggles();
+        initHeaderCheckboxes();
+        initRowSelectCheckboxes();
+        initOpCheckboxes();
+        initParentStates();
         
-        if (checkedCount === 0) {
-            parentCb.checked = false;
-            parentCb.indeterminate = false;
-        } else if (checkedCount === totalCount) {
-            parentCb.checked = true;
-            parentCb.indeterminate = false;
-        } else {
-            parentCb.checked = true;
-            parentCb.indeterminate = true;
-        }
-        
-        updateParentState(parentCb);
-    }
-}
-
-function initParentStates() {
-    document.querySelectorAll('.checkbox-all, .checkbox-item').forEach(cb => {
-        if (!cb.classList.contains('checkbox-all') || cb.dataset.parentId !== '0') {
-            const parentId = cb.dataset.parentId;
-            const parentCb = document.querySelector('.checkbox-all[value="' + parentId + '"]') || 
-                             document.querySelector('.checkbox-item[value="' + parentId + '"]');
-            if (parentCb && parentId !== '0') {
-                const siblings = document.querySelectorAll('.checkbox-item[data-parent-id="' + parentId + '"]');
-                const checkedCount = Array.from(siblings).filter(s => s.checked).length;
-                const totalCount = siblings.length;
-                
-                if (checkedCount === 0) {
-                    parentCb.checked = false;
-                    parentCb.indeterminate = false;
-                } else if (checkedCount === totalCount) {
-                    parentCb.checked = true;
-                    parentCb.indeterminate = false;
-                } else {
-                    parentCb.checked = true;
-                    parentCb.indeterminate = true;
-                }
-            }
-        }
-    });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    initParentStates();
-    
-    document.getElementById('btnCheckAll').addEventListener('click', function() {
-        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-            cb.checked = true;
-            cb.indeterminate = false;
+        document.getElementById('btnCheckAll').addEventListener('click', function() {
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = true;
+                cb.indeterminate = false;
+            });
         });
-    });
 
-    document.getElementById('btnUncheckAll').addEventListener('click', function() {
-        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-            cb.checked = false;
-            cb.indeterminate = false;
-        });
-    });
-
-    document.querySelectorAll('.checkbox-all').forEach(cb => {
-        cb.addEventListener('change', function() {
-            const children = document.querySelectorAll('.checkbox-item[data-parent-id="' + this.value + '"]');
-            children.forEach(child => {
-                child.checked = this.checked;
-                child.indeterminate = false;
-                const subChildren = document.querySelectorAll('.checkbox-item[data-parent-id="' + child.value + '"]');
-                subChildren.forEach(sub => {
-                    sub.checked = this.checked;
-                    sub.indeterminate = false;
-                });
+        document.getElementById('btnUncheckAll').addEventListener('click', function() {
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = false;
+                cb.indeterminate = false;
             });
         });
     });
 
-    document.querySelectorAll('.checkbox-item').forEach(cb => {
-        cb.addEventListener('change', function() {
-            updateParentState(this);
+    function initTreeToggles() {
+        document.querySelectorAll('.tree-toggle').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                const nodeId = this.dataset.nodeId;
+                const rows = document.querySelectorAll('.menu-row[data-parent-id="' + nodeId + '"]');
+                const isExpanded = this.classList.contains('bi-caret-down-fill');
+                
+                rows.forEach(row => {
+                    row.style.display = isExpanded ? 'none' : '';
+                });
+                
+                this.classList.toggle('bi-caret-right-fill');
+                this.classList.toggle('bi-caret-down-fill');
+            });
         });
-    });
-});
+    }
+
+    function initHeaderCheckboxes() {
+        document.getElementById('headerSelectAll').addEventListener('change', function() {
+            document.querySelectorAll('.row-select-cb').forEach(cb => {
+                cb.checked = this.checked;
+                cb.indeterminate = false;
+            });
+            document.querySelectorAll('.op-checkbox').forEach(cb => {
+                cb.checked = this.checked;
+                cb.indeterminate = false;
+            });
+        });
+
+        document.querySelectorAll('.op-header-cb').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const op = this.dataset.op;
+                document.querySelectorAll('.op-checkbox[data-op="' + op + '"]').forEach(opCb => {
+                    opCb.checked = this.checked;
+                    opCb.indeterminate = false;
+                });
+                updateParentStates();
+            });
+        });
+    }
+
+    function initRowSelectCheckboxes() {
+        document.querySelectorAll('.row-select-cb').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const menuId = this.value;
+                document.querySelectorAll('.op-checkbox[data-menu-id="' + menuId + '"]').forEach(opCb => {
+                    opCb.checked = this.checked;
+                    opCb.indeterminate = false;
+                });
+                updateParentStates();
+            });
+        });
+    }
+
+    function initOpCheckboxes() {
+        document.querySelectorAll('.op-checkbox').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const menuId = this.dataset.menuId;
+                const rowCb = document.querySelector('.row-select-cb[value="' + menuId + '"]');
+                if (rowCb) {
+                    const allOpCbs = document.querySelectorAll('.op-checkbox[data-menu-id="' + menuId + '"]');
+                    const allChecked = Array.from(allOpCbs).every(c => c.checked);
+                    const noneChecked = Array.from(allOpCbs).every(c => !c.checked);
+                    
+                    if (allChecked) {
+                        rowCb.checked = true;
+                        rowCb.indeterminate = false;
+                    } else if (noneChecked) {
+                        rowCb.checked = false;
+                        rowCb.indeterminate = false;
+                    } else {
+                        rowCb.checked = true;
+                        rowCb.indeterminate = true;
+                    }
+                }
+                updateParentStates();
+            });
+        });
+    }
+
+    function updateParentStates() {
+        const menuRows = Array.from(document.querySelectorAll('.menu-row')).sort((a, b) => {
+            return parseInt(b.dataset.level) - parseInt(a.dataset.level);
+        });
+        
+        menuRows.forEach(row => {
+            const menuId = row.dataset.menuId;
+            const parentId = row.dataset.parentId;
+            
+            if (parentId === '0') return;
+            
+            const rowCb = row.querySelector('.row-select-cb');
+            if (!rowCb) return;
+            
+            const parentRow = document.querySelector('.menu-row[data-menu-id="' + parentId + '"]');
+            if (!parentRow) return;
+            
+            const parentCb = parentRow.querySelector('.row-select-cb');
+            if (!parentCb) return;
+            
+            const childrenRows = document.querySelectorAll('.menu-row[data-parent-id="' + parentId + '"]');
+            if (childrenRows.length === 0) return;
+            
+            let allChecked = true;
+            let noneChecked = true;
+            
+            childrenRows.forEach(childRow => {
+                const childCb = childRow.querySelector('.row-select-cb');
+                if (childCb) {
+                    if (childCb.checked || childCb.indeterminate) {
+                        noneChecked = false;
+                    }
+                    if (!childCb.checked || childCb.indeterminate) {
+                        allChecked = false;
+                    }
+                }
+            });
+            
+            if (allChecked) {
+                parentCb.checked = true;
+                parentCb.indeterminate = false;
+            } else if (noneChecked) {
+                parentCb.checked = false;
+                parentCb.indeterminate = false;
+            } else {
+                parentCb.checked = true;
+                parentCb.indeterminate = true;
+            }
+            
+            const parentOpCbs = parentRow.querySelectorAll('.op-checkbox');
+            parentOpCbs.forEach(opCb => {
+                opCb.checked = parentCb.checked;
+                opCb.indeterminate = parentCb.indeterminate;
+            });
+        });
+    }
+
+    function initParentStates() {
+        updateParentStates();
+    }
+})();
 </script>
 {% endblock %}
