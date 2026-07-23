@@ -84,7 +84,11 @@ class User(UserMixin, db.Model):
         """检查用户是否拥有指定按钮权限
 
         Args:
-            permission: 权限标识,如 'stock_in:create' 或菜单ID或 'menu_id:operation'
+            permission: 权限标识,支持多种格式:
+                - 'stock_in:create' (旧格式: 权限代码:操作)
+                - '26:view' (菜单ID:操作)
+                - 'stock:in:create' (新格式: 模块:功能:操作)
+                - '26' (仅菜单ID, 默认检查view权限)
 
         Returns:
             bool: 是否有权限
@@ -98,23 +102,18 @@ class User(UserMixin, db.Model):
                 return True
             return False
         from app.models import SysMenu, SysRoleMenu
+
+        # 处理冒号分隔的权限标识
         if ':' in permission:
             parts = permission.split(':')
-            if len(parts) == 2:
-                perm_code = parts[0]
-                operation = parts[1]
-                try:
-                    menu_id = int(perm_code)
-                    exists = SysRoleMenu.query.filter(
-                        SysRoleMenu.role_id == self.role_id,
-                        SysRoleMenu.menu_id == menu_id,
-                        SysRoleMenu.operation == operation
-                    ).first()
-                    if exists:
-                        return True
-                except ValueError:
-                    pass
-                menus = SysMenu.query.filter_by(permission=perm_code).all()
+
+            # 三段落格式: module:func:operation (如 stock:in:create)
+            if len(parts) == 3:
+                module, func, operation = parts
+                # 查找匹配的菜单
+                menus = SysMenu.query.filter(
+                    SysMenu.menu_code.like(f'{module}.{func}')
+                ).all()
                 if menus:
                     menu_ids = [m.id for m in menus]
                     exists = SysRoleMenu.query.filter(
@@ -122,25 +121,46 @@ class User(UserMixin, db.Model):
                         SysRoleMenu.menu_id.in_(menu_ids),
                         SysRoleMenu.operation == operation
                     ).first()
-                    if exists:
-                        return True
-            return False
+                    return exists is not None
+                return False
+
+            # 两段落格式: 可能是 menu_id:operation 或 perm_code:operation
+            if len(parts) == 2:
+                perm_code, operation = parts
+                try:
+                    # 尝试解析为菜单ID
+                    menu_id = int(perm_code)
+                    exists = SysRoleMenu.query.filter(
+                        SysRoleMenu.role_id == self.role_id,
+                        SysRoleMenu.menu_id == menu_id,
+                        SysRoleMenu.operation == operation
+                    ).first()
+                    return exists is not None
+                except ValueError:
+                    # 作为权限代码查找
+                    menus = SysMenu.query.filter_by(permission=perm_code).all()
+                    if menus:
+                        menu_ids = [m.id for m in menus]
+                        exists = SysRoleMenu.query.filter(
+                            SysRoleMenu.role_id == self.role_id,
+                            SysRoleMenu.menu_id.in_(menu_ids),
+                            SysRoleMenu.operation == operation
+                        ).first()
+                        return exists is not None
+                return False
+
+        # 纯数字: 菜单ID, 默认检查 view 权限
         try:
             menu_id = int(permission)
             exists = SysRoleMenu.query.filter(
                 SysRoleMenu.role_id == self.role_id,
-                SysRoleMenu.menu_id == menu_id
+                SysRoleMenu.menu_id == menu_id,
+                SysRoleMenu.operation == 'view'
             ).first()
             return exists is not None
         except ValueError:
-            menus = SysMenu.query.filter_by(permission=permission).all()
-            if menus:
-                menu_ids = [m.id for m in menus]
-                exists = SysRoleMenu.query.filter(
-                    SysRoleMenu.role_id == self.role_id,
-                    SysRoleMenu.menu_id.in_(menu_ids)
-                ).first()
-                return exists is not None
+            pass
+
         return False
 
     def get_allowed_projects(self):
@@ -325,8 +345,21 @@ class SysRole(db.Model):
         return self._DATA_SCOPE_MAP.get(self.data_scope, self.data_scope)
 
 
+class SysModule(db.Model):
+    """业务模块注册表 - 用于模块开关控制"""
+    __tablename__ = 'sys_module'
+    id = db.Column(db.Integer, primary_key=True)
+    module_key = db.Column(db.String(32), nullable=False, unique=True)  # 模块标识，如 'module_turnover'
+    module_name = db.Column(db.String(64), nullable=False)  # 模块名称
+    is_required = db.Column(db.Boolean, default=False)  # 是否必需模块（不可关闭）
+    default_enabled = db.Column(db.Boolean, default=True)  # 默认是否启用
+    sort = db.Column(db.Integer, default=0)
+    status = db.Column(db.Boolean, default=True)  # 是否启用
+    remark = db.Column(db.String(256), nullable=True)
+
+
 class SysMenu(db.Model):
-    """菜单表"""
+    """菜单表 - 统一权限点管理"""
     __tablename__ = 'sys_menu'
     id = db.Column(db.Integer, primary_key=True)
     parent_id = db.Column(db.Integer, db.ForeignKey('sys_menu.id'), default=0)
@@ -338,7 +371,8 @@ class SysMenu(db.Model):
     icon = db.Column(db.String(64), nullable=True)
     sort = db.Column(db.Integer, default=0)
     status = db.Column(db.Boolean, default=True)
-    permission = db.Column(db.String(128), nullable=True)  # 权限标识
+    permission = db.Column(db.String(128), nullable=True)  # 权限标识，如 stock:in:view
+    module_key = db.Column(db.String(32), nullable=True)  # 所属模块标识
     remark = db.Column(db.String(256), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 

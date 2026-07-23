@@ -756,9 +756,16 @@ def role_permissions(id):
 @admin_required
 @log_audit(module='rbac', operation='保存角色权限')
 def save_role_permissions(id):
-    """保存角色菜单权限"""
+    """保存角色菜单权限 - 增强版
+
+    接收前端提交的权限数据，格式为 menu_id:operation
+    保存后立即回查验证，确保数据一致性
+    """
+    from app.models import SysModule
+
     menu_ops_raw = request.form.getlist('menu_ops')
-    
+
+    # 解析提交的权限数据
     unique_ops = set()
     for item in menu_ops_raw:
         if ':' in item:
@@ -767,18 +774,39 @@ def save_role_permissions(id):
                 try:
                     menu_id = int(parts[0])
                     operation = parts[1]
-                    unique_ops.add((menu_id, operation))
+                    # 验证操作类型有效性
+                    if operation in {'view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print'}:
+                        unique_ops.add((menu_id, operation))
                 except ValueError:
                     pass
-    
+
+    # 删除旧权限
     SysRoleMenu.query.filter_by(role_id=id).delete()
-    
+
+    # 保存新权限
     for menu_id, operation in unique_ops:
         rm = SysRoleMenu(role_id=id, menu_id=menu_id, operation=operation)
         db.session.add(rm)
-    
+
     db.session.commit()
-    flash('权限配置已保存', 'success')
+
+    # ===== 回查验证：确保保存的数据与提交一致 =====
+    saved = set((rm.menu_id, rm.operation) for rm in SysRoleMenu.query.filter_by(role_id=id).all())
+    submitted = unique_ops
+
+    if saved != submitted:
+        missing = submitted - saved
+        extra = saved - submitted
+        error_msg = []
+        if missing:
+            error_msg.append(f"丢失权限: {missing}")
+        if extra:
+            error_msg.append(f"多余权限: {extra}")
+        error_text = "; ".join(error_msg)
+        flash(f'权限保存验证失败: {error_text}', 'danger')
+        return redirect(url_for('system.role_permissions', id=id))
+
+    flash(f'权限配置已保存，共 {len(unique_ops)} 个权限项', 'success')
     return redirect(url_for('system.role_permissions', id=id))
 
 
@@ -1076,3 +1104,153 @@ def copy_role(id):
 
     default_role_code = gen_role_code()
     return render_template('system/role_copy.html', src_role=src_role, default_role_code=default_role_code)
+
+
+# ============== 动态权限接口 ==============
+
+@bp.route('/api/user/menus')
+@login_required
+def api_user_menus():
+    """动态菜单接口 - 返回当前用户有权限的菜单树"""
+    from app.models import SysModule
+
+    # 获取启用的模块列表
+    enabled_modules = set()
+    for m in SysModule.query.filter_by(status=True).all():
+        enabled_modules.add(m.module_key)
+
+    # 获取用户有权限的菜单
+    allowed_menu_ids = set()
+    if current_user.is_admin():
+        allowed_menu_ids = set(m.id for m in SysMenu.query.all())
+    else:
+        rms = SysRoleMenu.query.filter_by(
+            role_id=current_user.role_id,
+            operation='view'
+        ).all()
+        allowed_menu_ids = set(rm.menu_id for rm in rms)
+
+    # 构建菜单树
+    def build_tree(parent_id=0):
+        items = []
+        menus = SysMenu.query.filter_by(
+            parent_id=parent_id,
+            status=True
+        ).order_by(SysMenu.sort).all()
+
+        for menu in menus:
+            # 检查模块是否启用
+            if menu.module_key and menu.module_key not in enabled_modules:
+                continue
+
+            # 目录：只要有子菜单有权限就显示
+            if menu.menu_type == 'catalog':
+                children = build_tree(menu.id)
+                if children:
+                    items.append({
+                        'id': menu.id,
+                        'name': menu.menu_name,
+                        'code': menu.menu_code,
+                        'icon': menu.icon or '',
+                        'path': menu.path or '',
+                        'type': menu.menu_type,
+                        'children': children,
+                    })
+            # 菜单：需要view权限
+            elif menu.menu_type == 'menu':
+                if current_user.is_admin() or menu.id in allowed_menu_ids:
+                    items.append({
+                        'id': menu.id,
+                        'name': menu.menu_name,
+                        'code': menu.menu_code,
+                        'icon': menu.icon or '',
+                        'path': menu.path or '',
+                        'type': menu.menu_type,
+                        'permission': menu.permission,
+                    })
+        return items
+
+    menu_tree = build_tree()
+    return jsonify({
+        'code': 200,
+        'data': menu_tree,
+        'message': 'success'
+    })
+
+
+@bp.route('/api/user/permissions')
+@login_required
+def api_user_permissions():
+    """返回当前用户的所有权限标识列表"""
+    permissions = []
+
+    if current_user.is_admin():
+        # 管理员拥有所有权限
+        menus = SysMenu.query.filter(SysMenu.permission.isnot(None)).all()
+        permissions = [m.permission for m in menus]
+    else:
+        # 查询角色的所有权限
+        rms = SysRoleMenu.query.filter_by(role_id=current_user.role_id).all()
+        menu_ids = set(rm.menu_id for rm in rms)
+        menus = SysMenu.query.filter(SysMenu.id.in_(menu_ids)).all()
+        menu_map = {m.id: m for m in menus}
+
+        for rm in rms:
+            menu = menu_map.get(rm.menu_id)
+            if menu and menu.permission:
+                # 替换操作类型
+                parts = menu.permission.rsplit(':', 1)
+                if len(parts) == 2:
+                    perm = f"{parts[0]}:{rm.operation}"
+                    permissions.append(perm)
+
+    return jsonify({
+        'code': 200,
+        'data': list(set(permissions)),
+        'message': 'success'
+    })
+
+
+def permission_required(permission):
+    """后端权限校验装饰器
+
+    用法: @permission_required('stock:in:create')
+    无权限返回403
+    """
+    def decorator(f):
+        from functools import wraps
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return jsonify({'code': 401, 'message': '未登录'}), 401
+            if current_user.is_admin():
+                return f(*args, **kwargs)
+
+            # 解析权限标识
+            parts = permission.rsplit(':', 1)
+            if len(parts) != 2:
+                return jsonify({'code': 403, 'message': '权限格式错误'}), 403
+
+            perm_base, operation = parts
+
+            # 查找对应的菜单
+            menus = SysMenu.query.filter(
+                SysMenu.permission.like(f'{perm_base}%')
+            ).all()
+
+            if not menus:
+                return jsonify({'code': 403, 'message': '权限未配置'}), 403
+
+            menu_ids = [m.id for m in menus]
+            has_perm = SysRoleMenu.query.filter(
+                SysRoleMenu.role_id == current_user.role_id,
+                SysRoleMenu.menu_id.in_(menu_ids),
+                SysRoleMenu.operation == operation
+            ).first()
+
+            if not has_perm:
+                return jsonify({'code': 403, 'message': '无权限访问'}), 403
+
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator

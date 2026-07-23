@@ -207,6 +207,10 @@ def init_db_schema():
     _add_column_if_missing('stock_ins', 'actual_amount', 'NUMERIC(18,2) DEFAULT 0')
     _add_column_if_missing('stock_ins', 'is_initial', 'BOOLEAN DEFAULT 0')
 
+    # RBAC权限体系：sys_menu 新增字段
+    _add_column_if_missing('sys_menu', 'module_key', 'VARCHAR(32)')
+    _add_column_if_missing('sys_menu', 'permission', 'VARCHAR(128)')
+
     # 阶段二：对账浮动价计算
     _add_column_if_missing('reconciliations', 'price_formula_id', 'INTEGER')
     _add_column_if_missing('reconciliations', 'total_amount_without_tax', 'NUMERIC(18,2) DEFAULT 0')
@@ -337,13 +341,50 @@ def init_db_schema():
     print("Database tables created/updated")
 
 
+def _generate_permission(menu_code, operation='view'):
+    """生成标准权限标识：模块:功能:操作"""
+    if not menu_code:
+        return None
+    # 提取模块名和功能名
+    parts = menu_code.split('.')
+    if len(parts) >= 2:
+        module = parts[0]
+        func = parts[1]
+        return f"{module}:{func}:{operation}"
+    return f"{menu_code}:{operation}"
+
+
 def init_rbac_data():
-    """初始化RBAC权限数据"""
-    from app.models import SysDept, SysRole, SysMenu, SysRoleMenu, User, Project
+    """初始化RBAC权限数据 - 增强版"""
+    from app.models import SysDept, SysRole, SysMenu, SysRoleMenu, SysModule, User, Project
     import json as _json
     import os as _os
 
-    # 从menu_config.json同步菜单（每次启动都同步名称、图标、排序等属性）
+    # ===== 1. 初始化模块注册表 =====
+    modules_data = [
+        {'key': 'module_approval', 'name': '审批流程', 'is_required': False, 'default_enabled': True, 'sort': 1},
+        {'key': 'module_batch', 'name': '批次管理', 'is_required': False, 'default_enabled': True, 'sort': 2},
+        {'key': 'module_scrap', 'name': '物资报废', 'is_required': False, 'default_enabled': True, 'sort': 3},
+        {'key': 'module_period_close', 'name': '期末结账', 'is_required': False, 'default_enabled': True, 'sort': 4},
+        {'key': 'module_turnover', 'name': '周转材管理', 'is_required': False, 'default_enabled': False, 'sort': 5},
+        {'key': 'module_equipment', 'name': '设备管理', 'is_required': False, 'default_enabled': False, 'sort': 6},
+        {'key': 'module_industry_tools', 'name': '行业工具', 'is_required': False, 'default_enabled': False, 'sort': 7},
+        {'key': 'module_subcontract', 'name': '分包扣款', 'is_required': False, 'default_enabled': False, 'sort': 8},
+        {'key': 'module_ai', 'name': 'AI功能', 'is_required': False, 'default_enabled': False, 'sort': 9},
+    ]
+    for data in modules_data:
+        if not SysModule.query.filter_by(module_key=data['key']).first():
+            module = SysModule(
+                module_key=data['key'],
+                module_name=data['name'],
+                is_required=data['is_required'],
+                default_enabled=data['default_enabled'],
+                sort=data['sort']
+            )
+            db.session.add(module)
+    db.session.commit()
+
+    # ===== 2. 从menu_config.json同步菜单并生成权限标识 =====
     from flask import current_app
     config_path = _os.path.join(current_app.root_path, 'static', 'config', 'menu_config.json')
     if _os.path.exists(config_path):
@@ -364,6 +405,8 @@ def init_rbac_data():
         catalog_sort = 1
         for group in groups:
             group_code = group.get('id', '')
+            group_module = group.get('module', '')
+
             # 目录级：用id作为menu_code匹配
             catalog = SysMenu.query.filter_by(menu_code=group_code, menu_type='catalog').first()
             catalog_remark = _json.dumps({
@@ -379,13 +422,13 @@ def init_rbac_data():
                     sort=catalog_sort,
                     parent_id=0,
                     status=True,
-                    permission=group.get('module', '') or None,
+                    module_key=group_module or None,
                     remark=catalog_remark
                 )
                 db.session.add(catalog)
                 db.session.flush()
             else:
-                # 已存在则只同步配置类属性（名称以用户在菜单管理页面的修改为准）
+                # 同步更新
                 changed = False
                 if (not catalog.icon) and group.get('icon', ''):
                     catalog.icon = group.get('icon', '')
@@ -393,9 +436,8 @@ def init_rbac_data():
                 if catalog.sort != catalog_sort:
                     catalog.sort = catalog_sort
                     changed = True
-                group_module = group.get('module', '')
-                if (not catalog.permission) and group_module:
-                    catalog.permission = group_module or None
+                if (not catalog.module_key) and group_module:
+                    catalog.module_key = group_module or None
                     changed = True
                 if (not catalog.remark) and catalog_remark:
                     catalog.remark = catalog_remark
@@ -403,16 +445,22 @@ def init_rbac_data():
                 if changed:
                     db.session.flush()
             catalog_sort += 1
+
             # 菜单项：用endpoint作为menu_code匹配
             for item_sort, item in enumerate(group.get('items', []), 1):
                 item_code = item.get('endpoint', '')
                 if not item_code:
                     continue
+                item_module = item.get('module', '')
                 menu = SysMenu.query.filter_by(menu_code=item_code, menu_type='menu').first()
                 item_remark = _json.dumps({
                     'section': item.get('section', ''),
                     'active': item.get('active', ''),
                 }, ensure_ascii=False)
+
+                # 自动生成权限标识
+                auto_permission = _generate_permission(item_code, 'view')
+
                 if not menu:
                     menu = SysMenu(
                         menu_name=item.get('title', ''),
@@ -423,13 +471,14 @@ def init_rbac_data():
                         sort=item_sort,
                         parent_id=catalog.id,
                         status=True,
-                        permission=item.get('module', '') or None,
+                        permission=auto_permission,
+                        module_key=item_module or group_module or None,
                         remark=item_remark
                     )
                     db.session.add(menu)
                     db.session.flush()
                 else:
-                    # 已存在则只同步配置类属性（名称以用户在菜单管理页面的修改为准）
+                    # 同步更新
                     changed = False
                     if (not menu.icon) and item.get('icon', ''):
                         menu.icon = item.get('icon', '')
@@ -440,9 +489,11 @@ def init_rbac_data():
                     if menu.parent_id != catalog.id:
                         menu.parent_id = catalog.id
                         changed = True
-                    item_module = item.get('module', '')
-                    if (not menu.permission) and item_module:
-                        menu.permission = item_module or None
+                    if not menu.permission:
+                        menu.permission = auto_permission
+                        changed = True
+                    if (not menu.module_key) and (item_module or group_module):
+                        menu.module_key = item_module or group_module or None
                         changed = True
                     if (not menu.remark) and item_remark:
                         menu.remark = item_remark
@@ -454,7 +505,7 @@ def init_rbac_data():
                         db.session.flush()
         db.session.commit()
 
-    # 初始化部门（升级为树形组织架构）
+    # ===== 3. 初始化部门（升级为树形组织架构）=====
     depts_data = [
         {'code': 'HQ', 'name': '总公司', 'parent_id': 0, 'dept_type': 'company', 'sort': 1},
         {'code': 'MATERIAL', 'name': '物资部', 'parent_id': 1, 'dept_type': 'dept', 'sort': 1},
@@ -491,7 +542,7 @@ def init_rbac_data():
             db.session.add(project_dept)
             db.session.flush()
 
-    # 初始化角色（升级数据权限范围）
+    # ===== 4. 初始化角色 =====
     roles_data = [
         {'code': 'super_admin', 'name': '超级管理员', 'data_scope': 'all', 'sort': 1},
         {'code': 'material_admin', 'name': '公司物资部长', 'data_scope': 'all', 'sort': 2},
@@ -514,91 +565,18 @@ def init_rbac_data():
             db.session.flush()
             data['id'] = role.id
             roles_data[i] = data
-    
-    
-    # 超级管理员拥有所有权限
+
+    # ===== 5. 超级管理员拥有所有菜单的 view 权限 =====
     super_admin_role = SysRole.query.filter_by(role_code='super_admin').first()
     if super_admin_role:
-        existing_perms = set([rm.menu_id for rm in SysRoleMenu.query.filter_by(role_id=super_admin_role.id).all()])
-        all_menu_ids = [m.id for m in SysMenu.query.all()]
-        for menu_id in all_menu_ids:
-            if menu_id not in existing_perms:
-                rp = SysRoleMenu(role_id=super_admin_role.id, menu_id=menu_id)
+        existing = set((rm.menu_id, rm.operation) for rm in SysRoleMenu.query.filter_by(role_id=super_admin_role.id).all())
+        all_menus = SysMenu.query.all()
+        for menu in all_menus:
+            if (menu.id, 'view') not in existing:
+                rp = SysRoleMenu(role_id=super_admin_role.id, menu_id=menu.id, operation='view')
                 db.session.add(rp)
 
-    # 项目管理员角色权限初始化
-    project_admin_role = SysRole.query.filter_by(role_code='project_admin').first()
-    if project_admin_role:
-        existing_perms = set([rm.menu_id for rm in SysRoleMenu.query.filter_by(role_id=project_admin_role.id).all()])
-        if not existing_perms:
-            # 项目管理员可访问的菜单 code 列表
-            project_admin_menu_codes = [
-                # 工作台
-                'main.index',
-                'approval.my_approvals',
-                # 基础数据
-                'project.index',
-                'supplier.index',
-                'category.index',
-                'material.index',
-                'unit.index',
-                'work_number.index',
-                # 采购合同
-                'purchase_requisition.index',
-                'contract.index',
-                'contract.invoices',
-                'contract.payments',
-                'payment_application.index',
-                'reconciliation.index',
-                'price_formula.index',
-                # 库存管理
-                'stock_in.index',
-                'stock_out.index',
-                'inventory.index',
-                'stock_check.index',
-                'material_transfer.index',
-                'batch.index',
-                'batch.expiry_alerts',
-                'scrap.index',
-                'period_close.index',
-                # 周转材管理
-                'turnover_material.index',
-                'turnover_material.record_index',
-                'turnover_material.rental_bill',
-                # 设备管理
-                'equipment.index',
-                'equipment.maintenance',
-                'equipment.depreciation',
-                # 行业工具
-                'concrete.index',
-                'concrete.reconcile',
-                'steel.index',
-                'steel.specs',
-                'barcode.index',
-                'barcode.batch_print',
-                # 统计报表
-                'report.stock_in_report',
-                'report.stock_out_report',
-                'report.material_movement',
-                'report.receive_issue',
-                'report.ledger',
-                'report.work_number_cost',
-                'report.supplier_ledger',
-                'subcontract.index',
-                'concrete.stats',
-                'report.advanced',
-                # 系统管理（仅只读/项目级配置）
-                'dict_mgr.index',
-                'approval.flows',
-                'batch.category_config',
-            ]
-            for code in project_admin_menu_codes:
-                menu = SysMenu.query.filter_by(menu_code=code).first()
-                if menu:
-                    rp = SysRoleMenu(role_id=project_admin_role.id, menu_id=menu.id)
-                    db.session.add(rp)
-    
-    # 更新默认admin用户关联角色和部门
+    # ===== 6. 更新默认admin用户关联角色和部门 =====
     admin_user = User.query.filter_by(username='admin').first()
     if admin_user:
         super_admin_role = SysRole.query.filter_by(role_code='super_admin').first()
@@ -608,13 +586,11 @@ def init_rbac_data():
         if hq_dept:
             admin_user.dept_id = hq_dept.id
 
-    # 为所有现有用户创建用户项目关联（兼容迁移）
+    # ===== 7. 为所有现有用户创建用户项目关联（兼容迁移）=====
     from app.models import SysUserProject
     for user in User.query.all():
-        # 跳过已有项目关联的用户
         if user.user_projects:
             continue
-        # 取第一个项目作为主项目
         first_project = Project.query.first()
         if first_project:
             up = SysUserProject(
@@ -1010,7 +986,8 @@ def create_app(config_class=Config):
                         catalog_extra = _json.loads(catalog.remark)
                     except Exception:
                         pass
-                module_key = catalog.permission if catalog.permission else None
+                # 使用 module_key 字段检查模块开关
+                module_key = catalog.module_key if catalog.module_key else None
 
                 # 项目模块开关过滤（分组级别）
                 if module_key:
@@ -1035,8 +1012,8 @@ def create_app(config_class=Config):
                 for menu in items_db:
                     endpoint = menu.menu_code
                     # 模块开关过滤（菜单项级别）
-                    if menu.permission and menu.permission.startswith('module_'):
-                        item_module = menu.permission
+                    if menu.module_key:
+                        item_module = menu.module_key
                         if item_module in project_module_config:
                             if not project_module_config[item_module]:
                                 continue
@@ -1061,7 +1038,7 @@ def create_app(config_class=Config):
                         'active': item_extra.get('active', endpoint or ''),
                         'section': item_extra.get('section', ''),
                         'icon': menu.icon or '',
-                        'module': menu.permission if menu.permission and menu.permission.startswith('module_') else None,
+                        'module': menu.module_key,
                     })
 
                 if not items:
