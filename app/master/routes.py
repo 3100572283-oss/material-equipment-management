@@ -1089,6 +1089,7 @@ def category_create():
     # 根据父级计算层级
     if parent_id == 0:
         level = 1
+        parent_name_for_error = '顶级分类'
     else:
         parent = Category.query.get(parent_id)
         if not parent:
@@ -1098,6 +1099,15 @@ def category_create():
             flash('最多支持三级分类，无法继续新增子分类。', 'danger')
             return redirect(url_for('master.category_index'))
         level = parent.level + 1
+        parent_name_for_error = parent.name
+
+    # 校验同一父级下名称不重复
+    existing = Category.query.filter_by(
+        source='company', parent_id=parent_id, name=name
+    ).first()
+    if existing:
+        flash(f'在[{parent_name_for_error}]下已存在同名分类"{name}"，请使用其他名称。', 'danger')
+        return redirect(url_for('master.category_index'))
 
     # 公司级分类使用任一项目 ID 兜底 NOT NULL 约束
     project_id = _get_company_project_id()
@@ -1400,10 +1410,14 @@ def category_import():
     errors = []
     import_data = []
     code_set = set()
-    name_by_parent = {}
+    name_by_parent_key = {}
 
     existing_categories = Category.query.filter_by(source='company').all()
     existing_codes = {c.category_code: c for c in existing_categories if c.category_code}
+    existing_name_keys = set()
+    for c in existing_categories:
+        key = f"{c.parent_id}_{c.name}"
+        existing_name_keys.add(key)
 
     for idx, row in enumerate(rows, start=2):
         if not row or all(v is None or str(v).strip() == '' for v in row):
@@ -1429,6 +1443,7 @@ def category_import():
 
         parent_id = 0
         level = 1
+        parent_name_for_error = '顶级分类'
         if parent_code:
             if parent_code not in existing_codes and parent_code not in [d['code'] for d in import_data]:
                 errors.append(f'第{idx}行：上级分类编码"{parent_code}"不存在')
@@ -1437,11 +1452,13 @@ def category_import():
                 parent = existing_codes[parent_code]
                 parent_id = parent.id
                 level = parent.level + 1
+                parent_name_for_error = parent.name
             else:
                 for d in import_data:
                     if d['code'] == parent_code:
                         parent_id = d.get('id', 0)
                         level = d['level'] + 1
+                        parent_name_for_error = d['name']
                         break
 
         if level > 3:
@@ -1453,11 +1470,21 @@ def category_import():
         except (ValueError, TypeError):
             sort_order = 99
 
-        parent_key = f"{parent_id}_{name}"
-        if parent_key in name_by_parent:
-            errors.append(f'第{idx}行：分类名称"{name}"在同一父级下重复')
+        # 名称唯一性校验：同一父级下名称不重复，不同父级可同名
+        # 用 parent_code 作为 key 前缀（避免 parent_id 尚未分配时冲突）
+        name_key_parent = parent_code if parent_code else 'ROOT'
+        name_key = f"{name_key_parent}_{name}"
+
+        if parent_id and parent_id != 0:
+            db_key = f"{parent_id}_{name}"
+            if db_key in existing_name_keys:
+                errors.append(f'第{idx}行：在[{parent_name_for_error}]下已存在同名分类"{name}"')
+                continue
+
+        if name_key in name_by_parent_key:
+            errors.append(f'第{idx}行：在[{parent_name_for_error}]下已存在同名分类"{name}"')
             continue
-        name_by_parent[parent_key] = True
+        name_by_parent_key[name_key] = True
 
         code_set.add(code if code else f'_auto_{idx}')
         import_data.append({
@@ -1551,11 +1578,13 @@ def category_import():
 @log_audit(module='master_category', operation='批量删除')
 def category_batch_delete():
     """批量删除公司物资分类（递归删除子分类，检查物资引用）"""
-    ids = request.form.getlist('ids')
-    if not ids:
-        ids_str = request.form.get('ids', '')
-        if ids_str:
-            ids = [i.strip() for i in ids_str.split(',') if i.strip()]
+    raw_ids = request.form.getlist('ids')
+    ids = []
+    for val in raw_ids:
+        for part in str(val).split(','):
+            part = part.strip()
+            if part:
+                ids.append(part)
     if not ids:
         flash('请选择要删除的分类。', 'warning')
         return redirect(url_for('master.category_index'))

@@ -305,7 +305,7 @@
 
 <!-- 批量删除确认表单 -->
 <form method="POST" id="batchDeleteForm" action="{{ url_for('master.category_batch_delete') }}" style="display:none;">
-    <input type="hidden" name="ids" id="batchDeleteIds">
+    <div id="batchDeleteIdsContainer"></div>
 </form>
 {% endblock %}
 
@@ -443,10 +443,16 @@ function batchDelete() {
     if (!confirm('确定要删除选中的 ' + ids.length + ' 个分类吗？\n子分类也会一并删除，请确认操作。')) {
         return;
     }
-    var form = document.getElementById('batchDeleteForm');
-    var input = document.getElementById('batchDeleteIds');
-    input.value = ids.join(',');
-    form.submit();
+    var container = document.getElementById('batchDeleteIdsContainer');
+    container.innerHTML = '';
+    ids.forEach(function (id) {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'ids';
+        input.value = id;
+        container.appendChild(input);
+    });
+    document.getElementById('batchDeleteForm').submit();
 }
 </script>
 {% endblock %}
