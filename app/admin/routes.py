@@ -159,8 +159,12 @@ def create_user():
         if d.dept_type == 'project' and d.project_id:
             dept_project_map[d.id] = d.project_id
 
+    # 支持从查询参数预填部门
+    preset_dept_id = request.args.get('dept_id', type=int)
+
     return render_template('admin/user_form.html', user=None, depts=depts, roles=roles,
-                           projects=projects, dept_project_map=dept_project_map)
+                           projects=projects, dept_project_map=dept_project_map,
+                           preset_dept_id=preset_dept_id)
 
 
 @bp.route('/users/<int:id>/edit', methods=['GET', 'POST'])
@@ -186,12 +190,47 @@ def edit_user(id):
             from werkzeug.security import generate_password_hash
             user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
 
+        # ===== 更新项目关联 =====
+        auto_project_ids = []
+        auto_main_project_id = None
+
+        if dept_id:
+            dept = SysDept.query.get(dept_id)
+            if dept and dept.dept_type == 'project' and dept.project_id:
+                auto_project_ids.append(dept.project_id)
+                auto_main_project_id = dept.project_id
+
+        form_project_ids = request.form.getlist('project_ids', type=int)
+        form_main_project_id = request.form.get('main_project_id', type=int)
+
+        all_project_ids = list(set(auto_project_ids + form_project_ids))
+
+        if form_main_project_id:
+            final_main_project_id = form_main_project_id
+        elif auto_main_project_id:
+            final_main_project_id = auto_main_project_id
+        elif all_project_ids:
+            final_main_project_id = all_project_ids[0]
+        else:
+            final_main_project_id = None
+
+        # 更新主项目
+        user.project_id = final_main_project_id
+
+        # 删除旧关联，重建新关联
+        SysUserProject.query.filter_by(user_id=user.id).delete()
+        for pid in all_project_ids:
+            is_main = (pid == final_main_project_id)
+            up = SysUserProject(user_id=user.id, project_id=pid, is_main=is_main)
+            db.session.add(up)
+
         db.session.commit()
         flash('用户信息更新成功', 'success')
         return redirect(url_for('admin.users'))
 
     depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
+    projects = Project.query.filter_by(is_archived=False).order_by(Project.code).all()
 
     dept_map = {d.id: d for d in depts}
     def get_dept_path(d):
@@ -207,9 +246,16 @@ def edit_user(id):
     for d in depts:
         d._path = get_dept_path(d)
 
+    dept_project_map = {}
+    for d in depts:
+        if d.dept_type == 'project' and d.project_id:
+            dept_project_map[d.id] = d.project_id
+
     from app.utils import get_config
     default_password = get_config('default_password', 'Abc@123456')
-    return render_template('admin/user_form.html', user=user, depts=depts, roles=roles, default_password=default_password)
+    return render_template('admin/user_form.html', user=user, depts=depts, roles=roles,
+                           projects=projects, dept_project_map=dept_project_map,
+                           default_password=default_password, preset_dept_id=None)
 
 
 @bp.route('/users/<int:id>/reset_password', methods=['GET', 'POST'])

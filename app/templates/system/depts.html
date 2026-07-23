@@ -75,6 +75,9 @@
                     <a href="{{ url_for('system.create_dept') }}?parent_id={{ dept.id }}" class="btn btn-outline-success" title="新增子部门">
                         <i class="bi bi-plus"></i>
                     </a>
+                    <a href="{{ url_for('admin.create_user') }}?dept_id={{ dept.id }}" class="btn btn-outline-info" title="新增用户到该部门">
+                        <i class="bi bi-person-plus"></i>
+                    </a>
                     <a href="{{ url_for('system.edit_dept', id=dept.id) }}" class="btn btn-outline-primary" title="编辑">
                         <i class="bi bi-pencil"></i>
                     </a>

@@ -37,14 +37,15 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">所属部门</label>
-                            <input type="hidden" name="dept_id" id="dept_id" value="{{ user.dept_id if user and user.dept_id else '' }}">
+                            <input type="hidden" name="dept_id" id="dept_id" value="{% if user and user.dept_id %}{{ user.dept_id }}{% elif preset_dept_id %}{{ preset_dept_id }}{% endif %}">
                             <div class="dept-tree-select position-relative">
                                 <div class="form-select d-flex justify-content-between align-items-center" style="cursor:pointer;"
                                      id="deptDisplay" onclick="toggleDeptSelect()">
                                     <span id="deptLabel" class="text-truncate">
                                         {%- if user and user.dept_id -%}
-                                            {%- set ns = namespace(path='') -%}
                                             {%- for d in depts if d.id == user.dept_id -%}{{ d._path }}{%- endfor -%}
+                                        {%- elif preset_dept_id -%}
+                                            {%- for d in depts if d.id == preset_dept_id -%}{{ d._path }}{%- endfor -%}
                                         {%- else -%}
                                             请选择部门
                                         {%- endif -%}
@@ -74,10 +75,10 @@
                                              data-project-id="{{ dept.project_id if dept.dept_type == 'project' else '' }}"
                                              data-dept-type="{{ dept.dept_type }}">
                                             <div class="dept-tree-item px-2 py-1 rounded hover-bg d-flex align-items-center
-                                                        {% if level < 2 %}expanded{% endif %}
-                                                        {% if user and user.dept_id == dept.id %}active{% endif %}"
-                                                 style="cursor:pointer; padding-left:{{ level * 20 + 8 }}px;"
-                                                 onclick="selectDept({{ dept.id }}, '{{ dept._path | replace("'", "\\'") }}', {{ dept.project_id if dept.dept_type == 'project' else 'null' }})">
+                                                    {% if level < 2 %}expanded{% endif %}
+                                                    {% if (user and user.dept_id == dept.id) or (not user and preset_dept_id == dept.id) %}active{% endif %}"
+                                             style="cursor:pointer; padding-left:{{ level * 20 + 8 }}px;"
+                                             onclick="selectDept({{ dept.id }}, '{{ dept._path | replace("'", "\\'") }}', {{ dept.project_id if dept.dept_type == 'project' else 'null' }})">
                                                 {% if has_children %}
                                                 <i class="bi bi-caret-right-fill text-muted me-1 tree-toggle"
                                                    style="font-size:0.8rem;"
@@ -126,7 +127,7 @@
                                 <div class="form-check px-3 py-1">
                                     <input type="checkbox" class="form-check-input project-checkbox" name="project_ids" value="{{ p.id }}"
                                            id="project_{{ p.id }}"
-                                           {% if user and p.id in [up.project_id for up in user.user_projects] %}checked{% endif %}
+                                           {% if user and p.id in user.user_projects|map(attribute='project_id')|list %}checked{% endif %}
                                            onchange="updateMainProjectOptions()">
                                     <label class="form-check-label" for="project_{{ p.id }}">
                                         {{ p.code }} - {{ p.name }}
@@ -143,7 +144,7 @@
                                     <input type="radio" class="form-check-input main-project-radio" name="main_project_id" value="{{ p.id }}"
                                            id="main_project_{{ p.id }}"
                                            {% if user and p.id == user.project_id %}checked{% endif %}
-                                           {% if not user or p.id not in [up.project_id for up in user.user_projects] %}disabled{% endif %}>
+                                           {% if not user or p.id not in user.user_projects|map(attribute='project_id')|list %}disabled{% endif %}>
                                     <label class="form-check-label" for="main_project_{{ p.id }}">
                                         {{ p.code }} - {{ p.name }}
                                     </label>
@@ -323,6 +324,30 @@ function updateMainProjectOptions() {
         }
     });
 }
+
+// 页面加载时，若预填了部门且为项目部，自动带出项目
+(function() {
+    const presetDeptId = deptInput.value;
+    if (presetDeptId) {
+        const deptNode = deptDropdown.querySelector(`.dept-tree-node[data-id="${presetDeptId}"]`);
+        if (deptNode) {
+            const projectId = deptNode.dataset.projectId;
+            const deptType = deptNode.dataset.deptType;
+            if (projectId && deptType === 'project') {
+                const projectCb = document.getElementById('project_' + projectId);
+                if (projectCb) {
+                    projectCb.checked = true;
+                }
+                const mainProjectRadio = document.getElementById('main_project_' + projectId);
+                if (mainProjectRadio) {
+                    mainProjectRadio.disabled = false;
+                    mainProjectRadio.checked = true;
+                }
+                updateMainProjectOptions();
+            }
+        }
+    }
+})();
 
 function filterDeptTree(keyword) {
     keyword = keyword.trim().toLowerCase();
