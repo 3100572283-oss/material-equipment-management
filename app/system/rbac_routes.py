@@ -747,16 +747,20 @@ def role_permissions(id):
 @log_audit(module='rbac', operation='保存角色权限')
 def save_role_permissions(id):
     """保存角色菜单权限"""
-    menu_ids = request.form.getlist('menu_ids')
+    menu_ids_raw = request.form.getlist('menu_ids')
+    
+    unique_ids = set()
+    for menu_id in menu_ids_raw:
+        try:
+            unique_ids.add(int(menu_id))
+        except ValueError:
+            pass
     
     SysRoleMenu.query.filter_by(role_id=id).delete()
     
-    for menu_id in menu_ids:
-        try:
-            rm = SysRoleMenu(role_id=id, menu_id=int(menu_id))
-            db.session.add(rm)
-        except ValueError:
-            pass
+    for menu_id in unique_ids:
+        rm = SysRoleMenu(role_id=id, menu_id=menu_id)
+        db.session.add(rm)
     
     db.session.commit()
     flash('权限配置已保存', 'success')
