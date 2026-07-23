@@ -32,6 +32,7 @@
                 <div class="tree-item">
                     <div class="d-flex align-items-center py-3 border-bottom">
                         <input type="checkbox" class="form-check-input me-3 checkbox-all"
+                               name="menu_ids"
                                value="{{ menu.id }}" {% if menu.id in checked_ids %}checked{% endif %}
                                data-parent-id="0">
                         <div>
@@ -52,6 +53,7 @@
                         <div class="tree-item">
                             <div class="d-flex align-items-center py-2 border-bottom">
                                 <input type="checkbox" class="form-check-input me-3 checkbox-item"
+                                       name="menu_ids"
                                        value="{{ child.id }}" {% if child.id in checked_ids %}checked{% endif %}
                                        data-parent-id="{{ menu.id }}">
                                 <div>
@@ -71,8 +73,9 @@
                                 {% for sub in child_children %}
                                 <div class="d-flex align-items-center py-2 border-bottom">
                                     <input type="checkbox" class="form-check-input me-3 checkbox-item"
-                                           value="{{ sub.id }}" {% if sub.id in checked_ids %}checked{% endif %}
-                                           data-parent-id="{{ child.id }}">
+                                       name="menu_ids"
+                                       value="{{ sub.id }}" {% if sub.id in checked_ids %}checked{% endif %}
+                                       data-parent-id="{{ child.id }}">
                                     <div>
                                         <div>
                                             {% if sub.icon %}<i class="bi {{ sub.icon }} me-2"></i>{% endif %}
@@ -107,44 +110,92 @@
 
 {% block extra_js %}
 <script>
-document.getElementById('btnCheckAll').addEventListener('click', function() {
-    document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
-});
+function updateParentState(childCb) {
+    const parentId = childCb.dataset.parentId;
+    const parentCb = document.querySelector('.checkbox-all[value="' + parentId + '"]') || 
+                     document.querySelector('.checkbox-item[value="' + parentId + '"]');
+    if (parentCb) {
+        const siblings = document.querySelectorAll('.checkbox-item[data-parent-id="' + parentId + '"]');
+        const checkedCount = Array.from(siblings).filter(s => s.checked).length;
+        const totalCount = siblings.length;
+        
+        if (checkedCount === 0) {
+            parentCb.checked = false;
+            parentCb.indeterminate = false;
+        } else if (checkedCount === totalCount) {
+            parentCb.checked = true;
+            parentCb.indeterminate = false;
+        } else {
+            parentCb.checked = true;
+            parentCb.indeterminate = true;
+        }
+        
+        updateParentState(parentCb);
+    }
+}
 
-document.getElementById('btnUncheckAll').addEventListener('click', function() {
-    document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-});
-
-document.querySelectorAll('.checkbox-all').forEach(cb => {
-    cb.addEventListener('change', function() {
-        const parentId = this.dataset.parentId;
-        const children = document.querySelectorAll('.checkbox-item[data-parent-id="' + this.value + '"]');
-        children.forEach(child => {
-            child.checked = this.checked;
-            const subChildren = document.querySelectorAll('.checkbox-item[data-parent-id="' + child.value + '"]');
-            subChildren.forEach(sub => sub.checked = this.checked);
-        });
-    });
-});
-
-document.querySelectorAll('.checkbox-item').forEach(cb => {
-    cb.addEventListener('change', function() {
-        const parentId = this.dataset.parentId;
-        const parentCb = document.querySelector('.checkbox-all[value="' + parentId + '"]') || 
-                         document.querySelector('.checkbox-item[value="' + parentId + '"]');
-        if (parentCb) {
-            const siblings = document.querySelectorAll('.checkbox-item[data-parent-id="' + parentId + '"]');
-            const allChecked = Array.from(siblings).every(s => s.checked);
-            parentCb.checked = allChecked;
-            
-            const grandParentId = parentCb.dataset.parentId;
-            const grandParentCb = document.querySelector('.checkbox-all[value="' + grandParentId + '"]') ||
-                                 document.querySelector('.checkbox-item[value="' + grandParentId + '"]');
-            if (grandParentCb) {
-                const allSubChecked = Array.from(document.querySelectorAll('.checkbox-item[data-parent-id="' + grandParentId + '"]')).every(s => s.checked);
-                grandParentCb.checked = allSubChecked;
+function initParentStates() {
+    document.querySelectorAll('.checkbox-all, .checkbox-item').forEach(cb => {
+        if (!cb.classList.contains('checkbox-all') || cb.dataset.parentId !== '0') {
+            const parentId = cb.dataset.parentId;
+            const parentCb = document.querySelector('.checkbox-all[value="' + parentId + '"]') || 
+                             document.querySelector('.checkbox-item[value="' + parentId + '"]');
+            if (parentCb && parentId !== '0') {
+                const siblings = document.querySelectorAll('.checkbox-item[data-parent-id="' + parentId + '"]');
+                const checkedCount = Array.from(siblings).filter(s => s.checked).length;
+                const totalCount = siblings.length;
+                
+                if (checkedCount === 0) {
+                    parentCb.checked = false;
+                    parentCb.indeterminate = false;
+                } else if (checkedCount === totalCount) {
+                    parentCb.checked = true;
+                    parentCb.indeterminate = false;
+                } else {
+                    parentCb.checked = true;
+                    parentCb.indeterminate = true;
+                }
             }
         }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initParentStates();
+    
+    document.getElementById('btnCheckAll').addEventListener('click', function() {
+        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.checked = true;
+            cb.indeterminate = false;
+        });
+    });
+
+    document.getElementById('btnUncheckAll').addEventListener('click', function() {
+        document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+            cb.indeterminate = false;
+        });
+    });
+
+    document.querySelectorAll('.checkbox-all').forEach(cb => {
+        cb.addEventListener('change', function() {
+            const children = document.querySelectorAll('.checkbox-item[data-parent-id="' + this.value + '"]');
+            children.forEach(child => {
+                child.checked = this.checked;
+                child.indeterminate = false;
+                const subChildren = document.querySelectorAll('.checkbox-item[data-parent-id="' + child.value + '"]');
+                subChildren.forEach(sub => {
+                    sub.checked = this.checked;
+                    sub.indeterminate = false;
+                });
+            });
+        });
+    });
+
+    document.querySelectorAll('.checkbox-item').forEach(cb => {
+        cb.addEventListener('change', function() {
+            updateParentState(this);
+        });
     });
 });
 </script>
