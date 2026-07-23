@@ -360,17 +360,18 @@ def init_rbac_data():
     import json as _json
     import os as _os
 
-    # ===== 1. 初始化模块注册表 =====
+    # ===== 1. 初始化模块注册表（与 Project._DEFAULT_MODULES 保持一致）=====
     modules_data = [
         {'key': 'module_approval', 'name': '审批流程', 'is_required': False, 'default_enabled': True, 'sort': 1},
-        {'key': 'module_batch', 'name': '批次管理', 'is_required': False, 'default_enabled': True, 'sort': 2},
+        {'key': 'module_batch', 'name': '批次保质期管理', 'is_required': False, 'default_enabled': False, 'sort': 2},
         {'key': 'module_scrap', 'name': '物资报废', 'is_required': False, 'default_enabled': True, 'sort': 3},
-        {'key': 'module_period_close', 'name': '期末结账', 'is_required': False, 'default_enabled': True, 'sort': 4},
+        {'key': 'module_period_close', 'name': '期末结账', 'is_required': False, 'default_enabled': False, 'sort': 4},
         {'key': 'module_turnover', 'name': '周转材管理', 'is_required': False, 'default_enabled': False, 'sort': 5},
-        {'key': 'module_equipment', 'name': '设备管理', 'is_required': False, 'default_enabled': False, 'sort': 6},
-        {'key': 'module_industry_tools', 'name': '行业工具', 'is_required': False, 'default_enabled': False, 'sort': 7},
+        {'key': 'module_equipment', 'name': '设备管理', 'is_required': False, 'default_enabled': True, 'sort': 6},
+        {'key': 'module_industry_tools', 'name': '行业工具', 'is_required': False, 'default_enabled': True, 'sort': 7},
         {'key': 'module_subcontract', 'name': '分包扣款', 'is_required': False, 'default_enabled': False, 'sort': 8},
-        {'key': 'module_ai', 'name': 'AI功能', 'is_required': False, 'default_enabled': False, 'sort': 9},
+        {'key': 'module_ai', 'name': 'AI助手功能', 'is_required': False, 'default_enabled': False, 'sort': 9},
+        {'key': 'module_quality_check', 'name': '入库质检流程', 'is_required': False, 'default_enabled': False, 'sort': 10},
     ]
     for data in modules_data:
         if not SysModule.query.filter_by(module_key=data['key']).first():
@@ -1216,30 +1217,26 @@ def create_app(config_class=Config):
         except Exception:
             pass
 
-        # 检查项目模块开关
+        # 检查项目模块开关（使用数据库module_key）
         try:
             if current_user.is_authenticated:
                 project_id = session.get('current_project_id')
-                if project_id:
-                    project = Project.query.get(project_id)
-                    if project:
-                        # 遍历菜单配置查找当前端点对应的模块
-                        module_to_check = None
-                        for group in _menu_config.get('groups', []):
-                            # 检查分组级别的module
-                            group_module = group.get('module')
-                            for item in group.get('items', []):
-                                if item.get('endpoint') == endpoint or (
-                                    item.get('active') and item.get('active', '').endswith('.') and
-                                    endpoint.startswith(item['active'][:-1])
-                                ):
-                                    # 优先使用菜单项的module，否则使用分组的module
-                                    item_module = item.get('module')
-                                    module_to_check = item_module if item_module else group_module
-                                    break
-                            if module_to_check:
-                                break
-                        if module_to_check and not project.is_module_enabled(module_to_check):
+                # 从数据库查询当前端点对应的菜单及其模块标识
+                menu = SysMenu.query.filter_by(menu_code=endpoint, menu_type='menu').first()
+                if menu and menu.module_key:
+                    module_to_check = menu.module_key
+
+                    # 系统级模块开关检查
+                    from app.models import SysModule
+                    sys_module = SysModule.query.filter_by(module_key=module_to_check).first()
+                    if sys_module and not sys_module.status:
+                        flash('该功能模块已被系统关闭', 'warning')
+                        return redirect(url_for('main.index'))
+
+                    # 项目级模块开关检查
+                    if project_id:
+                        project = Project.query.get(project_id)
+                        if project and not project.is_module_enabled(module_to_check):
                             flash('该功能模块未在当前项目中启用', 'warning')
                             return redirect(url_for('main.index'))
         except Exception:

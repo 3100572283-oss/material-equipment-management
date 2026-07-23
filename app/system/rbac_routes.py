@@ -1254,3 +1254,39 @@ def permission_required(permission):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+
+
+# ============== 模块管理 ==============
+
+@bp.route('/modules')
+@login_required
+@admin_required
+def modules():
+    """系统级模块管理页面"""
+    from app.models import SysModule
+    modules = SysModule.query.order_by(SysModule.sort).all()
+    return render_template('system/modules.html', modules=modules)
+
+
+@bp.route('/modules/save', methods=['POST'])
+@login_required
+@admin_required
+@log_audit(module='system', operation='保存模块配置')
+def save_modules():
+    """保存系统级模块开关配置"""
+    from app.models import SysModule
+
+    modules = SysModule.query.order_by(SysModule.sort).all()
+    for module in modules:
+        # 必需模块不可关闭
+        if module.is_required:
+            module.status = True
+            continue
+
+        field_name = f'module_{module.module_key}'
+        enabled = request.form.get(field_name, 'off') == 'on'
+        module.status = enabled
+
+    db.session.commit()
+    flash('模块配置已保存', 'success')
+    return redirect(url_for('system.modules'))
