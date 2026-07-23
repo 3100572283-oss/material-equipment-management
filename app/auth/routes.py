@@ -86,6 +86,12 @@ def login():
             user.last_login_ip = request.remote_addr
             user.failed_login_count = 0
             user.locked_until = None
+            # 用户所属部门为项目部且未设置主项目时，自动关联部门对应项目
+            if not user.project_id and user.dept_id:
+                from app.models import SysDept
+                dept = SysDept.query.get(user.dept_id)
+                if dept and dept.dept_type == 'project' and dept.project_id:
+                    user.project_id = dept.project_id
             log_id = _record_login_log(user, 'success')
             flask_session['login_log_id'] = log_id
             db.session.commit()

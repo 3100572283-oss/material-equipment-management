@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ '编辑' if work_number else (is_division ? '新增分部' : '新增分项') }}工号 - 物资设备管理系统{% endblock %}
+{% block title %}{{ '编辑' if work_number else ('新增分部' if is_division else '新增分项') }}工号 - 物资设备管理系统{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
         <div class="card shadow-sm">
             <div class="card-header bg-white">
-                <h5 class="mb-0">{{ '编辑' if work_number else (is_division ? '新增分部工程' : '新增分项工程') }}</h5>
+                <h5 class="mb-0">{{ '编辑' if work_number else ('新增分部工程' if is_division else '新增分项工程') }}</h5>
             </div>
             <div class="card-body">
                 <form method="POST">

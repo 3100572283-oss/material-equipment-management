@@ -49,7 +49,9 @@ class User(UserMixin, db.Model):
     def is_editor(self):
         if self.role_obj:
             editable_codes = ('super_admin', 'material_admin', 'material_manager',
-                              'finance_user', 'finance', 'admin', 'editor')
+                              'finance_user', 'finance', 'admin', 'editor',
+                              'ROLE001', 'ROLE002', 'ROLE006', 'ROLE007',
+                              'material_staff', 'project_admin')
             if self.role_obj.role_code in editable_codes:
                 return True
         return self.role in ('admin', 'editor')
@@ -60,7 +62,9 @@ class User(UserMixin, db.Model):
     def can_edit(self):
         if self.role_obj:
             editable_codes = ('super_admin', 'material_admin', 'material_manager',
-                             'finance_user', 'finance', 'admin', 'editor', 'material_staff')
+                             'finance_user', 'finance', 'admin', 'editor', 'material_staff',
+                             'ROLE001', 'ROLE002', 'ROLE006', 'ROLE007',
+                             'project_admin')
             return self.role_obj.role_code in editable_codes
         return self.role in ('admin', 'editor')
 

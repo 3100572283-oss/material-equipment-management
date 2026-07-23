@@ -182,6 +182,13 @@ def init_db_schema():
     _add_column_if_missing('users', 'last_login_ip', 'VARCHAR(64)')
     _add_column_if_missing('users', 'project_id', 'INTEGER')
 
+    # 工号/产值相关字段
+    _add_column_if_missing('work_numbers', 'parent_id', 'INTEGER')
+    _add_column_if_missing('work_numbers', 'remark', 'VARCHAR(512)')
+
+    # 物资报废相关字段
+    _add_column_if_missing('material_scrap', 'status', "VARCHAR(16) DEFAULT 'draft'")
+
     # 增强阶段三：DataChangeLog 新字段
     _add_column_if_missing('data_change_log', 'module', 'VARCHAR(64)')
     _add_column_if_missing('data_change_log', 'operation', 'VARCHAR(32)')
