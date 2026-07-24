@@ -1332,49 +1332,45 @@ def create_app(config_class=Config):
             pass
 
         # ===== 功能权限拦截（统一权限中心） =====
+        from werkzeug.exceptions import HTTPException
         try:
             if current_user.is_authenticated and not current_user.is_admin():
                 # 查找当前端点对应的菜单（按menu_code匹配）
                 menu = SysMenu.query.filter_by(menu_code=endpoint, menu_type='menu').first()
                 if menu and menu.permission:
-                    import sys as _sys
-                    print(f"[PERM-CHECK] endpoint={endpoint} menu_id={menu.id} perm={menu.permission} method={request.method}", file=_sys.stderr, flush=True)
-                    # 解析权限标识，例如 stock:in:view → 模块.功能:view
+                    # 解析权限标识
                     perm = menu.permission
                     # 检查方法类型
                     if request.method != 'GET':
-                        # 非GET方法需要额外权限（如 create/edit/delete/approve）
                         op_map = {
                             'POST': 'create', 'PUT': 'edit', 'PATCH': 'edit',
                             'DELETE': 'delete',
                         }
                         required_op = op_map.get(request.method)
                         if required_op:
-                            # 把 permission 末端的 view 替换为对应操作
                             perm_base = perm.rsplit(':', 1)[0] if ':' in perm else perm
                             check_perm = f"{perm_base}:{required_op}"
-                            print(f"[PERM-CHECK] non-GET required_op={required_op} check_perm={check_perm}", file=_sys.stderr, flush=True)
                             if not current_user.has_permission(check_perm):
                                 if request.path.startswith('/api/') or request.is_json:
                                     from flask import jsonify
                                     return jsonify({'code': 403, 'message': f'无权限：{check_perm}'}), 403
+                                from flask import abort
                                 abort(403)
                     else:
                         # GET方法需要view权限
-                        print(f"[PERM-CHECK] GET check_perm={perm}", file=_sys.stderr, flush=True)
                         if not current_user.has_permission(perm):
                             if request.path.startswith('/api/') or request.is_json:
                                 from flask import jsonify
                                 return jsonify({'code': 403, 'message': f'无权限：{perm}'}), 403
+                            from flask import abort
                             abort(403)
-                else:
-                    import sys as _sys
-                    print(f"[PERM-CHECK] endpoint={endpoint} menu not found or no permission", file=_sys.stderr, flush=True)
-        except Exception as e:
+        except HTTPException:
+            # 重新抛出HTTP异常(abort触发)
+            raise
+        except Exception:
+            # 其他异常静默失败，不影响正常访问
             import sys as _sys, traceback as _tb
-            print(f"[PERM-CHECK-ERR] {e}", file=_sys.stderr, flush=True)
             _tb.print_exc(file=_sys.stderr)
-            # 静默失败，不影响正常访问
             pass
 
     # 错误日志自动捕获
@@ -1385,9 +1381,15 @@ def create_app(config_class=Config):
         from datetime import datetime
         from flask import request, current_app
         from flask_login import current_user
+        from werkzeug.exceptions import HTTPException
         from app.models import ErrorLog
         from app import db as _db
         import json
+
+        # HTTPException 透传给 Flask 自身的错误处理（403/404/500等）
+        if isinstance(e, HTTPException):
+            # 重新抛出让 Flask 渲染对应的 403/404 页面
+            raise e
 
         try:
             err = ErrorLog(
