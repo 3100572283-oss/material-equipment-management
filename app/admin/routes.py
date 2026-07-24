@@ -302,18 +302,24 @@ def reset_password(id):
     return render_template('admin/reset_password.html', user=user, default_password=default_pwd)
 
 
-@bp.route('/users/<int:id>/delete', methods=['POST'])
+@bp.route('/users/<int:id>/toggle_status', methods=['POST'])
 @login_required
 @admin_required
-@log_audit(module='admin', operation='删除用户')
-def delete_user(id):
+@log_audit(module='admin', operation='切换用户状态')
+def toggle_user_status(id):
     user = User.query.get_or_404(id)
     if user.id == current_user.id:
-        flash('不能删除当前登录用户', 'error')
+        flash('不能停用当前登录用户', 'error')
         return redirect(url_for('admin.users'))
-    db.session.delete(user)
+    
+    if user.status == 'active':
+        user.status = 'inactive'
+        flash(f'用户 {user.username} 已停用', 'success')
+    else:
+        user.status = 'active'
+        flash(f'用户 {user.username} 已启用', 'success')
+    
     db.session.commit()
-    flash('用户已删除', 'success')
     return redirect(url_for('admin.users'))
 
 

@@ -202,11 +202,12 @@
                                     <div class="mt-2 text-muted small">
                                         {% if node.approve_type == 'role' %}
                                         <i class="bi bi-people me-1"></i>审批方式：按角色
-                                        {% set roles = (node.approve_role or '').split(',') %}
-                                        {% set role_names = {'admin': '管理员', 'editor': '录入员', 'viewer': '查看员'} %}
-                                        {% for r in roles %}
-                                            {% if r.strip() %}
-                                            <span class="badge bg-light text-dark border ms-1">{{ role_names.get(r.strip(), r.strip()) }}</span>
+                                        {% set node_role_codes = (node.approve_role or '').split(',') %}
+                                        {% set node_role_code_list = [] %}
+                                        {% for r in node_role_codes %}{% if r.strip() %}{% set _ = node_role_code_list.append(r.strip()) %}{% endif %}{% endfor %}
+                                        {% for role in roles %}
+                                            {% if role.role_code in node_role_code_list %}
+                                            <span class="badge bg-light text-dark border ms-1">{{ role.role_name }}</span>
                                             {% endif %}
                                         {% endfor %}
                                         {% else %}

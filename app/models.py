@@ -34,6 +34,7 @@ class User(UserMixin, db.Model):
     locked_until = db.Column(db.DateTime, nullable=True)
     last_login_ip = db.Column(db.String(64), nullable=True)
     must_change_password = db.Column(db.Boolean, default=False)
+    status = db.Column(db.String(16), default='active')  # active 启用 / inactive 停用
 
     dept = db.relationship('SysDept', backref=db.backref('users', lazy='dynamic'))
     role_obj = db.relationship('SysRole', backref=db.backref('users', lazy='dynamic'))
@@ -1265,24 +1266,36 @@ class ApprovalNode(db.Model):
             return False
         if self.approve_type == 'user':
             return user.id == self.approve_user_id
-        else:  # role
+        else:  # role - 按角色编码匹配（兼容role_code和旧role字段）
             roles = [r.strip() for r in (self.approve_role or '').split(',') if r.strip()]
-            return user.role in roles
+            if not roles:
+                return False
+            user_role_code = user.get_role_code()
+            if user_role_code in roles:
+                return True
+            if user.role in roles:
+                return True
+            return False
 
     def get_all_approvers(self):
         """获取所有审批人用户对象列表"""
-        from app.models import User
+        from app.models import User, SysRole
         approvers = []
         if self.approve_type == 'user':
             if self.approve_user_id:
-                user = User.query.get(self.approve_user_id)
+                user = db.session.get(User, self.approve_user_id)
                 if user:
                     approvers.append(user)
         else:
             roles = [r.strip() for r in (self.approve_role or '').split(',') if r.strip()]
             if roles:
-                users = User.query.filter(User.role.in_(roles)).all()
-                approvers = users
+                role_ids = [r.id for r in SysRole.query.filter(SysRole.role_code.in_(roles)).all()]
+                if role_ids:
+                    users = User.query.filter(User.role_id.in_(role_ids), User.status == 'active').all()
+                    approvers.extend(users)
+                # 兼容旧数据：role字段匹配
+                old_role_users = User.query.filter(User.role.in_(roles), User.status == 'active').all()
+                approvers.extend(old_role_users)
         return list(set(approvers))
 
 

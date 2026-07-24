@@ -11,7 +11,7 @@ from app.approval.service import (
 )
 from app.decorators import admin_required, log_audit
 from app.models import (ApprovalFlow, ApprovalNode, ApprovalBranch,
-                        ApprovalInstance, ApprovalRecord, User, Project)
+                        ApprovalInstance, ApprovalRecord, User, Project, SysRole)
 from app import db
 import json
 
@@ -189,10 +189,11 @@ def nodes(id):
     """节点配置页"""
     flow = ApprovalFlow.query.get_or_404(id)
     nodes_list = flow.nodes.order_by(ApprovalNode.node_order).all()
-    users = User.query.order_by(User.username).all()
+    users = User.query.filter_by(status='active').order_by(User.username).all()
+    roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
     return render_template('approval/nodes.html',
                            flow=flow, nodes=nodes_list, users=users,
-                           biz_names=BIZ_NAMES)
+                           roles=roles, biz_names=BIZ_NAMES)
 
 
 @bp.route('/admin/flows/<int:id>/nodes/create', methods=['POST'])
@@ -352,10 +353,11 @@ def move_node(id):
 def branches(id):
     """分支管理页"""
     flow = ApprovalFlow.query.get_or_404(id)
-    users = User.query.order_by(User.username).all()
+    users = User.query.filter_by(status='active').order_by(User.username).all()
+    roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
     branch_list = flow.branches.order_by(ApprovalBranch.priority).all()
     return render_template('approval/branches.html',
-                           flow=flow, users=users,
+                           flow=flow, users=users, roles=roles,
                            branch_list=branch_list,
                            biz_names=BIZ_NAMES)
 
@@ -810,6 +812,7 @@ def detail(instance_id):
 
     biz_obj = service.get_biz_obj(instance.biz_type, instance.biz_id)
 
+    roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
     return render_template('approval/detail.html',
                            instance=instance,
                            branch_name=branch_name,
@@ -823,7 +826,8 @@ def detail(instance_id):
                            biz_name=BIZ_NAMES.get(instance.biz_type, instance.biz_type),
                            biz_obj=biz_obj,
                            biz_names=BIZ_NAMES,
-                           status_map=STATUS_MAP)
+                           status_map=STATUS_MAP,
+                           roles=roles)
 
 
 @bp.route('/submit/<biz_type>/<int:biz_id>', methods=['POST'])

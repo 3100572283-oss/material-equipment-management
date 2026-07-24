@@ -81,6 +81,11 @@ def login():
             flash(f'账号已被锁定，请 {remaining} 分钟后再试。', 'danger')
             return render_template('auth/login.html')
 
+        if user and user.status == 'inactive':
+            _record_login_log(user, 'failed', fail_reason='账号已停用')
+            flash('账号已停用，请联系管理员。', 'danger')
+            return render_template('auth/login.html')
+
         if user and check_password_hash(user.password_hash, password):
             login_user(user, remember=remember)
             user.last_login_at = datetime.now()

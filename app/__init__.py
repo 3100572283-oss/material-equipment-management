@@ -240,6 +240,7 @@ def init_db_schema():
     _add_column_if_missing('users', 'locked_until', 'DATETIME')
     _add_column_if_missing('users', 'last_login_ip', 'VARCHAR(64)')
     _add_column_if_missing('users', 'project_id', 'INTEGER')
+    _add_column_if_missing('users', 'status', "VARCHAR(16) DEFAULT 'active'")
 
     # 工号/产值相关字段
     _add_column_if_missing('work_numbers', 'parent_id', 'INTEGER')

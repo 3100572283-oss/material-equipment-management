@@ -44,22 +44,18 @@
                             </div>
                         </div>
                     </div>
-                    <!-- 按角色：多选复选框 -->
+                    <!-- 按角色：多选复选框（动态渲染） -->
                     <div class="mb-3" id="roleSection">
                         <label class="form-label">审批角色 <span class="text-danger">*</span></label>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="approve_role" value="admin" id="roleAdmin">
-                            <label class="form-check-label" for="roleAdmin">管理员</label>
+                        <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e5e6eb; border-radius: 6px; padding: 10px;">
+                            {% for role in roles %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="approve_role" value="{{ role.role_code }}" id="role_{{ role.id }}">
+                                <label class="form-check-label" for="role_{{ role.id }}">{{ role.role_name }}（{{ role.role_code }}）</label>
+                            </div>
+                            {% endfor %}
                         </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="approve_role" value="editor" id="roleEditor">
-                            <label class="form-check-label" for="roleEditor">录入员</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="approve_role" value="viewer" id="roleViewer">
-                            <label class="form-check-label" for="roleViewer">查看员</label>
-                        </div>
-                        <div class="form-text">勾选的角色均可审批此节点</div>
+                        <div class="form-text">勾选的角色均可审批此节点，支持多选</div>
                     </div>
                     <!-- 指定人员：下拉选择 -->
                     <div class="mb-3" id="userSection" style="display:none;">

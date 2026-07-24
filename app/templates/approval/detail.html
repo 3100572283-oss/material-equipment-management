@@ -173,11 +173,16 @@
                     <div class="text-muted small mt-1">
                         {% if item.node.approve_type == 'role' %}
                         <i class="bi bi-people me-1"></i>待审批角色：
-                        {% set roles = (item.node.approve_role or '').split(',') %}
-                        {% set role_names = {'admin': '管理员', 'editor': '录入员', 'viewer': '查看员'} %}
-                        {% for r in roles %}
-                            {% if r.strip() %}{{ role_names.get(r.strip(), r.strip()) }}{% if not loop.last %}、{% endif %}{% endif %}
+                        {% set node_role_codes = (item.node.approve_role or '').split(',') %}
+                        {% set node_role_code_list = [] %}
+                        {% for r in node_role_codes %}{% if r.strip() %}{% set _ = node_role_code_list.append(r.strip()) %}{% endif %}{% endfor %}
+                        {% set display_names = [] %}
+                        {% for role in roles %}
+                            {% if role.role_code in node_role_code_list %}
+                                {% set _ = display_names.append(role.role_name) %}
+                            {% endif %}
                         {% endfor %}
+                        {{ display_names|join('、') if display_names else item.node.approve_role }}
                         {% else %}
                         <i class="bi bi-person me-1"></i>待审批人：{{ item.node.approver_user.name or item.node.approver_user.username if item.node.approver_user else '未设置' }}
                         {% endif %}
@@ -186,11 +191,16 @@
                     <div class="text-muted small mt-1">
                         {% if item.node.approve_type == 'role' %}
                         <i class="bi bi-people me-1"></i>审批角色：
-                        {% set roles = (item.node.approve_role or '').split(',') %}
-                        {% set role_names = {'admin': '管理员', 'editor': '录入员', 'viewer': '查看员'} %}
-                        {% for r in roles %}
-                            {% if r.strip() %}{{ role_names.get(r.strip(), r.strip()) }}{% if not loop.last %}、{% endif %}{% endif %}
+                        {% set node_role_codes = (item.node.approve_role or '').split(',') %}
+                        {% set node_role_code_list = [] %}
+                        {% for r in node_role_codes %}{% if r.strip() %}{% set _ = node_role_code_list.append(r.strip()) %}{% endif %}{% endfor %}
+                        {% set display_names = [] %}
+                        {% for role in roles %}
+                            {% if role.role_code in node_role_code_list %}
+                                {% set _ = display_names.append(role.role_name) %}
+                            {% endif %}
                         {% endfor %}
+                        {{ display_names|join('、') if display_names else item.node.approve_role }}
                         {% else %}
                         <i class="bi bi-person me-1"></i>审批人：{{ item.node.approver_user.name or item.node.approver_user.username if item.node.approver_user else '未设置' }}
                         {% endif %}
