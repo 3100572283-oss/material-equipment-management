@@ -5,7 +5,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from flask import session as flask_session
 from app.auth import bp
 from app import db
-from app.models import User, LoginLog, SysMenu, SysRoleMenu, SysRole, SysDept, Project
+from app.models import User, LoginLog, SysMenu, SysRoleMenu, SysRole, SysDept, Project, SysModule
 from app.utils import log_operation
 from app.decorators import log_audit
 import uuid
@@ -187,6 +187,7 @@ def api_user_permissions():
         permissions: [],    // 所有按钮权限标识数组
         dataScope: {},      // 数据权限配置
         projects: []        // 可见项目列表
+        modules: {}         // 模块启用状态
     }
     """
     user = current_user
@@ -194,8 +195,15 @@ def api_user_permissions():
         'menus': [],
         'permissions': [],
         'dataScope': {},
-        'projects': []
+        'projects': [],
+        'modules': {}
     }
+
+    # 获取启用的模块列表（系统级）
+    enabled_modules = {}
+    for m in SysModule.query.all():
+        enabled_modules[m.module_key] = bool(m.status)
+    result['modules'] = enabled_modules
 
     # 1. 获取数据权限配置
     role = user.role_obj
@@ -206,11 +214,13 @@ def api_user_permissions():
             'roleCode': role.role_code
         }
 
-    # 2. 获取用户所有按钮权限标识
+    # 2. 获取用户所有按钮权限标识（过滤已关闭模块）
     if user.is_admin():
         all_menus = SysMenu.query.filter_by(menu_type='menu').all()
         for menu in all_menus:
             if menu.permission:
+                if menu.module_key and not enabled_modules.get(menu.module_key, False):
+                    continue
                 base_perm = menu.permission.rsplit(':', 1)[0]
                 for op in ['view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print']:
                     result['permissions'].append(f"{base_perm}:{op}")
@@ -219,6 +229,8 @@ def api_user_permissions():
         for rm in role_menus:
             menu = SysMenu.query.get(rm.menu_id)
             if menu and menu.permission:
+                if menu.module_key and not enabled_modules.get(menu.module_key, False):
+                    continue
                 base_perm = menu.permission.rsplit(':', 1)[0]
                 result['permissions'].append(f"{base_perm}:{rm.operation}")
 
@@ -232,11 +244,14 @@ def api_user_permissions():
             'status': p.status
         })
 
-    # 4. 获取有权限的菜单树（仅包含有view权限的菜单）
+    # 4. 获取有权限的菜单树（过滤已关闭模块）
     def build_menu_tree(parent_id=0):
         children = []
         menus = SysMenu.query.filter_by(parent_id=parent_id, status=True).order_by(SysMenu.sort).all()
         for menu in menus:
+            if menu.module_key and not enabled_modules.get(menu.module_key, False):
+                continue
+
             has_view = False
             if user.is_admin():
                 has_view = True
