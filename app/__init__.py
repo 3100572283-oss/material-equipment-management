@@ -1331,6 +1331,42 @@ def create_app(config_class=Config):
         except Exception:
             pass
 
+        # ===== 功能权限拦截（统一权限中心） =====
+        try:
+            if current_user.is_authenticated and not current_user.is_admin():
+                # 查找当前端点对应的菜单（按menu_code匹配）
+                menu = SysMenu.query.filter_by(menu_code=endpoint, menu_type='menu').first()
+                if menu and menu.permission:
+                    # 解析权限标识，例如 stock:in:view → 模块.功能:view
+                    perm = menu.permission
+                    # 检查方法类型
+                    if request.method != 'GET':
+                        # 非GET方法需要额外权限（如 create/edit/delete/approve）
+                        op_map = {
+                            'POST': 'create', 'PUT': 'edit', 'PATCH': 'edit',
+                            'DELETE': 'delete',
+                        }
+                        required_op = op_map.get(request.method)
+                        if required_op:
+                            # 把 permission 末端的 view 替换为对应操作
+                            perm_base = perm.rsplit(':', 1)[0] if ':' in perm else perm
+                            check_perm = f"{perm_base}:{required_op}"
+                            if not current_user.has_permission(check_perm):
+                                if request.path.startswith('/api/') or request.is_json:
+                                    from flask import jsonify
+                                    return jsonify({'code': 403, 'message': f'无权限：{check_perm}'}), 403
+                                abort(403)
+                    else:
+                        # GET方法需要view权限
+                        if not current_user.has_permission(perm):
+                            if request.path.startswith('/api/') or request.is_json:
+                                from flask import jsonify
+                                return jsonify({'code': 403, 'message': f'无权限：{perm}'}), 403
+                            abort(403)
+        except Exception as e:
+            # 静默失败，不影响正常访问
+            pass
+
     # 错误日志自动捕获
     @app.errorhandler(Exception)
     def handle_exception(e):
