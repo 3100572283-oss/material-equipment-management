@@ -1,6 +1,21 @@
 {% extends "base.html" %}
 {% block title %}首页 - 物资设备管理系统{% endblock %}
 {% block content %}
+<style>
+/* 首页统计卡片图标统一为正圆形 */
+.card-body.d-flex.align-items-center > .rounded-circle {
+    width: 48px !important;
+    height: 48px !important;
+    min-width: 48px;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.card-body.d-flex.align-items-center > .rounded-circle > i {
+    font-size: 1.4rem;
+}
+</style>
 <div class="container-fluid">
     {% if is_all_projects_mode %}
     <div class="alert alert-warning py-2 mb-3">

@@ -1,4 +1,4 @@
-"""外部消息推送服务"""
+"""消息推送服务（站内消息 + 外部渠道）"""
 import json
 import hmac
 import hashlib
@@ -10,9 +10,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
-from flask import current_app
+from flask import current_app, url_for
 from app import db
-from app.models import NotificationLog
+from app.models import NotificationLog, Message
 from app.utils import get_config
 
 
@@ -195,6 +195,187 @@ def notify_approval_result(applicant_name, biz_type, biz_no, result, remark=''):
     if remark:
         content += f'\n\n**审批意见**: {remark}'
     push_notification(title, content)
+
+
+# ============ 站内消息（消息中心） ============
+
+# 消息类型常量
+MSG_TYPE_APPROVAL = 'approval'   # 审批通知
+MSG_TYPE_SYSTEM = 'system'        # 系统通知
+MSG_TYPE_WARNING = 'warning'      # 预警通知
+
+
+def send_message(user_id, msg_type, title, content, biz_type=None, biz_id=None, url=None):
+    """统一站内消息发送方法
+
+    所有业务场景统一调用此方法，不重复写代码。
+    :param user_id: 接收人ID
+    :param msg_type: 消息类型（approval/system/warning）
+    :param title: 标题
+    :param content: 内容
+    :param biz_type: 业务类型（requisition/contract/payment/stock_in/reconciliation 等）
+    :param biz_id: 业务单据ID
+    :param url: 跳转路径
+    :return: Message 实例
+    """
+    msg = Message(
+        user_id=user_id,
+        msg_type=msg_type,
+        title=title[:128],
+        content=content,
+        biz_type=biz_type,
+        biz_id=biz_id,
+        url=url,
+        is_read=False
+    )
+    db.session.add(msg)
+    db.session.commit()
+    return msg
+
+
+def send_approval_message(instance, event_type, actor=None, opinion=''):
+    """审批流程自动触发站内消息
+
+    在审批流转的四个关键节点自动发消息：
+    1. submit  - 提交审批 → 给首节点审批人发"待审批"消息
+    2. approve  - 节点通过 → 给下一节点审批人发"待审批"消息
+    3. reject   - 审批驳回 → 给提交人发"已驳回"消息
+    4. complete - 全部通过 → 给提交人发"已通过"消息
+
+    支持或签/会签：所有审批人都收到消息。
+
+    :param instance: ApprovalInstance 实例
+    :param event_type: submit/approve/reject/complete
+    :param actor: 触发用户对象
+    :param opinion: 审批意见
+    """
+    biz_name_map = {
+        'requisition': '采购申请',
+        'contract': '合同',
+        'payment': '付款申请',
+        'stock_in': '入库单',
+        'reconciliation': '对账单',
+        'stock_check': '盘点单',
+        'material_transfer': '调拨单',
+        'scrap': '报废单',
+    }
+    biz_name = biz_name_map.get(instance.biz_type, instance.biz_type)
+    biz_title = instance.biz_title or f'{biz_name}审批'
+    biz_no = ''
+    biz_obj = None
+    try:
+        from app.approval.service import get_biz_obj
+        biz_obj = get_biz_obj(instance.biz_type, instance.biz_id)
+        if biz_obj:
+            biz_no = getattr(biz_obj, 'code', '') or getattr(biz_obj, 'req_code', '') or ''
+    except Exception:
+        pass
+
+    # 审批详情页URL
+    detail_url = f'/approval/detail/{instance.id}?from=msg_center'
+
+    actor_name = ''
+    if actor:
+        actor_name = actor.name or actor.username
+
+    if event_type == 'submit':
+        # 提交审批：给首节点所有审批人发消息
+        approvers = _get_node_approvers(instance.current_node) if instance.current_node else []
+        title = f'待审批：{biz_title}'
+        content = f'{biz_name}「{biz_no or biz_title}」已提交审批，请尽快处理。'
+        for approver in approvers:
+            if approver.id != instance.applicant_id:  # 不给自己发
+                send_message(
+                    user_id=approver.id,
+                    msg_type=MSG_TYPE_APPROVAL,
+                    title=title,
+                    content=content,
+                    biz_type=instance.biz_type,
+                    biz_id=instance.biz_id,
+                    url=detail_url
+                )
+
+    elif event_type == 'approve':
+        # 节点通过：给下一节点审批人发消息
+        if instance.current_node and instance.status in ('pending', 'approving'):
+            approvers = _get_node_approvers(instance.current_node)
+            title = f'待审批：{biz_title}'
+            content = f'{biz_name}「{biz_no or biz_title}」已流转到您，请尽快处理。'
+            for approver in approvers:
+                if approver.id != (actor.id if actor else None):
+                    send_message(
+                        user_id=approver.id,
+                        msg_type=MSG_TYPE_APPROVAL,
+                        title=title,
+                        content=content,
+                        biz_type=instance.biz_type,
+                        biz_id=instance.biz_id,
+                        url=detail_url
+                    )
+
+    elif event_type == 'reject':
+        # 审批驳回：给提交人发消息
+        title = f'审批驳回：{biz_title}'
+        content = f'您提交的{biz_name}「{biz_no or biz_title}」已被驳回。'
+        if opinion:
+            content += f'\n驳回原因：{opinion}'
+        if actor:
+            content += f'\n审批人：{actor_name}'
+        send_message(
+            user_id=instance.applicant_id,
+            msg_type=MSG_TYPE_APPROVAL,
+            title=title,
+            content=content,
+            biz_type=instance.biz_type,
+            biz_id=instance.biz_id,
+            url=detail_url
+        )
+
+    elif event_type == 'complete':
+        # 全部通过：给提交人发消息
+        title = f'审批通过：{biz_title}'
+        content = f'您提交的{biz_name}「{biz_no or biz_title}」已全部审批通过。'
+        if actor:
+            content += f'\n最后审批人：{actor_name}'
+        send_message(
+            user_id=instance.applicant_id,
+            msg_type=MSG_TYPE_APPROVAL,
+            title=title,
+            content=content,
+            biz_type=instance.biz_type,
+            biz_id=instance.biz_id,
+            url=detail_url
+        )
+
+
+def _get_node_approvers(node):
+    """获取审批节点的所有审批人列表
+
+    支持角色审批和指定用户审批，返回 User 列表
+    """
+    from app.models import User, SysRole
+    if not node:
+        return []
+    approvers = []
+    if node.approve_type == 'role':
+        role_codes = [c.strip() for c in (node.approve_role or '').split(',') if c.strip()]
+        if role_codes:
+            users = User.query.filter(
+                User.status == 'active',
+                User.role.in_(role_codes)
+            ).distinct().all()
+            approvers.extend(users)
+    elif node.approve_type == 'user' and node.approver_user_id:
+        user = User.query.get(node.approver_user_id)
+        if user and user.status == 'active':
+            approvers.append(user)
+    else:
+        # 默认取指定审批人
+        if node.approver_user_id:
+            user = User.query.get(node.approver_user_id)
+            if user and user.status == 'active':
+                approvers.append(user)
+    return approvers
 
 
 def notify_daily_warnings():

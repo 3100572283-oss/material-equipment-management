@@ -222,6 +222,7 @@ def init_db_schema():
     _add_column_if_missing('reconciliation_items', 'amount_with_tax', 'NUMERIC(18,2) DEFAULT 0')
     _add_column_if_missing('reconciliation_items', 'calc_detail', 'TEXT')
     _add_column_if_missing('reconciliation_items', 'capital_fee_days', 'INTEGER')
+    _add_column_if_missing('sys_message', 'read_at', 'DATETIME')
 
     # 增强阶段一：付款申请
     _add_column_if_missing('payments', 'source_application_id', 'INTEGER')
@@ -1016,6 +1017,9 @@ def create_app(config_class=Config):
 
     from app.org_sync import bp as org_sync_bp
     app.register_blueprint(org_sync_bp, url_prefix='/org_sync')
+
+    from app.message import bp as message_bp
+    app.register_blueprint(message_bp, url_prefix='/message')
 
     @app.context_processor
     def inject_projects():

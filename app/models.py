@@ -1894,18 +1894,19 @@ class NotificationLog(db.Model):
 
 
 class Message(db.Model):
-    """站内消息（移动端消息中心）"""
+    """站内消息（移动端消息中心 + 桌面端消息铃铛）"""
     __tablename__ = 'sys_message'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     title = db.Column(db.String(128), nullable=False)
     content = db.Column(db.Text, nullable=True)
-    msg_type = db.Column(db.String(16), default='info')  # info/approval/stock/notice
+    msg_type = db.Column(db.String(16), default='info')  # info/approval/system/warning
     biz_type = db.Column(db.String(32), nullable=True)  # stockin/stockout/contract/payment/requisition
     biz_id = db.Column(db.Integer, nullable=True)
     url = db.Column(db.String(256), nullable=True)
     is_read = db.Column(db.Boolean, default=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
+    read_at = db.Column(db.DateTime, nullable=True)
 
     user = db.relationship('User', backref=db.backref('messages', cascade='all, delete-orphan'))
 

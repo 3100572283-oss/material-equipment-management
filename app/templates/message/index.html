@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}消息中心 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-bell me-2"></i>消息中心</h5>
+        <div>
+            <button class="btn btn-sm btn-outline-primary" id="markAllReadBtn">
+                <i class="bi bi-check2-all me-1"></i>全部标记已读
+            </button>
+            <button onclick="goBack('{{ url_for('main.index') }}', 'dashboard')" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>返回
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Tab 分类 -->
+        <ul class="nav nav-tabs mb-3" id="msgTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" data-type="" type="button">
+                    全部 <span class="badge bg-secondary ms-1" id="count-all">0</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-type="approval" type="button">
+                    审批通知 <span class="badge bg-primary ms-1" id="count-approval">0</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-type="system" type="button">
+                    系统通知 <span class="badge bg-info ms-1" id="count-system">0</span>
+                </button>
+            </li>
+        </ul>
+
+        <!-- 消息列表 -->
+        <div id="messageList" class="list-group">
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-inbox d-block mb-2" style="font-size:2.5rem;"></i>
+                <span>加载中...</span>
+            </div>
+        </div>
+
+        <!-- 加载更多 -->
+        <div class="text-center mt-3">
+            <button class="btn btn-outline-primary btn-sm d-none" id="loadMoreBtn">
+                <i class="bi bi-arrow-down-circle me-1"></i>加载更多
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var currentPage = 1;
+    var currentType = '';
+    var totalPages = 1;
+    var msgTypeColors = {
+        'approval': 'primary',
+        'system': 'info',
+        'warning': 'warning',
+        'info': 'secondary'
+    };
+    var msgTypeIcons = {
+        'approval': 'bi-clipboard-check',
+        'system': 'bi-info-circle',
+        'warning': 'bi-exclamation-triangle',
+        'info': 'bi-info-circle'
+    };
+
+    function loadMessages(page, append) {
+        var url = '/message/list?page=' + page;
+        if (currentType) url += '&type=' + currentType;
+        fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+            if (!data.success) return;
+            totalPages = data.pages;
+            currentPage = page;
+            renderMessages(data.messages, append);
+            updateBadges();
+            // 控制加载更多按钮
+            var loadMoreBtn = document.getElementById('loadMoreBtn');
+            if (data.has_next) {
+                loadMoreBtn.classList.remove('d-none');
+            } else {
+                loadMoreBtn.classList.add('d-none');
+            }
+        }).catch(function() {
+            document.getElementById('messageList').innerHTML = '<div class="text-center text-danger py-4">加载失败，请刷新重试</div>';
+        });
+    }
+
+    function renderMessages(messages, append) {
+        var container = document.getElementById('messageList');
+        if (!messages || messages.length === 0) {
+            if (!append) {
+                container.innerHTML = '<div class="text-center text-muted py-5">' +
+                    '<i class="bi bi-inbox d-block mb-2" style="font-size:2.5rem;"></i>' +
+                    '<span>暂无消息</span></div>';
+            }
+            return;
+        }
+        var html = '';
+        messages.forEach(function(m) {
+            var color = msgTypeColors[m.type] || 'secondary';
+            var icon = msgTypeIcons[m.type] || 'bi-bell';
+            var readClass = m.is_read ? '' : 'list-group-item-primary fw-bold';
+            var readDot = m.is_read ? '' : '<span class="badge bg-danger rounded-pill ms-1">未读</span>';
+            var url = m.url || '#';
+            html += '<a href="' + url + '" class="list-group-item list-group-item-action ' + readClass + '" data-id="' + m.id + '" data-read="' + m.is_read + '">' +
+                '<div class="d-flex align-items-start">' +
+                    '<div class="me-3"><i class="bi ' + icon + ' text-' + color + ' fs-5"></i></div>' +
+                    '<div class="flex-grow-1">' +
+                        '<div class="d-flex justify-content-between align-items-start">' +
+                            '<div>' +
+                                '<span class="badge bg-' + color + ' me-1">' + m.type_label + '</span>' +
+                                m.title + readDot +
+                            '</div>' +
+                            '<small class="text-muted">' + m.created_at + '</small>' +
+                        '</div>' +
+                        (m.content ? '<div class="text-muted small mt-1" style="white-space:pre-wrap;">' + escapeHtml(m.content) + '</div>' : '') +
+                    '</div>' +
+                '</div>' +
+            '</a>';
+        });
+        if (append) {
+            container.insertAdjacentHTML('beforeend', html);
+        } else {
+            container.innerHTML = html;
+        }
+        // 点击消息自动标记已读
+        container.querySelectorAll('a[data-read="false"]').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var id = this.getAttribute('data-id');
+                fetch('/message/read/' + id, { method: 'PUT' }).then(function() {
+                    updateBadges();
+                });
+            });
+        });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function updateBadges() {
+        fetch('/message/list?page=1&per_page=200').then(function(r) { return r.json(); }).then(function(data) {
+            if (!data.success) return;
+            var all = data.messages.length;
+            var approval = 0, system = 0, unread = 0;
+            data.messages.forEach(function(m) {
+                if (!m.is_read) unread++;
+                if (m.type === 'approval') approval++;
+                if (m.type === 'system') system++;
+            });
+            document.getElementById('count-all').textContent = unread;
+            document.getElementById('count-approval').textContent = approval;
+            document.getElementById('count-system').textContent = system;
+        });
+    }
+
+    // Tab切换
+    document.querySelectorAll('#msgTabs .nav-link').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#msgTabs .nav-link').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            currentType = this.getAttribute('data-type');
+            loadMessages(1, false);
+        });
+    });
+
+    // 加载更多
+    document.getElementById('loadMoreBtn').addEventListener('click', function() {
+        if (currentPage < totalPages) {
+            loadMessages(currentPage + 1, true);
+        }
+    });
+
+    // 全部标记已读
+    document.getElementById('markAllReadBtn').addEventListener('click', function() {
+        if (!confirm('确定将所有消息标记为已读？')) return;
+        fetch('/message/read-all', { method: 'PUT' }).then(function(r) { return r.json(); }).then(function(data) {
+            if (data.success) {
+                loadMessages(1, false);
+            }
+        });
+    });
+
+    // 初始加载
+    loadMessages(1, false);
+})();
+</script>
+{% endblock %}

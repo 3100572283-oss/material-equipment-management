@@ -814,6 +814,13 @@ def detail(instance_id):
     can_withdraw = (instance.status in ('pending', 'approving')
                     and instance.applicant_id == current_user.id)
 
+    # 当前用户审批过的节点ID集合（用于详情页高亮标记自己审批过的节点）
+    my_approved_node_ids = set()
+    for r in records:
+        if r.approver_id == current_user.id and r.action in ('approve', 'reject'):
+            if r.node_id:
+                my_approved_node_ids.add(r.node_id)
+
     status_label, status_color = STATUS_MAP.get(
         instance.status, (instance.status, 'secondary'))
 
@@ -834,7 +841,8 @@ def detail(instance_id):
                            biz_obj=biz_obj,
                            biz_names=BIZ_NAMES,
                            status_map=STATUS_MAP,
-                           roles=roles)
+                           roles=roles,
+                           my_approved_node_ids=my_approved_node_ids)
 
 
 @bp.route('/submit/<biz_type>/<int:biz_id>', methods=['POST'])

@@ -364,6 +364,41 @@
                             </ul>
                         </div>
 
+                        <!-- Message Center Bell -->
+                        {% if current_user.is_authenticated %}
+                        <div class="dropdown me-2" id="msgCenterDropdown">
+                            <button class="btn btn-outline-secondary btn-sm position-relative" type="button"
+                                    id="msgCenterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                <i class="bi bi-chat-dots"></i>
+                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger msg-unread-badge" style="font-size:.6rem; display:none;" id="msgUnreadBadge">0</span>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end shadow-sm" id="msgCenterPanel" style="width:360px; max-height:480px; overflow:hidden; padding:0;">
+                                <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+                                    <h6 class="mb-0"><i class="bi bi-bell me-1"></i>消息中心</h6>
+                                    <a href="{{ url_for('message.index') }}" class="small text-decoration-none">查看全部</a>
+                                </div>
+                                <!-- Tab -->
+                                <ul class="nav nav-pills nav-fill px-2 pt-2" id="msgPanelTabs">
+                                    <li class="nav-item"><button class="nav-link active py-1 px-2 small" data-type="">全部</button></li>
+                                    <li class="nav-item"><button class="nav-link py-1 px-2 small" data-type="approval">审批</button></li>
+                                    <li class="nav-item"><button class="nav-link py-1 px-2 small" data-type="system">系统</button></li>
+                                </ul>
+                                <!-- 消息列表 -->
+                                <div id="msgPanelList" style="max-height:320px; overflow-y:auto; padding:0 8px;">
+                                    <div class="text-center text-muted py-4 small">
+                                        <i class="bi bi-inbox d-block mb-1" style="font-size:1.5rem;"></i>
+                                        暂无消息
+                                    </div>
+                                </div>
+                                <!-- 底部 -->
+                                <div class="px-3 py-2 border-top d-flex justify-content-between">
+                                    <button class="btn btn-link btn-sm p-0 text-decoration-none" id="msgMarkAllRead">全部标记已读</button>
+                                    <a href="{{ url_for('message.index') }}" class="btn btn-link btn-sm p-0 text-decoration-none">打开消息中心</a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
                         <!-- Announcement Bell -->
                         {% if current_user.is_authenticated %}
                         {% set total_alerts = (unread_popup_announcements|length) + (expiry_alert_count or 0) %}
@@ -1070,5 +1105,112 @@
     </script>
 
     {% block extra_js %}{% endblock %}
+
+    <!-- 消息中心铃铛逻辑 -->
+    <script>
+    (function() {
+        if (!document.getElementById('msgCenterBtn')) return;
+        var msgTypeColors = { 'approval': 'primary', 'system': 'info', 'warning': 'warning', 'info': 'secondary' };
+        var msgTypeIcons = { 'approval': 'bi-clipboard-check', 'system': 'bi-info-circle', 'warning': 'bi-exclamation-triangle', 'info': 'bi-info-circle' };
+        var currentPanelType = '';
+        var pollTimer = null;
+
+        function updateUnreadCount() {
+            fetch('/message/count').then(function(r) { return r.json(); }).then(function(data) {
+                if (!data.success) return;
+                var badge = document.getElementById('msgUnreadBadge');
+                if (data.count > 0) {
+                    badge.textContent = data.count > 99 ? '99+' : data.count;
+                    badge.style.display = '';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }).catch(function() {});
+        }
+
+        function loadPanelMessages(type) {
+            var url = '/message/list?page=1&per_page=20';
+            if (type) url += '&type=' + type;
+            fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+                if (!data.success) return;
+                var container = document.getElementById('msgPanelList');
+                if (!data.messages || data.messages.length === 0) {
+                    container.innerHTML = '<div class="text-center text-muted py-4 small"><i class="bi bi-inbox d-block mb-1" style="font-size:1.5rem;"></i>暂无消息</div>';
+                    return;
+                }
+                var html = '';
+                data.messages.forEach(function(m) {
+                    var color = msgTypeColors[m.type] || 'secondary';
+                    var icon = msgTypeIcons[m.type] || 'bi-bell';
+                    var readClass = m.is_read ? '' : 'fw-bold';
+                    var url = m.url || '#';
+                    html += '<a href="' + url + '" class="list-group-item list-group-item-action border-0 px-2 py-2 ' + readClass + '" data-id="' + m.id + '" data-read="' + m.is_read + '">' +
+                        '<div class="d-flex align-items-start">' +
+                            '<div class="me-2"><i class="bi ' + icon + ' text-' + color + '"></i></div>' +
+                            '<div class="flex-grow-1 min-w-0">' +
+                                '<div class="d-flex justify-content-between align-items-start">' +
+                                    '<span class="small text-truncate">' + escapeHtml(m.title) + '</span>' +
+                                    '<small class="text-muted ms-2 text-nowrap">' + m.created_at.substring(5, 16) + '</small>' +
+                                '</div>' +
+                                (m.content ? '<div class="text-muted small text-truncate">' + escapeHtml(m.content) + '</div>' : '') +
+                            '</div>' +
+                            (!m.is_read ? '<span class="badge bg-danger rounded-pill ms-1" style="font-size:.5rem;">&nbsp;</span>' : '') +
+                        '</div>' +
+                    '</a>';
+                });
+                container.innerHTML = '<div class="list-group list-group-flush">' + html + '</div>';
+                // 点击未读消息自动标记已读
+                container.querySelectorAll('a[data-read="false"]').forEach(function(el) {
+                    el.addEventListener('click', function() {
+                        var id = this.getAttribute('data-id');
+                        fetch('/message/read/' + id, { method: 'PUT' }).then(function() {
+                            updateUnreadCount();
+                        });
+                    });
+                });
+            }).catch(function() {});
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // Tab切换
+        document.querySelectorAll('#msgPanelTabs .nav-link').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('#msgPanelTabs .nav-link').forEach(function(b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                currentPanelType = this.getAttribute('data-type');
+                loadPanelMessages(currentPanelType);
+            });
+        });
+
+        // 展开时刷新消息
+        var dropdownEl = document.getElementById('msgCenterBtn');
+        if (dropdownEl) {
+            dropdownEl.addEventListener('shown.bs.dropdown', function() {
+                loadPanelMessages(currentPanelType);
+            });
+        }
+
+        // 全部标记已读
+        var markAllBtn = document.getElementById('msgMarkAllRead');
+        if (markAllBtn) {
+            markAllBtn.addEventListener('click', function() {
+                fetch('/message/read-all', { method: 'PUT' }).then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.success) {
+                        updateUnreadCount();
+                        loadPanelMessages(currentPanelType);
+                    }
+                });
+            });
+        }
+
+        // 初始加载 + 30秒轮询
+        updateUnreadCount();
+        pollTimer = setInterval(updateUnreadCount, 30000);
+    })();
+    </script>
 </body>
 </html>

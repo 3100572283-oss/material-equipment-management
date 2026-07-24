@@ -271,6 +271,16 @@ def submit_approval(biz_type, biz_id, applicant_id=None, opinion='', project_id=
 
     db.session.commit()
 
+    # 站内消息：给首节点审批人发待审批消息
+    try:
+        from app.notification_service import send_approval_message
+        from app.models import User
+        actor = db.session.get(User, applicant_id)
+        send_approval_message(instance, 'submit', actor=actor)
+    except Exception:
+        pass
+
+    # 外部渠道推送（钉钉/微信等，保留原有逻辑）
     try:
         from app.notification_service import notify_pending_approval
         approvers = first_node.get_all_approvers()
@@ -411,6 +421,18 @@ def approve(instance_id, approver_id=None, opinion=''):
 
     db.session.commit()
 
+    # 站内消息
+    try:
+        from app.notification_service import send_approval_message
+        if instance.status == 'passed':
+            # 全部通过 → 给提交人发消息
+            send_approval_message(instance, 'complete', actor=approver, opinion=opinion)
+        else:
+            # 节点通过 → 给下一节点审批人发消息
+            send_approval_message(instance, 'approve', actor=approver, opinion=opinion)
+    except Exception:
+        pass
+
     try:
         from app.notification_service import notify_approval_result
         applicant = User.query.get(instance.applicant_id)
@@ -492,6 +514,13 @@ def reject(instance_id, approver_id=None, reason=''):
         obj.status = 'rejected'
 
     db.session.commit()
+
+    # 站内消息：给提交人发驳回消息
+    try:
+        from app.notification_service import send_approval_message
+        send_approval_message(instance, 'reject', actor=approver, opinion=reason)
+    except Exception:
+        pass
 
     try:
         from app.notification_service import notify_approval_result

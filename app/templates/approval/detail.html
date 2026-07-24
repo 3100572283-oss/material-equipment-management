@@ -84,7 +84,8 @@
 
             <!-- 审批节点 -->
             {% for item in timeline %}
-            <div class="timeline-item">
+            {% set is_my_node = item.node.id in my_approved_node_ids %}
+            <div class="timeline-item {% if is_my_node %}timeline-item-mine{% endif %}">
                 {% if item.status == 'approved' %}
                 <div class="timeline-dot bg-success">
                     <i class="bi bi-check-lg"></i>
@@ -103,10 +104,13 @@
                 </div>
                 {% endif %}
 
-                <div class="timeline-content {% if item.status == 'current' %}timeline-content-current{% endif %}">
+                <div class="timeline-content {% if item.status == 'current' %}timeline-content-current{% endif %} {% if is_my_node %}timeline-content-mine{% endif %}">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <strong>{{ item.node.node_name }}</strong>
+                            {% if is_my_node %}
+                            <span class="badge bg-primary ms-1"><i class="bi bi-person-check me-1"></i>我已审批</span>
+                            {% endif %}
                             {% if item.node.pass_rule == 'ALL' %}
                             <span class="badge bg-info ms-1">会签</span>
                             {% elif item.node.pass_rule == 'ANY' %}
@@ -133,8 +137,11 @@
                     <div class="mt-2">
                         <table class="table table-sm table-borderless">
                             {% for detail in item.sign_details %}
-                            <tr>
-                                <td class="text-muted small">{{ detail.user.name or detail.user.username }}</td>
+                            <tr {% if detail.user.id == current_user.id %}class="table-primary"{% endif %}>
+                                <td class="text-muted small">
+                                    {{ detail.user.name or detail.user.username }}
+                                    {% if detail.user.id == current_user.id %}<i class="bi bi-person-check-fill text-primary ms-1" title="我"></i>{% endif %}
+                                </td>
                                 <td>
                                     {% if detail.status == 'approve' %}
                                     <span class="badge bg-success small">已同意</span>
@@ -301,6 +308,16 @@ function validateReject() {
 }
 .timeline-item:last-child {
     padding-bottom: 0;
+}
+/* 当前用户审批过的节点高亮 */
+.timeline-item-mine .timeline-content-mine {
+    background: #e7f1ff;
+    border-left: 3px solid #409eff;
+    padding-left: 12px;
+    border-radius: 4px;
+}
+[data-theme="dark"] .timeline-item-mine .timeline-content-mine {
+    background: rgba(64, 158, 255, 0.15);
 }
 .timeline-dot {
     position: absolute;
