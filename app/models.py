@@ -168,23 +168,84 @@ class User(UserMixin, db.Model):
 
         返回 None 表示拥有全部数据权限，可访问所有项目；
         返回列表表示仅可访问这些项目ID。
-        可见项目 = 数据权限为全部 → 所有项目 ∪ 用户归属部门及下级关联项目 ∪ 直接分配项目
+
+        规则：
+        - all: 所有项目
+        - dept_and_sub: 本部门及下级部门下的项目部关联的项目
+        - dept: 仅本部门关联的项目（本部门是项目部类型时取其project_id）
+        - self: 仅自己被分配的项目（sys_user_project）
+        - custom: 自定义部门列表下的项目部关联的项目
         """
+        from app.models import SysRoleDataScope
+
+        # 全部数据权限或管理员：所有项目
         if self.get_data_scope() == 'all' or self.is_admin():
             return None
 
+        # 从 sys_role_data_scope 获取数据权限配置
+        data_scope = self.get_data_scope()
         project_ids = set()
 
-        # 1. 用户归属部门及下级部门关联的项目
-        if self.dept_id:
-            dept = SysDept.query.get(self.dept_id)
-            if dept:
-                dept_ids = dept.get_children_recursive()
-                depts = SysDept.query.filter(SysDept.id.in_(dept_ids), SysDept.project_id.isnot(None)).all()
-                for d in depts:
-                    project_ids.add(d.project_id)
+        # 获取用户的角色数据权限配置
+        role = self.role_obj
+        if role:
+            scope_cfg = SysRoleDataScope.query.filter_by(role_id=role.id).first()
+            if scope_cfg:
+                data_scope = scope_cfg.data_scope or 'all'
 
-        # 2. 用户被直接分配的项目（sys_user_project）
+        if data_scope == 'dept_and_sub':
+            # 本部门及下级：收集所有子部门ID，筛选项目部类型部门关联的项目
+            if self.dept_id:
+                dept = SysDept.query.get(self.dept_id)
+                if dept:
+                    dept_ids = [self.dept_id]
+                    try:
+                        dept_ids.extend(dept.get_children_recursive())
+                    except Exception:
+                        pass
+                    # 筛选项目部类型的部门
+                    project_depts = SysDept.query.filter(
+                        SysDept.id.in_(dept_ids),
+                        SysDept.dept_type == 'project',
+                        SysDept.project_id.isnot(None)
+                    ).all()
+                    for d in project_depts:
+                        project_ids.add(d.project_id)
+
+        elif data_scope == 'dept':
+            # 本部门：仅本部门关联的项目
+            if self.dept_id:
+                dept = SysDept.query.get(self.dept_id)
+                if dept:
+                    # 如果本部门是项目部类型，取其关联项目
+                    if dept.dept_type == 'project' and dept.project_id:
+                        project_ids.add(dept.project_id)
+
+        elif data_scope == 'self':
+            # 仅本人：仅自己被分配的项目
+            pass  # 下面统一处理 sys_user_project
+
+        elif data_scope == 'custom':
+            # 自定义：从 sys_role_data_scope 读取自定义部门列表
+            if role:
+                scope_cfg = SysRoleDataScope.query.filter_by(role_id=role.id).first()
+                if scope_cfg and scope_cfg.custom_depts:
+                    import json
+                    try:
+                        custom_dept_ids = json.loads(scope_cfg.custom_depts) if isinstance(scope_cfg.custom_depts, str) else scope_cfg.custom_depts
+                        custom_dept_ids = [int(x) for x in custom_dept_ids if str(x).isdigit()]
+                        # 筛选这些部门下的项目部
+                        project_depts = SysDept.query.filter(
+                            SysDept.id.in_(custom_dept_ids),
+                            SysDept.dept_type == 'project',
+                            SysDept.project_id.isnot(None)
+                        ).all()
+                        for d in project_depts:
+                            project_ids.add(d.project_id)
+                    except Exception:
+                        pass
+
+        # 2. 用户被直接分配的项目（sys_user_project）- 并集
         for up in self.user_projects:
             project_ids.add(up.project_id)
 
