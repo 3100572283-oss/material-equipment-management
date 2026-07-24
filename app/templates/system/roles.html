@@ -62,11 +62,6 @@
                                 <a href="{{ url_for('system.role_permissions', id=role.id) }}" class="btn btn-outline-info">
                                     <i class="bi bi-key"></i>权限
                                 </a>
-                                {% if role.data_scope == 'custom' %}
-                                <a href="{{ url_for('system.role_data_scope', id=role.id) }}" class="btn btn-outline-warning">
-                                    <i class="bi bi-scope"></i>数据
-                                </a>
-                                {% endif %}
                                 {% if role.role_code != 'super_admin' %}
                                 <form method="POST" action="{{ url_for('system.toggle_role', id=role.id) }}" class="d-inline">
                                     <button type="submit" class="btn btn-outline-secondary">

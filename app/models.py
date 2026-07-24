@@ -227,8 +227,12 @@ class User(UserMixin, db.Model):
         return self.role
 
     def get_data_scope(self):
-        """获取数据权限范围"""
+        """获取数据权限范围（优先从 sys_role_data_scope 表读取）"""
         if self.role_obj:
+            from app.models import SysRoleDataScope
+            scope_cfg = SysRoleDataScope.query.filter_by(role_id=self.role_obj.id).first()
+            if scope_cfg:
+                return scope_cfg.data_scope or 'all'
             return self.role_obj.data_scope
         return self.data_scope
 
@@ -321,13 +325,27 @@ class SysAnnouncementRead(db.Model):
     )
 
 
+class SysRoleDataScope(db.Model):
+    """角色统一数据权限配置表 - 一个角色一条配置
+
+    整合原 sys_role.data_scope + sys_role_dept 的功能，
+    做到功能权限和数据权限统一在角色权限中心管理。
+    """
+    __tablename__ = 'sys_role_data_scope'
+    id = db.Column(db.Integer, primary_key=True)
+    role_id = db.Column(db.Integer, db.ForeignKey('sys_role.id'), nullable=False, unique=True)
+    data_scope = db.Column(db.String(16), default='all')  # all/dept_and_sub/dept/self/custom
+    custom_depts = db.Column(db.Text, nullable=True)  # JSON数组，data_scope=custom时使用
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class SysRole(db.Model):
     """角色表"""
     __tablename__ = 'sys_role'
     id = db.Column(db.Integer, primary_key=True)
     role_code = db.Column(db.String(64), nullable=False, unique=True)
     role_name = db.Column(db.String(128), nullable=False)
-    data_scope = db.Column(db.String(16), default='all')  # all/dept/dept_and_sub/custom/self
+    data_scope = db.Column(db.String(16), default='all')  # 兼容旧字段，逐步迁移到sys_role_data_scope
     status = db.Column(db.Boolean, default=True)
     sort = db.Column(db.Integer, default=0)
     remark = db.Column(db.String(256), nullable=True)

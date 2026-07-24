@@ -127,9 +127,54 @@ input[type="checkbox"].op-checkbox {
                 </table>
             </div>
             
+            <!-- 数据权限配置区域 -->
+            <div class="mt-4">
+                <h6 class="mb-2"><i class="bi bi-filter me-2"></i>数据权限配置</h6>
+                <div class="border rounded p-3 bg-light-subtle">
+                    <div class="row">
+                        {% for value, label, desc in data_scope_options %}
+                        <div class="col-md-6 mb-2">
+                            <div class="form-check d-flex align-items-start">
+                                <input class="form-check-input mt-1 data-scope-radio" type="radio" 
+                                       name="data_scope" id="dataScope_{{ value }}" 
+                                       value="{{ value }}" 
+                                       {% if current_data_scope == value %}checked{% endif %}>
+                                <label class="form-check-label ms-2 flex-grow-1" for="dataScope_{{ value }}">
+                                    <strong>{{ label }}</strong>
+                                    <div class="text-muted small">{{ desc }}</div>
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div id="customDeptContainer" class="mt-3" style="display: none;">
+                        <label class="form-label fw-bold">选择可访问的部门（可多选）</label>
+                        <div class="row">
+                            {% for d in all_depts %}
+                            <div class="col-md-3 mb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input custom-dept-cb" type="checkbox" 
+                                           name="custom_depts" value="{{ d.id }}" 
+                                           id="dept_{{ d.id }}"
+                                           {% if d.id in custom_dept_ids %}checked{% endif %}>
+                                    <label class="form-check-label" for="dept_{{ d.id }}">
+                                        {{ d.dept_name }} <span class="text-muted small">[{{ d.dept_code }}]</span>
+                                    </label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="text-muted small mt-2">
+                            <i class="bi bi-info-circle me-1"></i>已选 <span id="customDeptCount">{{ custom_dept_ids|length }}</span> 个部门
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="mt-4 text-center">
                 <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-check-lg me-1"></i>保存权限配置
+                    <i class="bi bi-check-lg me-1"></i>保存权限配置（功能权限+数据权限）
                 </button>
             </div>
         </form>
@@ -146,12 +191,14 @@ input[type="checkbox"].op-checkbox {
         initRowSelectCheckboxes();
         initOpCheckboxes();
         initParentStates();
+        initDataScope();
         
         document.getElementById('btnCheckAll').addEventListener('click', function() {
             document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                 cb.checked = true;
                 cb.indeterminate = false;
             });
+            updateCustomDeptCount();
         });
 
         document.getElementById('btnUncheckAll').addEventListener('click', function() {
@@ -159,8 +206,30 @@ input[type="checkbox"].op-checkbox {
                 cb.checked = false;
                 cb.indeterminate = false;
             });
+            updateCustomDeptCount();
         });
     });
+
+    function initDataScope() {
+        function toggleCustomDept() {
+            const checked = document.querySelector('.data-scope-radio:checked');
+            const isCustom = checked && checked.value === 'custom';
+            document.getElementById('customDeptContainer').style.display = isCustom ? '' : 'none';
+        }
+        document.querySelectorAll('.data-scope-radio').forEach(r => {
+            r.addEventListener('change', toggleCustomDept);
+        });
+        document.querySelectorAll('.custom-dept-cb').forEach(cb => {
+            cb.addEventListener('change', updateCustomDeptCount);
+        });
+        toggleCustomDept();
+    }
+
+    function updateCustomDeptCount() {
+        const n = document.querySelectorAll('.custom-dept-cb:checked').length;
+        const el = document.getElementById('customDeptCount');
+        if (el) el.textContent = n;
+    }
 
     function initTreeToggles() {
         document.querySelectorAll('.tree-toggle').forEach(toggle => {

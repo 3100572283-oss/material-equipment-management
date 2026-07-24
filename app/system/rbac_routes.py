@@ -5,7 +5,7 @@ from datetime import datetime
 
 from app import db
 from app.system import bp
-from app.models import SysDept, SysRole, SysMenu, SysRoleMenu, SysRoleDept, User, Project
+from app.models import SysDept, SysRole, SysMenu, SysRoleMenu, SysRoleDept, SysRoleDataScope, User, Project
 from app.decorators import admin_required, log_audit
 from app.utils import gen_dept_code, gen_project_code, gen_role_code
 import json as _json
@@ -698,21 +698,21 @@ def toggle_role(id):
 @login_required
 @admin_required
 def role_permissions(id):
-    """角色菜单权限配置页"""
+    """角色菜单权限配置页（统一权限中心：功能权限+数据权限）"""
     role = SysRole.query.get_or_404(id)
-    
+
     menus = SysMenu.query.filter(SysMenu.parent_id == 0).order_by(SysMenu.sort).all()
-    
+
     role_permissions = SysRoleMenu.query.filter_by(role_id=id).all()
     menu_op_map = {}
     for rp in role_permissions:
         if rp.menu_id not in menu_op_map:
             menu_op_map[rp.menu_id] = set()
         menu_op_map[rp.menu_id].add(rp.operation)
-    
+
     checked_menu_ids = list(menu_op_map.keys())
     checked_set = set(checked_menu_ids)
-    
+
     all_operations = ['view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print']
     op_labels = {
         'view': '查看',
@@ -724,7 +724,7 @@ def role_permissions(id):
         'approve': '审批',
         'print': '打印',
     }
-    
+
     def build_menu_tree(items, parent_id=0, level=0):
         tree = []
         for item in items:
@@ -740,15 +740,42 @@ def role_permissions(id):
                 }
                 tree.append(node)
         return tree
-    
+
     all_menu_items = SysMenu.query.order_by(SysMenu.sort).all()
     menu_tree = build_menu_tree(all_menu_items)
-    
+
+    # 数据权限配置（从 sys_role_data_scope 读取，兼容旧字段）
+    data_scope_cfg = SysRoleDataScope.query.filter_by(role_id=id).first()
+    if data_scope_cfg:
+        current_data_scope = data_scope_cfg.data_scope or 'all'
+        try:
+            custom_dept_ids = [int(x) for x in _json.loads(data_scope_cfg.custom_depts)] if data_scope_cfg.custom_depts else []
+        except Exception:
+            custom_dept_ids = [int(x.strip()) for x in data_scope_cfg.custom_depts.split(',') if x.strip().isdigit()] if data_scope_cfg.custom_depts else []
+    else:
+        current_data_scope = role.data_scope or 'all'
+        custom_dept_ids = [rd.dept_id for rd in SysRoleDept.query.filter_by(role_id=id).all()]
+
+    all_depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
+
+    # 数据范围枚举
+    data_scope_options = [
+        ('all', '全部数据', '不限制，可访问所有数据'),
+        ('dept_and_sub', '本部门及下级部门数据', '当前用户所在部门及其所有子部门的数据'),
+        ('dept', '本部门数据', '仅当前用户所在部门的数据'),
+        ('self', '仅本人数据', '只显示当前用户自己创建的数据'),
+        ('custom', '自定义数据权限', '手动选择可访问的部门'),
+    ]
+
     return render_template('system/role_permissions.html',
-                           role=role, menu_tree=menu_tree, 
+                           role=role, menu_tree=menu_tree,
                            checked_ids=checked_menu_ids, checked_set=checked_set,
                            menu_op_map=menu_op_map,
-                           operations=all_operations, op_labels=op_labels)
+                           operations=all_operations, op_labels=op_labels,
+                           data_scope_options=data_scope_options,
+                           current_data_scope=current_data_scope,
+                           all_depts=all_depts,
+                           custom_dept_ids=custom_dept_ids)
 
 
 @bp.route('/roles/<int:id>/permissions/save', methods=['POST'])
@@ -756,12 +783,18 @@ def role_permissions(id):
 @admin_required
 @log_audit(module='rbac', operation='保存角色权限')
 def save_role_permissions(id):
-    """保存角色菜单权限 - 增强版
+    """保存角色权限 - 统一入口：功能权限+数据权限
 
-    接收前端提交的权限数据，格式为 menu_id:operation
+    接收前端提交的数据：
+    - menu_ops: 多个 menu_id:operation 项
+    - data_scope: 数据范围 (all/dept_and_sub/dept/self/custom)
+    - custom_depts: 自定义部门ID列表 (data_scope=custom时使用)
+
     保存后立即回查验证，确保数据一致性
     """
     from app.models import SysModule
+
+    role = SysRole.query.get_or_404(id)
 
     menu_ops_raw = request.form.getlist('menu_ops')
 
@@ -774,21 +807,52 @@ def save_role_permissions(id):
                 try:
                     menu_id = int(parts[0])
                     operation = parts[1]
-                    # 验证操作类型有效性
                     if operation in {'view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print'}:
                         unique_ops.add((menu_id, operation))
                 except ValueError:
                     pass
 
-    # 删除旧权限
-    SysRoleMenu.query.filter_by(role_id=id).delete()
+    # 数据权限
+    data_scope = request.form.get('data_scope', 'all')
+    if data_scope not in {'all', 'dept_and_sub', 'dept', 'self', 'custom'}:
+        data_scope = 'all'
+    custom_dept_ids_raw = request.form.getlist('custom_depts')
 
-    # 保存新权限
-    for menu_id, operation in unique_ops:
-        rm = SysRoleMenu(role_id=id, menu_id=menu_id, operation=operation)
-        db.session.add(rm)
+    try:
+        # 删除旧功能权限
+        SysRoleMenu.query.filter_by(role_id=id).delete()
 
-    db.session.commit()
+        # 保存新功能权限
+        for menu_id, operation in unique_ops:
+            rm = SysRoleMenu(role_id=id, menu_id=menu_id, operation=operation)
+            db.session.add(rm)
+
+        # 保存数据权限到 sys_role_data_scope
+        custom_depts_json = _json.dumps([int(x) for x in custom_dept_ids_raw if str(x).isdigit()]) if custom_dept_ids_raw else None
+        scope_cfg = SysRoleDataScope.query.filter_by(role_id=id).first()
+        if scope_cfg:
+            scope_cfg.data_scope = data_scope
+            scope_cfg.custom_depts = custom_depts_json
+        else:
+            scope_cfg = SysRoleDataScope(role_id=id, data_scope=data_scope, custom_depts=custom_depts_json)
+            db.session.add(scope_cfg)
+
+        # 同步旧字段（兼容）
+        role.data_scope = data_scope
+        # 自定义部门
+        SysRoleDept.query.filter_by(role_id=id).delete()
+        if data_scope == 'custom' and custom_dept_ids_raw:
+            for did in custom_dept_ids_raw:
+                try:
+                    db.session.add(SysRoleDept(role_id=id, dept_id=int(did)))
+                except ValueError:
+                    pass
+
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f'权限保存失败：{e}', 'danger')
+        return redirect(url_for('system.role_permissions', id=id))
 
     # ===== 回查验证：确保保存的数据与提交一致 =====
     saved = set((rm.menu_id, rm.operation) for rm in SysRoleMenu.query.filter_by(role_id=id).all())
@@ -806,48 +870,37 @@ def save_role_permissions(id):
         flash(f'权限保存验证失败: {error_text}', 'danger')
         return redirect(url_for('system.role_permissions', id=id))
 
-    flash(f'权限配置已保存，共 {len(unique_ops)} 个权限项', 'success')
+    # 回查数据权限
+    saved_scope = SysRoleDataScope.query.filter_by(role_id=id).first()
+    if not saved_scope or saved_scope.data_scope != data_scope:
+        flash(f'数据权限保存验证失败', 'danger')
+        return redirect(url_for('system.role_permissions', id=id))
+
+    flash(f'权限配置已保存（功能权限 {len(unique_ops)} 项，数据权限：{dict([(d[0], d[1]) for d in [("all", "全部"), ("dept_and_sub", "本部门及下级"), ("dept", "本部门"), ("self", "仅本人"), ("custom", "自定义")]]).get(data_scope, data_scope)}）', 'success')
     return redirect(url_for('system.role_permissions', id=id))
 
 
-# ============== 数据权限配置 ==============
+# ============== 数据权限配置（已合并到角色权限配置页） ==============
 
 @bp.route('/roles/<int:id>/data_scope')
 @login_required
 @admin_required
 def role_data_scope(id):
-    """角色数据权限配置页"""
-    role = SysRole.query.get_or_404(id)
-    depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
-    selected_depts = [rd.dept_id for rd in SysRoleDept.query.filter_by(role_id=id).all()]
-    return render_template('system/role_data_scope.html',
-                           role=role, depts=depts, selected_depts=selected_depts)
+    """数据权限配置 - 已合并到统一权限配置页
+
+    重定向到角色权限配置页（功能权限+数据权限统一管理）
+    """
+    flash('数据权限已合并到统一权限配置页', 'info')
+    return redirect(url_for('system.role_permissions', id=id))
 
 
 @bp.route('/roles/<int:id>/data_scope/save', methods=['POST'])
 @login_required
 @admin_required
-@log_audit(module='rbac', operation='保存数据权限')
+@log_audit(module='rbac', operation='保存数据权限（兼容路由）')
 def save_role_data_scope(id):
-    """保存角色数据权限"""
-    role = SysRole.query.get_or_404(id)
-    data_scope = request.form.get('data_scope', 'all')
-    dept_ids = request.form.getlist('dept_ids')
-    
-    SysRoleDept.query.filter_by(role_id=id).delete()
-    
-    if data_scope == 'custom':
-        for dept_id in dept_ids:
-            try:
-                rd = SysRoleDept(role_id=id, dept_id=int(dept_id))
-                db.session.add(rd)
-            except ValueError:
-                pass
-    
-    role.data_scope = data_scope
-    db.session.commit()
-    flash('数据权限已保存', 'success')
-    return redirect(url_for('system.role_data_scope', id=id))
+    """保存角色数据权限（兼容旧路由，自动重定向到统一保存入口）"""
+    return save_role_permissions(id)
 
 
 # ============== 菜单管理 ==============

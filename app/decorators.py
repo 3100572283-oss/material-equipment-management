@@ -80,6 +80,84 @@ def module_required(module_key):
     return decorator
 
 
+def data_scope_required(get_instance):
+    """数据权限校验装饰器 - 单条数据访问级别
+
+    用于详情/编辑/删除接口，检查当前用户是否有权限访问指定的业务对象。
+
+    用法:
+        @data_scope_required(lambda id: StockIn.query.get_or_404(id))
+
+    配合 apply_data_scope 使用：列表查询自动注入过滤条件，
+    详情/编辑/删除接口需要本装饰器防止直接通过URL绕过。
+    """
+    from app.models import SysRoleDataScope
+    from app.utils import get_sub_dept_ids
+    from flask_login import current_user
+
+    def decorator(f):
+        from functools import wraps
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                abort(403)
+            if current_user.is_admin():
+                return f(*args, **kwargs)
+
+            instance = get_instance(*args, **kwargs)
+            if instance is None:
+                abort(404)
+
+            role = current_user.role_obj
+            data_scope = 'all'
+            custom_depts = []
+            if role:
+                cfg = SysRoleDataScope.query.filter_by(role_id=role.id).first()
+                if cfg:
+                    data_scope = cfg.data_scope or 'all'
+                    if cfg.custom_depts:
+                        import json as _json
+                        try:
+                            raw = _json.loads(cfg.custom_depts)
+                            custom_depts = [int(x) for x in raw if str(x).isdigit()]
+                        except Exception:
+                            custom_depts = [int(x.strip()) for x in cfg.custom_depts.split(',') if x.strip().isdigit()]
+
+            if data_scope == 'all':
+                return f(*args, **kwargs)
+
+            allowed = False
+            if data_scope == 'self':
+                creator = (getattr(instance, 'created_by_id', None) or
+                          getattr(instance, 'applicant_id', None) or
+                          getattr(instance, 'operator_id', None))
+                if creator is not None:
+                    allowed = (creator == current_user.id)
+                else:
+                    cb = getattr(instance, 'created_by', None)
+                    allowed = (cb == current_user.username)
+            elif data_scope == 'dept':
+                if current_user.dept_id and getattr(instance, 'dept_id', None) is not None:
+                    allowed = (instance.dept_id == current_user.dept_id)
+            elif data_scope == 'dept_and_sub':
+                if current_user.dept_id and getattr(instance, 'dept_id', None) is not None:
+                    dept_ids = get_sub_dept_ids(current_user.dept_id)
+                    dept_ids.append(current_user.dept_id)
+                    allowed = (instance.dept_id in dept_ids)
+            elif data_scope == 'custom':
+                if custom_depts and getattr(instance, 'dept_id', None) is not None:
+                    allowed = (instance.dept_id in custom_depts)
+
+            if not allowed:
+                if request.path.startswith('/api/') or request.is_json:
+                    return jsonify({'code': 403, 'message': '无权限访问该数据'}), 403
+                abort(403)
+
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
 def log_audit(module, operation):
     """审计日志装饰器，自动记录请求参数和耗时"""
     def decorator(f):

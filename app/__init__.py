@@ -338,7 +338,70 @@ def init_db_schema():
     _migrate_price_formula_fields()
 
     db.create_all()
+
+    # 统一数据权限配置表迁移
+    _migrate_role_data_scope_table()
+
     print("Database tables created/updated")
+
+
+def _migrate_role_data_scope_table():
+    """迁移/创建统一数据权限配置表 sys_role_data_scope
+    整合原 sys_role.data_scope 和 sys_role_dept 数据
+    """
+    from sqlalchemy import text
+    try:
+        # 检查表是否存在
+        result = db.session.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='sys_role_data_scope'")
+        ).fetchone()
+
+        if not result:
+            print("Creating sys_role_data_scope table...")
+            db.session.execute(text("""
+                CREATE TABLE sys_role_data_scope (
+                    id INTEGER NOT NULL,
+                    role_id INTEGER NOT NULL,
+                    data_scope VARCHAR(16) DEFAULT 'all',
+                    custom_depts TEXT,
+                    updated_at DATETIME,
+                    PRIMARY KEY (id),
+                    CONSTRAINT uq_role_data_scope UNIQUE (role_id),
+                    FOREIGN KEY(role_id) REFERENCES sys_role (id)
+                )
+            """))
+            db.session.commit()
+            print("sys_role_data_scope table created")
+
+        # 数据迁移：把 sys_role.data_scope + sys_role_dept 整合到新表
+        roles = db.session.execute(text("SELECT id, data_scope FROM sys_role")).fetchall()
+        for role_id, data_scope in roles:
+            existing = db.session.execute(
+                text("SELECT id FROM sys_role_data_scope WHERE role_id=:rid"),
+                {"rid": role_id}
+            ).fetchone()
+            if not existing:
+                # 取自定义部门
+                custom_dept_ids = db.session.execute(
+                    text("SELECT dept_id FROM sys_role_dept WHERE role_id=:rid"),
+                    {"rid": role_id}
+                ).fetchall()
+                custom_depts = [str(r[0]) for r in custom_dept_ids]
+                # all 角色无自定义部门，其他保留
+                if data_scope == 'custom' and custom_depts:
+                    ds_value = 'custom'
+                    cd_json = ','.join(custom_depts)
+                else:
+                    ds_value = data_scope if data_scope else 'all'
+                    cd_json = None
+                db.session.execute(
+                    text("INSERT INTO sys_role_data_scope (role_id, data_scope, custom_depts) VALUES (:rid, :ds, :cd)"),
+                    {"rid": role_id, "ds": ds_value, "cd": cd_json}
+                )
+        db.session.commit()
+    except Exception as e:
+        print(f"Error migrating sys_role_data_scope: {e}")
+        db.session.rollback()
 
 
 def _generate_permission(menu_code, operation='view'):
@@ -505,6 +568,30 @@ def init_rbac_data():
                     if changed:
                         db.session.flush()
         db.session.commit()
+
+    # ===== 2.5 模块联动：自动同步模块状态到 sys_module =====
+    # 遍历所有菜单，提取出实际使用的 module_key，确保 sys_module 表覆盖
+    used_modules = set()
+    for m in SysMenu.query.filter(SysMenu.module_key.isnot(None)).all():
+        if m.module_key:
+            used_modules.add(m.module_key)
+    # 从目录（catalog）的 permission 字段提取
+    for c in SysMenu.query.filter_by(menu_type='catalog').all():
+        if c.permission and c.permission.startswith('module_'):
+            used_modules.add(c.permission)
+    for mk in used_modules:
+        if not SysModule.query.filter_by(module_key=mk).first():
+            # 默认从modules_data查模块名
+            name_map = {d['key']: d['name'] for d in modules_data}
+            new_mod = SysModule(
+                module_key=mk,
+                module_name=name_map.get(mk, mk.replace('module_', '').upper()),
+                is_required=False,
+                default_enabled=True,
+                sort=99
+            )
+            db.session.add(new_mod)
+    db.session.commit()
 
     # ===== 3. 初始化部门（升级为树形组织架构）=====
     depts_data = [
