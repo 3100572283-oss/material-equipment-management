@@ -5,10 +5,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from flask import session as flask_session
 from app.auth import bp
 from app import db
-from app.models import User, LoginLog
+from app.models import User, LoginLog, SysMenu, SysRoleMenu, SysRole, SysDept, Project
 from app.utils import log_operation
 from app.decorators import log_audit
 import uuid
+import json
 
 
 def _parse_user_agent(user_agent_str):
@@ -173,3 +174,97 @@ def change_password():
             return redirect(url_for('auth.login'))
 
     return render_template('auth/change_password.html', forced=forced)
+
+
+@bp.route('/api/user/permissions')
+@login_required
+def api_user_permissions():
+    """获取当前用户权限上下文
+
+    返回:
+    {
+        menus: [],          // 有权限的菜单树（前端动态路由用）
+        permissions: [],    // 所有按钮权限标识数组
+        dataScope: {},      // 数据权限配置
+        projects: []        // 可见项目列表
+    }
+    """
+    user = current_user
+    result = {
+        'menus': [],
+        'permissions': [],
+        'dataScope': {},
+        'projects': []
+    }
+
+    # 1. 获取数据权限配置
+    role = user.role_obj
+    if role:
+        result['dataScope'] = {
+            'scope': role.data_scope,
+            'roleName': role.role_name,
+            'roleCode': role.role_code
+        }
+
+    # 2. 获取用户所有按钮权限标识
+    if user.is_admin():
+        all_menus = SysMenu.query.filter_by(menu_type='menu').all()
+        for menu in all_menus:
+            if menu.permission:
+                base_perm = menu.permission.rsplit(':', 1)[0]
+                for op in ['view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print']:
+                    result['permissions'].append(f"{base_perm}:{op}")
+    else:
+        role_menus = SysRoleMenu.query.filter_by(role_id=user.role_id).all()
+        for rm in role_menus:
+            menu = SysMenu.query.get(rm.menu_id)
+            if menu and menu.permission:
+                base_perm = menu.permission.rsplit(':', 1)[0]
+                result['permissions'].append(f"{base_perm}:{rm.operation}")
+
+    # 3. 获取可见项目列表
+    visible_projects = user.get_visible_projects()
+    for p in visible_projects:
+        result['projects'].append({
+            'id': p.id,
+            'name': p.name,
+            'code': p.code,
+            'status': p.status
+        })
+
+    # 4. 获取有权限的菜单树（仅包含有view权限的菜单）
+    def build_menu_tree(parent_id=0):
+        children = []
+        menus = SysMenu.query.filter_by(parent_id=parent_id, status=True).order_by(SysMenu.sort).all()
+        for menu in menus:
+            has_view = False
+            if user.is_admin():
+                has_view = True
+            elif menu.menu_type == 'menu':
+                has_view = user.has_permission(f"{menu.permission}") if menu.permission else False
+            elif menu.menu_type == 'catalog':
+                sub_menus = SysMenu.query.filter_by(parent_id=menu.id).all()
+                for sub in sub_menus:
+                    if sub.menu_type == 'menu' and sub.permission and user.has_permission(sub.permission):
+                        has_view = True
+                        break
+
+            if has_view:
+                item = {
+                    'id': menu.id,
+                    'name': menu.menu_name,
+                    'code': menu.menu_code,
+                    'type': menu.menu_type,
+                    'icon': menu.icon,
+                    'path': menu.path,
+                    'component': menu.component,
+                    'permission': menu.permission,
+                    'moduleKey': menu.module_key,
+                    'children': build_menu_tree(menu.id)
+                }
+                children.append(item)
+        return children
+
+    result['menus'] = build_menu_tree()
+
+    return json.dumps(result, ensure_ascii=False)
