@@ -490,7 +490,7 @@ def init_rbac_data():
                     if menu.parent_id != catalog.id:
                         menu.parent_id = catalog.id
                         changed = True
-                    if not menu.permission:
+                    if not menu.permission or (menu.permission and menu.permission.startswith('module_')):
                         menu.permission = auto_permission
                         changed = True
                     if (not menu.module_key) and (item_module or group_module):
@@ -567,15 +567,17 @@ def init_rbac_data():
             data['id'] = role.id
             roles_data[i] = data
 
-    # ===== 5. 超级管理员拥有所有菜单的 view 权限 =====
+    # ===== 5. 超级管理员拥有所有菜单的所有操作权限 =====
     super_admin_role = SysRole.query.filter_by(role_code='super_admin').first()
     if super_admin_role:
         existing = set((rm.menu_id, rm.operation) for rm in SysRoleMenu.query.filter_by(role_id=super_admin_role.id).all())
         all_menus = SysMenu.query.all()
+        all_operations = ['view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print']
         for menu in all_menus:
-            if (menu.id, 'view') not in existing:
-                rp = SysRoleMenu(role_id=super_admin_role.id, menu_id=menu.id, operation='view')
-                db.session.add(rp)
+            for op in all_operations:
+                if (menu.id, op) not in existing:
+                    rp = SysRoleMenu(role_id=super_admin_role.id, menu_id=menu.id, operation=op)
+                    db.session.add(rp)
 
     # ===== 6. 更新默认admin用户关联角色和部门 =====
     admin_user = User.query.filter_by(username='admin').first()
