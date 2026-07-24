@@ -1102,6 +1102,7 @@ class ReconciliationItem(db.Model):
     tax_amount = db.Column(db.Numeric(18, 2), default=0)  # 税额
     amount_with_tax = db.Column(db.Numeric(18, 2), default=0)  # 含税金额
     calc_detail = db.Column(db.Text, nullable=True)  # 计算明细JSON
+    capital_fee_days = db.Column(db.Integer, nullable=True)  # 资金占用天数（动态，对账时计算）
     specification = db.Column(db.String(256), nullable=True)
     unit = db.Column(db.String(32), nullable=True)
 

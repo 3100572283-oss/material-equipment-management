@@ -261,6 +261,19 @@ def pull_data(id):
         else:
             base_price = float(ci.unit_price_with_tax) if ci and ci.unit_price_with_tax else 0
 
+        # 动态计算资金占用天数：供货日期到对账结束日期的自然天数
+        capital_days = None
+        if si_ids:
+            si_id_list = [int(x) for x in si_ids.split(',') if x.strip()]
+            if si_id_list:
+                earliest = db.session.query(func.min(StockIn.stock_in_date)).filter(
+                    StockIn.id.in_(si_id_list)
+                ).scalar()
+                if earliest and reconciliation.end_date:
+                    capital_days = (reconciliation.end_date - earliest).days
+                    if capital_days < 0:
+                        capital_days = 0
+
         # 如果有价格方案，自动计算结算单价
         settlement_price = base_price
         amount_without_tax = 0
@@ -268,7 +281,8 @@ def pull_data(id):
         amount_with_tax = 0
         calc_detail_json = None
         if reconciliation.price_formula and base_price > 0:
-            result = PriceCalculator.calculate(base_price, reconciliation.price_formula)
+            result = PriceCalculator.calculate(base_price, reconciliation.price_formula,
+                                               capital_fee_days_override=capital_days)
             settlement_price = result['settlement_price']
             qty_f = float(qty or 0)
             amount_with_tax = round(settlement_price * qty_f, 2)
@@ -290,6 +304,7 @@ def pull_data(id):
             tax_amount=tax_amount,
             amount_with_tax=amount_with_tax if amount_with_tax else amount,
             calc_detail=calc_detail_json,
+            capital_fee_days=capital_days,
             specification=m_spec,
             unit=m_unit,
             price_type=price_type,
@@ -330,7 +345,9 @@ def apply_formula(id):
             # 没有基准价，跳过
             total_amount += float(item.amount or 0)
             continue
-        result = PriceCalculator.calculate(base_price, formula)
+        # 使用每行动态资金占用天数（优先取已保存的值）
+        cap_days = item.capital_fee_days if item.capital_fee_days is not None else None
+        result = PriceCalculator.calculate(base_price, formula, capital_fee_days_override=cap_days)
         item.settlement_price = result['settlement_price']
         item.unit_price = result['settlement_price']
         qty = float(item.quantity or 0)
@@ -373,6 +390,15 @@ def save_prices(id):
         base_price = float(to_decimal(base_price_str))
         item.base_price = base_price
 
+        # 资金占用天数（可手动修改）
+        cap_days_str = request.form.get(f'capital_days_{item.id}', '').strip()
+        if cap_days_str:
+            try:
+                item.capital_fee_days = int(float(cap_days_str))
+            except (TypeError, ValueError):
+                pass
+        cap_days = item.capital_fee_days if item.capital_fee_days is not None else None
+
         # 结算单价（可手动覆盖）
         price_str = request.form.get(f'price_{item.id}', '0')
         price = float(to_decimal(price_str))
@@ -380,7 +406,8 @@ def save_prices(id):
 
         # 如果有价格方案且基准价有值，用计算结果
         if reconciliation.price_formula and base_price > 0 and not price_str:
-            result = PriceCalculator.calculate(base_price, reconciliation.price_formula)
+            result = PriceCalculator.calculate(base_price, reconciliation.price_formula,
+                                               capital_fee_days_override=cap_days)
             price = result['settlement_price']
             import json
             item.calc_detail = json.dumps(result['detail'], ensure_ascii=False)

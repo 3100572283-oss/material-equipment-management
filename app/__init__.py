@@ -221,6 +221,7 @@ def init_db_schema():
     _add_column_if_missing('reconciliation_items', 'tax_amount', 'NUMERIC(18,2) DEFAULT 0')
     _add_column_if_missing('reconciliation_items', 'amount_with_tax', 'NUMERIC(18,2) DEFAULT 0')
     _add_column_if_missing('reconciliation_items', 'calc_detail', 'TEXT')
+    _add_column_if_missing('reconciliation_items', 'capital_fee_days', 'INTEGER')
 
     # 增强阶段一：付款申请
     _add_column_if_missing('payments', 'source_application_id', 'INTEGER')
@@ -698,8 +699,10 @@ def init_rbac_data():
 def init_steel_specs():
     """初始化钢材规格理论重量数据"""
     from app.models import SteelSpecWeight
-    if SteelSpecWeight.query.count() > 0:
-        return
+    # 检查每个类型是否已有数据，只添加缺失的类型
+    existing_types = db.session.query(SteelSpecWeight.spec_type).distinct().all()
+    existing_type_set = {t[0] for t in existing_types}
+
     specs = [
         # 钢筋 HRB400
         ('rebar', 'Φ6', 0.222, 'kg/m', 'HRB400'),
@@ -722,7 +725,7 @@ def init_steel_specs():
         ('plate', '8mm', 62.80, 'kg/㎡', '钢板8mm'),
         ('plate', '10mm', 78.50, 'kg/㎡', '钢板10mm'),
         ('plate', '12mm', 94.20, 'kg/㎡', '钢板12mm'),
-        # 角钢
+        # 等边角钢
         ('angle', 'L25×3', 1.124, 'kg/m', '等边角钢'),
         ('angle', 'L30×3', 1.373, 'kg/m', '等边角钢'),
         ('angle', 'L40×3', 1.852, 'kg/m', '等边角钢'),
@@ -736,13 +739,122 @@ def init_steel_specs():
         ('pipe', 'Φ76×4.0', 7.10, 'kg/m', '焊接钢管'),
         ('pipe', 'Φ89×4.0', 8.38, 'kg/m', '焊接钢管'),
         ('pipe', 'Φ114×4.0', 10.85, 'kg/m', '焊接钢管'),
+        # 槽钢
+        ('channel', '5#', 5.438, 'kg/m', '槽钢'),
+        ('channel', '6.3#', 6.634, 'kg/m', '槽钢'),
+        ('channel', '8#', 8.045, 'kg/m', '槽钢'),
+        ('channel', '10#', 10.007, 'kg/m', '槽钢'),
+        ('channel', '12#', 12.059, 'kg/m', '槽钢'),
+        ('channel', '14#a', 14.535, 'kg/m', '槽钢'),
+        ('channel', '16#a', 17.240, 'kg/m', '槽钢'),
+        ('channel', '18#a', 20.174, 'kg/m', '槽钢'),
+        ('channel', '20#a', 22.637, 'kg/m', '槽钢'),
+        ('channel', '22#a', 24.999, 'kg/m', '槽钢'),
+        ('channel', '25#a', 27.410, 'kg/m', '槽钢'),
+        ('channel', '28#a', 31.427, 'kg/m', '槽钢'),
+        ('channel', '32#a', 38.083, 'kg/m', '槽钢'),
+        ('channel', '36#a', 41.209, 'kg/m', '槽钢'),
+        ('channel', '40#a', 46.878, 'kg/m', '槽钢'),
+        # 工字钢
+        ('ibeam', '10#', 11.261, 'kg/m', '工字钢'),
+        ('ibeam', '12#', 13.987, 'kg/m', '工字钢'),
+        ('ibeam', '14#', 16.890, 'kg/m', '工字钢'),
+        ('ibeam', '16#', 20.513, 'kg/m', '工字钢'),
+        ('ibeam', '18#', 24.143, 'kg/m', '工字钢'),
+        ('ibeam', '20#a', 27.929, 'kg/m', '工字钢'),
+        ('ibeam', '22#a', 33.070, 'kg/m', '工字钢'),
+        ('ibeam', '25#a', 38.105, 'kg/m', '工字钢'),
+        ('ibeam', '28#a', 43.492, 'kg/m', '工字钢'),
+        ('ibeam', '32#a', 52.717, 'kg/m', '工字钢'),
+        ('ibeam', '36#a', 60.037, 'kg/m', '工字钢'),
+        ('ibeam', '40#a', 67.598, 'kg/m', '工字钢'),
+        ('ibeam', '45#a', 80.420, 'kg/m', '工字钢'),
+        ('ibeam', '50#a', 93.654, 'kg/m', '工字钢'),
+        ('ibeam', '56#a', 106.316, 'kg/m', '工字钢'),
+        ('ibeam', '63#a', 121.407, 'kg/m', '工字钢'),
+        # H型钢
+        ('hbeam', 'H200×200×8×12', 50.5, 'kg/m', 'H型钢'),
+        ('hbeam', 'H250×250×9×14', 72.4, 'kg/m', 'H型钢'),
+        ('hbeam', 'H300×150×6.5×9', 37.3, 'kg/m', 'H型钢'),
+        ('hbeam', 'H350×175×7×11', 50.0, 'kg/m', 'H型钢'),
+        ('hbeam', 'H400×200×8×13', 66.0, 'kg/m', 'H型钢'),
+        ('hbeam', 'H500×200×10×16', 89.6, 'kg/m', 'H型钢'),
+        ('hbeam', 'H600×200×11×17', 103.0, 'kg/m', 'H型钢'),
+        ('hbeam', 'H700×300×13×24', 185.0, 'kg/m', 'H型钢'),
+        ('hbeam', 'H800×300×14×26', 210.0, 'kg/m', 'H型钢'),
+        # 扁钢
+        ('flat', '25×3', 0.59, 'kg/m', '扁钢'),
+        ('flat', '25×4', 0.79, 'kg/m', '扁钢'),
+        ('flat', '30×3', 0.71, 'kg/m', '扁钢'),
+        ('flat', '30×4', 0.94, 'kg/m', '扁钢'),
+        ('flat', '40×3', 0.94, 'kg/m', '扁钢'),
+        ('flat', '40×4', 1.26, 'kg/m', '扁钢'),
+        ('flat', '50×5', 1.96, 'kg/m', '扁钢'),
+        ('flat', '60×6', 2.83, 'kg/m', '扁钢'),
+        ('flat', '80×8', 5.02, 'kg/m', '扁钢'),
+        ('flat', '100×10', 7.85, 'kg/m', '扁钢'),
+        # 方钢
+        ('square', '10×10', 0.79, 'kg/m', '方钢'),
+        ('square', '12×12', 1.13, 'kg/m', '方钢'),
+        ('square', '16×16', 2.01, 'kg/m', '方钢'),
+        ('square', '20×20', 3.14, 'kg/m', '方钢'),
+        ('square', '25×25', 4.91, 'kg/m', '方钢'),
+        ('square', '30×30', 7.07, 'kg/m', '方钢'),
+        ('square', '40×40', 12.56, 'kg/m', '方钢'),
+        ('square', '50×50', 19.63, 'kg/m', '方钢'),
+        # 不等边角钢
+        ('angle_unequal', 'L25×16×3', 0.912, 'kg/m', '不等边角钢'),
+        ('angle_unequal', 'L32×20×3', 1.171, 'kg/m', '不等边角钢'),
+        ('angle_unequal', 'L40×25×3', 1.484, 'kg/m', '不等边角钢'),
+        ('angle_unequal', 'L45×28×3', 1.687, 'kg/m', '不等边角钢'),
+        ('angle_unequal', 'L50×32×3', 1.900, 'kg/m', '不等边角钢'),
+        ('angle_unequal', 'L56×36×4', 2.818, 'kg/m', '不等边角钢'),
+        ('angle_unequal', 'L63×40×5', 3.920, 'kg/m', '不等边角钢'),
+        ('angle_unequal', 'L70×45×5', 4.391, 'kg/m', '不等边角钢'),
+        ('angle_unequal', 'L75×50×5', 4.808, 'kg/m', '不等边角钢'),
+        ('angle_unequal', 'L80×50×5', 5.005, 'kg/m', '不等边角钢'),
+        # 圆钢
+        ('round', 'Φ6', 0.222, 'kg/m', '圆钢'),
+        ('round', 'Φ8', 0.395, 'kg/m', '圆钢'),
+        ('round', 'Φ10', 0.617, 'kg/m', '圆钢'),
+        ('round', 'Φ12', 0.888, 'kg/m', '圆钢'),
+        ('round', 'Φ14', 1.208, 'kg/m', '圆钢'),
+        ('round', 'Φ16', 1.578, 'kg/m', '圆钢'),
+        ('round', 'Φ18', 1.998, 'kg/m', '圆钢'),
+        ('round', 'Φ20', 2.466, 'kg/m', '圆钢'),
+        ('round', 'Φ25', 3.853, 'kg/m', '圆钢'),
+        ('round', 'Φ30', 5.549, 'kg/m', '圆钢'),
+        ('round', 'Φ40', 9.865, 'kg/m', '圆钢'),
+        ('round', 'Φ50', 15.413, 'kg/m', '圆钢'),
+        # 方管/矩形管
+        ('square_tube', '25×25×2.0', 1.45, 'kg/m', '方管'),
+        ('square_tube', '30×30×2.0', 1.78, 'kg/m', '方管'),
+        ('square_tube', '40×40×2.0', 2.42, 'kg/m', '方管'),
+        ('square_tube', '50×50×2.5', 3.81, 'kg/m', '方管'),
+        ('square_tube', '60×40×2.5', 3.81, 'kg/m', '矩形管'),
+        ('square_tube', '60×60×3.0', 5.37, 'kg/m', '方管'),
+        ('square_tube', '80×40×3.0', 5.19, 'kg/m', '矩形管'),
+        ('square_tube', '80×80×4.0', 9.33, 'kg/m', '方管'),
+        ('square_tube', '100×50×4.0', 7.43, 'kg/m', '矩形管'),
+        ('square_tube', '100×100×5.0', 14.91, 'kg/m', '方管'),
+        # 建材体积重量（密度 t/m³）
+        ('building', '砂石', 1.5, 't/m³', '密度1.5吨/方'),
+        ('building', '混凝土', 2.4, 't/m³', '密度2.4吨/方'),
+        ('building', '水泥', 1.3, 't/m³', '密度1.3吨/方'),
     ]
+
+    added = 0
     for spec_type, spec_name, weight, unit, remark in specs:
+        if spec_type in existing_type_set:
+            continue
         s = SteelSpecWeight(spec_type=spec_type, spec_name=spec_name,
                            theoretical_weight=weight, unit=unit, remark=remark)
         db.session.add(s)
-    db.session.commit()
-    print("Steel specs initialized")
+        added += 1
+
+    if added > 0:
+        db.session.commit()
+        print(f"Steel specs initialized ({added} new specs added)")
 
 
 def init_default_users():

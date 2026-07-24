@@ -627,8 +627,63 @@ def _apply_scrap_inventory(scrap):
         db.session.add(so_item)
 
 
+def can_view_approval(instance_id, user_id):
+    """判断用户是否有权查看审批实例详情
+    放行条件：申请人本人 / 当前节点审批人 / 历史审批人
+    不走普通数据权限校验，确保跨部门审批可见
+    """
+    instance = ApprovalInstance.query.get(instance_id)
+    if not instance:
+        return False
+
+    # 申请人本人
+    if instance.applicant_id == user_id:
+        return True
+
+    # 当前节点审批人
+    if instance.current_node and instance.status in ('pending', 'approving'):
+        user = User.query.get(user_id)
+        if user and instance.current_node.can_approve(user):
+            return True
+
+    # 历史审批人（有审批记录）
+    record = ApprovalRecord.query.filter_by(
+        instance_id=instance_id,
+        approver_id=user_id
+    ).first()
+    if record:
+        return True
+
+    return False
+
+
+def can_operate_approval(instance_id, user_id):
+    """判断用户是否有权操作审批（通过/驳回）
+    只判断：是否是当前节点的审批人，且不是申请人本人
+    与业务模块的编辑/新增权限脱钩
+    """
+    instance = ApprovalInstance.query.get(instance_id)
+    if not instance:
+        return False
+
+    if instance.status not in ('pending', 'approving'):
+        return False
+
+    if not instance.current_node:
+        return False
+
+    if instance.applicant_id == user_id:
+        return False
+
+    user = User.query.get(user_id)
+    if not user:
+        return False
+
+    return instance.current_node.can_approve(user)
+
+
 def get_my_pending_approvals(user_id):
-    """获取待我审批的实例列表"""
+    """获取待我审批的实例列表（跳过数据权限过滤，仅按审批人筛选）"""
     user = User.query.get(user_id)
     if not user:
         return []

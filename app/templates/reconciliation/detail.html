@@ -140,6 +140,10 @@
                         <th class="text-end">数量</th>
                         <th class="text-end">基准价</th>
                         <th class="text-end">结算单价(含税)</th>
+                        {% if reconciliation.price_formula and reconciliation.price_formula.capital_fee_rate %}
+                        <th class="text-end">资金占用天数</th>
+                        <th class="text-end">资金使用费</th>
+                        {% endif %}
                         <th class="text-end">不含税金额</th>
                         <th class="text-end">税额</th>
                         <th class="text-end">含税金额</th>
@@ -187,12 +191,26 @@
                             {{ '%.4f'|format(it.settlement_price or it.unit_price or 0) }}
                             {% endif %}
                         </td>
+                        {% if reconciliation.price_formula and reconciliation.price_formula.capital_fee_rate %}
+                        <td class="text-end">
+                            {% if reconciliation.status == 'draft' %}
+                            <input type="number" name="capital_days_{{ it.id }}" step="1" min="0" class="form-control form-control-sm text-end w-auto d-inline capital-days-input" data-id="{{ it.id }}" value="{{ it.capital_fee_days if it.capital_fee_days is not none else '' }}" placeholder="自动">
+                            {% else %}
+                            {{ it.capital_fee_days if it.capital_fee_days is not none else '-' }}
+                            {% endif %}
+                        </td>
+                        <td class="text-end capital-fee-cell">
+                            {% if calc_details.get(it.id) and calc_details[it.id].get('capital_fee') %}
+                            {{ '%.2f'|format(calc_details[it.id]['capital_fee'] * (it.quantity or 0)) }}
+                            {% else %}-{% endif %}
+                        </td>
+                        {% endif %}
                         <td class="text-end amount-without-tax-cell">{{ '%.2f'|format(it.amount_without_tax or 0) }}</td>
                         <td class="text-end tax-amount-cell">{{ '%.2f'|format(it.tax_amount or 0) }}</td>
                         <td class="text-end fw-bold amount-cell">{{ '%.2f'|format(it.amount_with_tax or it.amount or 0) }}</td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="12" class="text-center text-muted">
+                    <tr><td colspan="{{ 12 if reconciliation.price_formula and reconciliation.price_formula.capital_fee_rate else 10 }}" class="text-center text-muted">
                         {% if reconciliation.status == 'draft' %}点击"拉取入库数据"按钮获取入库明细{% else %}暂无明细{% endif %}
                     </td></tr>
                     {% endfor %}
@@ -204,6 +222,10 @@
                         <td class="text-end fw-bold">{{ '%.4f'|format(items|sum(attribute='quantity') or 0) }}</td>
                         <td class="text-end">-</td>
                         <td class="text-end">-</td>
+                        {% if reconciliation.price_formula and reconciliation.price_formula.capital_fee_rate %}
+                        <td class="text-end">-</td>
+                        <td class="text-end">-</td>
+                        {% endif %}
                         <td class="text-end fw-bold">{{ '%.2f'|format(reconciliation.total_amount_without_tax or 0) }}</td>
                         <td class="text-end fw-bold">{{ '%.2f'|format(reconciliation.total_tax_amount or 0) }}</td>
                         <td class="text-end fw-bold fs-5 text-primary">{{ '%.2f'|format(reconciliation.total_amount or 0) }}</td>
@@ -219,6 +241,35 @@
             </button>
         </div>
         </form>
+        {% endif %}
+
+        {% if reconciliation.price_formula and reconciliation.price_formula.capital_fee_rate and items %}
+        <div class="mt-3 p-3 bg-light rounded">
+            <h6 class="mb-2 text-muted"><i class="bi bi-cash-stack me-1"></i>费用分项</h6>
+            <div class="row g-2 small">
+                <div class="col-md-4">
+                    <span class="text-muted">材料款合计：</span>
+                    <span class="fw-bold" id="materialTotal">{{ '%.2f'|format(reconciliation.total_amount_without_tax or 0) }}</span>
+                </div>
+                <div class="col-md-4">
+                    <span class="text-muted">资金使用费合计：</span>
+                    <span class="fw-bold text-warning" id="capitalFeeTotal">
+                        {% set cap_total = namespace(val=0) %}
+                        {% for it in items %}
+                            {% if calc_details.get(it.id) and calc_details[it.id].get('capital_fee') %}
+                                {% set cap_total.val = cap_total.val + calc_details[it.id]['capital_fee'] * (it.quantity or 0) %}
+                            {% endif %}
+                        {% endfor %}
+                        {{ '%.2f'|format(cap_total.val) }}
+                    </span>
+                    <span class="text-muted">（费率：{{ reconciliation.price_formula.capital_fee_rate }}%/月）</span>
+                </div>
+                <div class="col-md-4">
+                    <span class="text-muted">含税合计：</span>
+                    <span class="fw-bold text-primary fs-5">{{ '%.2f'|format(reconciliation.total_amount or 0) }}</span>
+                </div>
+            </div>
+        </div>
         {% endif %}
     </div>
 </div>
@@ -249,6 +300,16 @@ function updateAmounts() {
 
 document.querySelectorAll('.price-input').forEach(input => {
     input.addEventListener('input', updateAmounts);
+});
+
+// 资金占用天数修改后提示重新计算
+document.querySelectorAll('.capital-days-input').forEach(input => {
+    input.addEventListener('change', function() {
+        const hint = document.getElementById('capitalFeeTotal');
+        if (hint) {
+            hint.innerHTML += ' <span class="badge bg-warning">需重新计算</span>';
+        }
+    });
 });
 </script>
 {% endblock %}

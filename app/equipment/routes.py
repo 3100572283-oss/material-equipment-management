@@ -12,7 +12,7 @@ from app.models import (
     Project, Supplier,
     EquipmentInspection, EquipmentInspectionTask, EquipmentInspectionRecord
 )
-from app.decorators import editor_required, log_audit
+from app.decorators import editor_required, log_audit, module_required
 from app.utils import log_operation, get_dict_items, apply_data_scope
 
 
@@ -101,6 +101,7 @@ def _common_form_ctx():
 
 @bp.route('/')
 @login_required
+@module_required('module_equipment')
 def index():
     project_id = session.get('current_project_id')
     # 全部数据权限用户在"全部项目"模式下不限制项目

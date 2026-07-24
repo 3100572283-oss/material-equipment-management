@@ -73,8 +73,8 @@
                     <input type="number" step="0.0001" min="0" class="form-control" name="capital_fee_rate" value="{{ '%.4f'|format(formula.capital_fee_rate or 0) if formula else '0' }}">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">资金占用天数</label>
-                    <input type="number" step="1" min="0" class="form-control" name="capital_fee_days" value="{{ formula.capital_fee_days if formula and formula.capital_fee_days else '' }}">
+                    <label class="form-label">资金占用天数 <small class="text-muted">(留空则对账时自动计算)</small></label>
+                    <input type="number" step="1" min="0" class="form-control" name="capital_fee_days" value="{{ formula.capital_fee_days if formula and formula.capital_fee_days else '' }}" placeholder="自动计算">
                 </div>
                 <div class="col-md-4"></div>
 

@@ -17,10 +17,9 @@
                         <div class="col-sm-9">
                             <select class="form-select" id="spec_type" name="spec_type" required>
                                 <option value="">请选择规格类型</option>
-                                <option value="rebar">钢筋</option>
-                                <option value="plate">钢板</option>
-                                <option value="angle">角钢</option>
-                                <option value="pipe">钢管</option>
+                                {% for code, label in spec_type_map.items() %}
+                                <option value="{{ code }}">{{ label }}</option>
+                                {% endfor %}
                             </select>
                         </div>
                     </div>
@@ -49,6 +48,12 @@
                         <label class="col-sm-3 col-form-label text-end">宽度(m) <span class="text-danger">*</span></label>
                         <div class="col-sm-9">
                             <input type="number" class="form-control" id="width" name="width" step="0.001" min="0" placeholder="请输入宽度" value="1.5">
+                        </div>
+                    </div>
+                    <div class="row mb-3 d-none" id="volumeRow">
+                        <label class="col-sm-3 col-form-label text-end">体积(m³) <span class="text-danger">*</span></label>
+                        <div class="col-sm-9">
+                            <input type="number" class="form-control" id="volume" name="volume" step="0.01" min="0" placeholder="请输入体积（方）" value="1">
                         </div>
                     </div>
                     <div class="row">
@@ -83,9 +88,10 @@
                 <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>换算公式</h6>
             </div>
             <div class="card-body">
-                <ul class="small text-muted mb-0 ps-3">
-                    <li class="mb-1"><strong>钢筋/钢管/角钢：</strong>理论重量(kg/m) × 长度(m) × 根数 = 总重量(kg)</li>
+                <ul class="small text-muted mb-0 ps-3" id="formulaList">
+                    <li class="mb-1"><strong>型钢类（钢筋/钢管/角钢/槽钢/工字钢/H型钢/扁钢/方钢/圆钢/方管等）：</strong>理论重量(kg/m) × 长度(m) × 根数 = 总重量(kg)</li>
                     <li class="mb-1"><strong>钢板：</strong>理论重量(kg/㎡) × 长度(m) × 宽度(m) = 总重量(kg)</li>
+                    <li class="mb-1"><strong>建材体积重量：</strong>密度(t/m³) × 体积(m³) = 重量(吨)</li>
                     <li class="mb-1">1吨 = 1000公斤(kg)</li>
                 </ul>
             </div>
@@ -96,12 +102,7 @@
 <script>
 // 将规格数据按类型分组
 var ALL_SPECS = {{ specs | tojson }};
-var SPEC_TYPE_LABEL = {
-    'rebar': '钢筋',
-    'plate': '钢板',
-    'angle': '角钢',
-    'pipe': '钢管'
-};
+var SPEC_TYPE_LABEL = {{ spec_type_map | tojson }};
 
 // 按规格类型筛选规格名称
 function filterSpecs(specType) {
@@ -115,6 +116,8 @@ document.getElementById('spec_type').addEventListener('change', function() {
     var specInfo = document.getElementById('specInfo');
     var widthRow = document.getElementById('widthRow');
     var countRow = document.getElementById('countRow');
+    var lengthRow = document.getElementById('lengthRow');
+    var volumeRow = document.getElementById('volumeRow');
 
     specNameSelect.innerHTML = '<option value="">请选择规格</option>';
     specInfo.textContent = '';
@@ -135,13 +138,25 @@ document.getElementById('spec_type').addEventListener('change', function() {
         specNameSelect.appendChild(opt);
     });
 
-    // 钢板显示宽度，隐藏根数；其他类型显示根数，隐藏宽度
-    if (specType === 'plate') {
+    // 根据类型切换输入区域
+    if (specType === 'building') {
+        // 建材体积重量：只显示体积输入
+        volumeRow.classList.remove('d-none');
+        lengthRow.classList.add('d-none');
+        countRow.classList.add('d-none');
+        widthRow.classList.add('d-none');
+    } else if (specType === 'plate') {
+        // 钢板：显示长度和宽度
+        volumeRow.classList.add('d-none');
+        lengthRow.classList.remove('d-none');
         widthRow.classList.remove('d-none');
         countRow.classList.add('d-none');
     } else {
-        widthRow.classList.add('d-none');
+        // 型钢类：显示长度和根数
+        volumeRow.classList.add('d-none');
+        lengthRow.classList.remove('d-none');
         countRow.classList.remove('d-none');
+        widthRow.classList.add('d-none');
     }
 });
 
@@ -150,7 +165,7 @@ document.getElementById('spec_name').addEventListener('change', function() {
     var opt = this.options[this.selectedIndex];
     var specInfo = document.getElementById('specInfo');
     if (opt && opt.dataset.weight) {
-        specInfo.textContent = '理论重量：' + opt.dataset.weight + ' ' + opt.dataset.unit;
+        specInfo.textContent = '理论重量/密度：' + opt.dataset.weight + ' ' + opt.dataset.unit;
     } else {
         specInfo.textContent = '';
     }
@@ -181,6 +196,8 @@ document.getElementById('calcForm').addEventListener('submit', function(e) {
         var formulaHtml = detail.formula ? '<div class="text-muted small mt-2"><i class="bi bi-calculator me-1"></i>' + detail.formula + '</div>' : '';
         var countHtml = detail.count !== undefined ? '<div class="mb-1"><span class="text-muted">根数：</span>' + detail.count + ' 根</div>' : '';
         var widthHtml = detail.width !== undefined ? '<div class="mb-1"><span class="text-muted">宽度：</span>' + detail.width + ' m</div>' : '';
+        var volumeHtml = detail.volume !== undefined ? '<div class="mb-1"><span class="text-muted">体积：</span>' + detail.volume + ' m³</div>' : '';
+        var densityHtml = detail.density !== undefined ? '<div class="mb-1"><span class="text-muted">密度：</span>' + detail.density + ' t/m³</div>' : '';
 
         body.innerHTML =
             '<div class="text-center mb-3">' +
@@ -195,9 +212,9 @@ document.getElementById('calcForm').addEventListener('submit', function(e) {
                 '<div class="fw-bold mb-2"><i class="bi bi-list-ul me-1"></i>计算明细</div>' +
                 '<div class="mb-1"><span class="text-muted">类型：</span>' + (detail.spec_type || '-') + '</div>' +
                 '<div class="mb-1"><span class="text-muted">规格：</span>' + (detail.spec_name || '-') + '</div>' +
-                '<div class="mb-1"><span class="text-muted">理论重量：</span>' + window.fmtNumber(detail.theoretical_weight, 4) + ' ' + (detail.unit || '') + '</div>' +
-                '<div class="mb-1"><span class="text-muted">长度：</span>' + (detail.length !== undefined ? detail.length + ' m' : '-') + '</div>' +
-                countHtml + widthHtml +
+                '<div class="mb-1"><span class="text-muted">理论重量/密度：</span>' + window.fmtNumber(detail.theoretical_weight, 4) + ' ' + (detail.unit || '') + '</div>' +
+                (detail.length !== undefined ? '<div class="mb-1"><span class="text-muted">长度：</span>' + detail.length + ' m</div>' : '') +
+                countHtml + widthHtml + volumeHtml + densityHtml +
             '</div>' +
             formulaHtml;
     })
@@ -218,7 +235,9 @@ document.getElementById('resetBtn').addEventListener('click', function() {
         specNameSelect.disabled = true;
         document.getElementById('specInfo').textContent = '';
         document.getElementById('widthRow').classList.add('d-none');
+        document.getElementById('volumeRow').classList.add('d-none');
         document.getElementById('countRow').classList.remove('d-none');
+        document.getElementById('lengthRow').classList.remove('d-none');
         document.getElementById('resultBody').innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-calculator" style="font-size:3rem;"></i><div class="mt-2">填写参数后点击"开始换算"查看结果</div></div>';
     }, 0);
 });

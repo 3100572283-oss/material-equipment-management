@@ -9,8 +9,17 @@ from app.models import SteelSpecWeight
 SPEC_TYPE_MAP = {
     'rebar': '钢筋',
     'plate': '钢板',
-    'angle': '角钢',
+    'angle': '等边角钢',
     'pipe': '钢管',
+    'channel': '槽钢',
+    'ibeam': '工字钢',
+    'hbeam': 'H型钢',
+    'flat': '扁钢',
+    'square': '方钢',
+    'angle_unequal': '不等边角钢',
+    'round': '圆钢',
+    'square_tube': '方管/矩形管',
+    'building': '建材体积重量',
 }
 
 
@@ -59,6 +68,7 @@ def api_calculate():
         count = request.form.get('count', '1')
         length = request.form.get('length', '0')
         width = request.form.get('width', '0')
+        volume = request.form.get('volume', '0')
 
         if not spec_type or not spec_name:
             return jsonify({'success': False, 'message': '请选择规格类型和规格名称'})
@@ -77,13 +87,27 @@ def api_calculate():
             'unit': spec.unit,
         }
 
-        if spec_type == 'plate':
+        if spec_type == 'building':
+            # 建材体积重量换算：密度(t/m³) × 体积(m³) = 重量(吨)
+            volume_m3 = _to_float(volume)
+            if volume_m3 <= 0:
+                return jsonify({'success': False, 'message': '请输入有效体积'})
+            weight_t = round(theoretical_weight * volume_m3, 4)
+            weight_kg = round(weight_t * 1000, 2)
+            detail.update({
+                'volume': volume_m3,
+                'density': theoretical_weight,
+                'formula': f'{theoretical_weight} t/m³ × {volume_m3} m³',
+            })
+        elif spec_type == 'plate':
             # 钢板：理论重量(kg/㎡) × 长度(m) × 宽度(m) = 总重量(kg)
             length_m = _to_float(length)
             width_m = _to_float(width)
             if length_m <= 0 or width_m <= 0:
                 return jsonify({'success': False, 'message': '钢板需输入有效长度和宽度'})
             weight = theoretical_weight * length_m * width_m
+            weight_kg = round(weight, 2)
+            weight_t = round(weight / 1000, 4)
             detail.update({
                 'length': length_m,
                 'width': width_m,
@@ -98,15 +122,13 @@ def api_calculate():
             if length_m <= 0:
                 return jsonify({'success': False, 'message': '请输入有效长度'})
             weight = theoretical_weight * length_m * count_n
+            weight_kg = round(weight, 2)
+            weight_t = round(weight / 1000, 4)
             detail.update({
                 'length': length_m,
                 'count': count_n,
                 'formula': f'{theoretical_weight} kg/m × {length_m} m × {count_n} 根',
             })
-
-        # 重量换算
-        weight_kg = round(weight, 2)
-        weight_t = round(weight / 1000, 4)
 
         return jsonify({
             'success': True,
@@ -175,7 +197,12 @@ def specs_add():
         return redirect(url_for('steel.specs'))
 
     if not unit:
-        unit = 'kg/㎡' if spec_type == 'plate' else 'kg/m'
+        if spec_type == 'plate':
+            unit = 'kg/㎡'
+        elif spec_type == 'building':
+            unit = 't/m³'
+        else:
+            unit = 'kg/m'
 
     s = SteelSpecWeight(
         spec_type=spec_type,

@@ -1336,12 +1336,13 @@ class PriceCalculator:
     """
 
     @staticmethod
-    def calculate(base_price, formula, tax_rate=None):
+    def calculate(base_price, formula, tax_rate=None, capital_fee_days_override=None):
         """
         根据价格方案计算结算单价。
         :param base_price: 基准价（float/Decimal）
         :param formula: PriceFormula 对象或字典
         :param tax_rate: 可选税率覆盖（%），为空则取方案税率
+        :param capital_fee_days_override: 可选资金占用天数覆盖，为空则取方案配置
         :return: dict {
             settlement_price,      # 结算单价(含税)
             price_without_tax,     # 不含税单价
@@ -1362,7 +1363,8 @@ class PriceCalculator:
         service_fee_rate = float(_get('service_fee_rate', 0) or 0)
         service_fee_fixed = float(_get('service_fee_fixed', 0) or 0)
         capital_fee_rate = float(_get('capital_fee_rate', 0) or 0)
-        capital_fee_days = _get('capital_fee_days', None)
+        # 优先使用外部传入的天数覆盖，否则取方案配置
+        capital_fee_days = capital_fee_days_override if capital_fee_days_override is not None else _get('capital_fee_days', None)
         rate = float(tax_rate if tax_rate is not None else (_get('tax_rate', 13) or 13))
         tax_included = _get('tax_included', True)
 

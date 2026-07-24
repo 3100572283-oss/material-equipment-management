@@ -7,7 +7,8 @@ from app.approval import bp
 from app.approval import service
 from app.approval.service import (
     submit_approval, get_my_pending_approvals, get_pending_count,
-    get_instance_by_biz, BIZ_NAMES, STATUS_MAP, BIZ_MODELS
+    get_instance_by_biz, BIZ_NAMES, STATUS_MAP, BIZ_MODELS,
+    can_view_approval, can_operate_approval
 )
 from app.decorators import admin_required, log_audit
 from app.models import (ApprovalFlow, ApprovalNode, ApprovalBranch,
@@ -691,8 +692,14 @@ def my_approvals():
 @bp.route('/detail/<int:instance_id>')
 @login_required
 def detail(instance_id):
-    """审批详情页"""
+    """审批详情页 - 审批人可查看，不受数据权限限制"""
     instance = ApprovalInstance.query.get_or_404(instance_id)
+
+    # 独立权限判断：审批人/申请人/历史审批人直接放行，其他用户走管理员或数据权限
+    if not can_view_approval(instance_id, current_user.id):
+        if not current_user.is_admin():
+            from flask import abort
+            abort(403)
     
     branch_name = None
     if instance.branch_id:

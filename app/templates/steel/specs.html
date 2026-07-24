@@ -45,8 +45,17 @@
                         <td>
                             {% if s.spec_type == 'rebar' %}<span class="badge bg-primary">钢筋</span>
                             {% elif s.spec_type == 'plate' %}<span class="badge bg-info text-dark">钢板</span>
-                            {% elif s.spec_type == 'angle' %}<span class="badge bg-warning text-dark">角钢</span>
+                            {% elif s.spec_type == 'angle' %}<span class="badge bg-warning text-dark">等边角钢</span>
                             {% elif s.spec_type == 'pipe' %}<span class="badge bg-success">钢管</span>
+                            {% elif s.spec_type == 'channel' %}<span class="badge bg-primary">槽钢</span>
+                            {% elif s.spec_type == 'ibeam' %}<span class="badge bg-dark">工字钢</span>
+                            {% elif s.spec_type == 'hbeam' %}<span class="badge bg-secondary">H型钢</span>
+                            {% elif s.spec_type == 'flat' %}<span class="badge bg-info text-dark">扁钢</span>
+                            {% elif s.spec_type == 'square' %}<span class="badge bg-warning text-dark">方钢</span>
+                            {% elif s.spec_type == 'angle_unequal' %}<span class="badge bg-warning text-dark">不等边角钢</span>
+                            {% elif s.spec_type == 'round' %}<span class="badge bg-success">圆钢</span>
+                            {% elif s.spec_type == 'square_tube' %}<span class="badge bg-primary">方管/矩形管</span>
+                            {% elif s.spec_type == 'building' %}<span class="badge bg-info text-dark">建材体积重量</span>
                             {% else %}<span class="badge bg-secondary">{{ s.spec_type }}</span>{% endif %}
                         </td>
                         <td class="fw-bold">{{ s.spec_name }}</td>
