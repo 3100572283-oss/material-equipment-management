@@ -1337,6 +1337,8 @@ def create_app(config_class=Config):
                 # 查找当前端点对应的菜单（按menu_code匹配）
                 menu = SysMenu.query.filter_by(menu_code=endpoint, menu_type='menu').first()
                 if menu and menu.permission:
+                    import sys as _sys
+                    print(f"[PERM-CHECK] endpoint={endpoint} menu_id={menu.id} perm={menu.permission} method={request.method}", file=_sys.stderr, flush=True)
                     # 解析权限标识，例如 stock:in:view → 模块.功能:view
                     perm = menu.permission
                     # 检查方法类型
@@ -1351,6 +1353,7 @@ def create_app(config_class=Config):
                             # 把 permission 末端的 view 替换为对应操作
                             perm_base = perm.rsplit(':', 1)[0] if ':' in perm else perm
                             check_perm = f"{perm_base}:{required_op}"
+                            print(f"[PERM-CHECK] non-GET required_op={required_op} check_perm={check_perm}", file=_sys.stderr, flush=True)
                             if not current_user.has_permission(check_perm):
                                 if request.path.startswith('/api/') or request.is_json:
                                     from flask import jsonify
@@ -1358,12 +1361,19 @@ def create_app(config_class=Config):
                                 abort(403)
                     else:
                         # GET方法需要view权限
+                        print(f"[PERM-CHECK] GET check_perm={perm}", file=_sys.stderr, flush=True)
                         if not current_user.has_permission(perm):
                             if request.path.startswith('/api/') or request.is_json:
                                 from flask import jsonify
                                 return jsonify({'code': 403, 'message': f'无权限：{perm}'}), 403
                             abort(403)
+                else:
+                    import sys as _sys
+                    print(f"[PERM-CHECK] endpoint={endpoint} menu not found or no permission", file=_sys.stderr, flush=True)
         except Exception as e:
+            import sys as _sys, traceback as _tb
+            print(f"[PERM-CHECK-ERR] {e}", file=_sys.stderr, flush=True)
+            _tb.print_exc(file=_sys.stderr)
             # 静默失败，不影响正常访问
             pass
 
