@@ -1373,23 +1373,22 @@ def create_app(config_class=Config):
             _tb.print_exc(file=_sys.stderr)
             pass
 
-    # 错误日志自动捕获
+    # 错误日志自动捕获 - 仅处理非HTTPException的异常
     @app.errorhandler(Exception)
     def handle_exception(e):
-        """捕获所有异常并记录错误日志"""
+        """捕获所有异常并记录错误日志（HTTPException由专门handler处理）"""
+        from werkzeug.exceptions import HTTPException
+        # HTTPException直接重新抛出让Flask用专门的handler处理
+        if isinstance(e, HTTPException):
+            return e
+
         import traceback
         from datetime import datetime
-        from flask import request, current_app
+        from flask import request, current_app, render_template
         from flask_login import current_user
-        from werkzeug.exceptions import HTTPException
         from app.models import ErrorLog
         from app import db as _db
         import json
-
-        # HTTPException 透传给 Flask 自身的错误处理（403/404/500等）
-        if isinstance(e, HTTPException):
-            # 重新抛出让 Flask 渲染对应的 403/404 页面
-            raise e
 
         try:
             err = ErrorLog(
@@ -1413,7 +1412,25 @@ def create_app(config_class=Config):
         # 重新抛出异常，保持原有错误处理
         if current_app.debug:
             raise e
-        from flask import render_template
         return render_template('errors/500.html', error=str(e)), 500
+
+    # 显式注册 403/404 handler，返回中文提示页面
+    from werkzeug.exceptions import Forbidden, NotFound
+
+    @app.errorhandler(403)
+    def handle_403(e):
+        from flask import render_template
+        try:
+            return render_template('errors/404.html', error='您没有权限访问该页面'), 403
+        except Exception:
+            return "您没有权限访问该页面", 403
+
+    @app.errorhandler(404)
+    def handle_404(e):
+        from flask import render_template
+        try:
+            return render_template('errors/404.html'), 404
+        except Exception:
+            return "页面不存在", 404
 
     return app

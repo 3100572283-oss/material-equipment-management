@@ -851,12 +851,13 @@ class StockIn(db.Model):
     actual_amount = db.Column(db.Numeric(18, 2), default=0)
     is_reconciled = db.Column(db.Boolean, default=False)
     is_initial = db.Column(db.Boolean, default=False)
-    status = db.Column(db.String(16), default='approved')  # draft/pending/approved/rejected/voided
     approval_status = db.Column(db.String(16), default='passed')
     quality_status = db.Column(db.String(16), default='draft')  # draft/pending/passed/rejected
     quality_checker = db.Column(db.String(64), nullable=True)
     quality_check_time = db.Column(db.DateTime, nullable=True)
     is_deleted = db.Column(db.Boolean, default=False)
+    dept_id = db.Column(db.Integer, db.ForeignKey('sys_dept.id'), nullable=True)
+    status = db.Column(db.String(16), default='draft')
     quality_remark = db.Column(db.Text, nullable=True)
     location_lat = db.Column(db.Float, nullable=True)
     location_lng = db.Column(db.Float, nullable=True)
