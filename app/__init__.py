@@ -1149,17 +1149,15 @@ def create_app(config_class=Config):
         import json as _json
 
         project_module_config = {}
+        result = []
+
         try:
             project_id = session.get('current_project_id')
             if project_id:
                 project = Project.query.get(project_id)
                 if project:
                     project_module_config = project.get_module_config()
-        except Exception:
-            pass
 
-        result = []
-        try:
             if not current_user.is_authenticated:
                 return result
 
@@ -1226,45 +1224,7 @@ def create_app(config_class=Config):
                 })
         except Exception as e:
             print(f"get_menu_groups error: {e}")
-            try:
-                for group in _menu_config.get('groups', []):
-                    module_key = group.get('module')
-                    if module_key:
-                        if module_key in project_module_config:
-                            if not project_module_config[module_key]:
-                                continue
-                        else:
-                            enabled = get_config(module_key, 'true')
-                            if str(enabled).lower() != 'true':
-                                continue
-                    if group.get('require_admin') and (not current_user.is_authenticated or not current_user.is_admin()):
-                        continue
-                    filtered_items = []
-                    for item in group.get('items', []):
-                        endpoint = item.get('endpoint')
-                        if current_user.is_authenticated and not current_user.is_admin():
-                            allowed_endpoints = set()
-                            try:
-                                from app.models import SysMenu, SysRoleMenu
-                                role_menus = db.session.query(SysMenu.menu_code).join(
-                                    SysRoleMenu, SysRoleMenu.menu_id == SysMenu.id
-                                ).filter(
-                                    SysRoleMenu.role_id == current_user.role_id,
-                                    SysRoleMenu.operation == 'view',
-                                    SysMenu.menu_code.isnot(None)
-                                ).all()
-                                allowed_endpoints = {row[0] for row in role_menus if row[0]}
-                            except Exception:
-                                pass
-                            if endpoint and allowed_endpoints and endpoint not in allowed_endpoints:
-                                continue
-                        if not _is_item_module_enabled(item, project_module_config):
-                            continue
-                        filtered_items.append(item)
-                    if filtered_items:
-                        result.append({**group, 'items': filtered_items})
-            except Exception:
-                pass
+            pass
         return result
 
     app.jinja_env.globals['get_menu_groups'] = get_menu_groups
