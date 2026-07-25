@@ -2,16 +2,96 @@ import os
 import shutil
 from datetime import datetime
 from flask import (render_template, request, redirect, url_for, flash,
-                   send_file, session, current_app, jsonify)
+                   send_file, session, current_app, jsonify, abort)
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.admin import bp
 from app.decorators import admin_required, log_audit
-from app.models import User, SystemConfig, OperationLog, SysDept, SysRole, Project, SysUserProject
+from app.models import User, SystemConfig, OperationLog, SysDept, SysRole, Project, SysUserProject, SysRoleDataScope
 from app import db
 
 
 # ============== 用户管理 ==============
+
+def _compute_user_projects(role_id, dept_id, form_project_ids_csv, main_project_id_form, is_new_user, existing_user=None):
+    """计算用户最终的可访问项目列表和主项目ID
+
+    根据角色数据权限规则计算项目范围：
+    - all / dept_and_sub：自动赋予范围权限，忽略前端传参
+    - dept / custom / self：使用前端勾选，校验非空和范围
+
+    校验规则：
+    1. 主项目必须在可访问项目范围内
+    2. 分公司管理员授权项目不得超出其权限范围
+    3. all/dept_and_sub 的项目范围按规则自动生成
+    4. 显示项目选择区场景，可访问项目至少1个
+    5. 主项目不允许为空（显示场景下）
+
+    返回: (project_ids, main_project_id, error_msg)
+    error_msg 非空时表示校验失败，应中止保存并提示
+    """
+    from app.utils import get_sub_dept_ids
+
+    role = SysRole.query.get(role_id) if role_id else None
+    # 优先使用 sys_role.data_scope（与 api_role_data_scope 接口保持一致）
+    data_scope = role.data_scope if role else 'all'
+
+    # 当前操作管理员可见的部门范围
+    admin_dept_ids = _get_admin_visible_dept_ids()
+
+    if data_scope in ('all',):
+        # 全部数据：自动赋予全部项目（受管理员权限约束）
+        proj_query = Project.query.filter_by(is_archived=False)
+        if admin_dept_ids is not None:
+            if admin_dept_ids:
+                proj_query = proj_query.filter(Project.dept_id.in_(admin_dept_ids))
+            else:
+                proj_query = proj_query.filter(False)
+        all_projects = proj_query.all()
+        project_ids = [p.id for p in all_projects]
+        main_project_id = main_project_id_form or (project_ids[0] if project_ids else None)
+        return project_ids, main_project_id, None
+
+    if data_scope == 'dept_and_sub' and dept_id:
+        # 本部门及下级：自动赋予本部门及下属部门对应项目
+        dept_ids = get_sub_dept_ids(dept_id)
+        dept_ids.append(dept_id)
+        # 额外受管理员权限约束
+        if admin_dept_ids is not None:
+            dept_ids = [d for d in dept_ids if d in admin_dept_ids]
+        proj_query = Project.query.filter_by(is_archived=False).filter(Project.dept_id.in_(dept_ids))
+        all_projects = proj_query.all()
+        project_ids = [p.id for p in all_projects]
+        main_project_id = main_project_id_form or (project_ids[0] if project_ids else None)
+        return project_ids, main_project_id, None
+
+    # dept / custom / self：使用前端勾选
+    csv_str = form_project_ids_csv or ''
+    form_project_ids = []
+    for part in csv_str.split(','):
+        part = part.strip()
+        if part.isdigit():
+            form_project_ids.append(int(part))
+
+    # 校验：至少勾选1个
+    if not form_project_ids:
+        return [], None, '请至少勾选1个可访问项目'
+
+    # 校验：勾选的项目必须在管理员可见范围内
+    if admin_dept_ids is not None:
+        for pid in form_project_ids:
+            p = Project.query.get(pid)
+            if not p or p.dept_id not in admin_dept_ids:
+                return [], None, '勾选的项目超出您的权限范围，禁止授权'
+
+    # 校验：主项目必须在可访问项目范围内
+    main_project_id = main_project_id_form
+    if not main_project_id:
+        main_project_id = form_project_ids[0]
+    if main_project_id not in form_project_ids:
+        return form_project_ids, None, '主项目必须在已勾选的可访问项目范围内'
+
+    return form_project_ids, main_project_id, None
 
 @bp.route('/users')
 @login_required
@@ -76,7 +156,6 @@ def create_user():
         password = request.form.get('password', '')
         role_id = request.form.get('role_id', type=int)
         dept_id = request.form.get('dept_id', type=int)
-        project_id = request.form.get('project_id', type=int)
         name = request.form.get('name', '').strip()
 
         if not username or not password:
@@ -87,38 +166,25 @@ def create_user():
             flash('用户名已存在', 'error')
             return redirect(url_for('admin.create_user'))
 
-        from werkzeug.security import generate_password_hash
-        
-        auto_project_ids = []
-        auto_main_project_id = None
-        
-        if dept_id:
-            dept = SysDept.query.get(dept_id)
-            if dept and dept.dept_type == 'project' and dept.project_id:
-                auto_project_ids.append(dept.project_id)
-                auto_main_project_id = dept.project_id
-        
-        form_project_ids = request.form.getlist('project_ids', type=int)
+        # 计算项目权限（含强校验）
+        form_project_ids_csv = request.form.get('project_ids_csv', '')
         form_main_project_id = request.form.get('main_project_id', type=int)
-        
-        all_project_ids = list(set(auto_project_ids + form_project_ids))
-        
-        if form_main_project_id:
-            final_main_project_id = form_main_project_id
-        elif auto_main_project_id:
-            final_main_project_id = auto_main_project_id
-        elif all_project_ids:
-            final_main_project_id = all_project_ids[0]
-        else:
-            final_main_project_id = None
-        
+        project_ids, main_project_id, err_msg = _compute_user_projects(
+            role_id, dept_id, form_project_ids_csv, form_main_project_id, is_new_user=True
+        )
+        if err_msg:
+            flash(err_msg, 'error')
+            return redirect(url_for('admin.create_user'))
+
+        from werkzeug.security import generate_password_hash
+
         user = User(
             username=username,
             password_hash=generate_password_hash(password, method='pbkdf2:sha256'),
             role='viewer',
             role_id=role_id,
             dept_id=dept_id,
-            project_id=final_main_project_id,
+            project_id=main_project_id,
             name=name or None,
             department=request.form.get('department', '').strip() or None,
             email=request.form.get('email', '').strip() or None,
@@ -126,12 +192,12 @@ def create_user():
         )
         db.session.add(user)
         db.session.flush()
-        
-        for pid in all_project_ids:
-            is_main = (pid == final_main_project_id)
+
+        for pid in project_ids:
+            is_main = (pid == main_project_id)
             up = SysUserProject(user_id=user.id, project_id=pid, is_main=is_main)
             db.session.add(up)
-        
+
         db.session.commit()
         flash('用户创建成功', 'success')
         return redirect(url_for('admin.users'))
@@ -190,37 +256,24 @@ def edit_user(id):
             from werkzeug.security import generate_password_hash
             user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
 
-        # ===== 更新项目关联 =====
-        auto_project_ids = []
-        auto_main_project_id = None
-
-        if dept_id:
-            dept = SysDept.query.get(dept_id)
-            if dept and dept.dept_type == 'project' and dept.project_id:
-                auto_project_ids.append(dept.project_id)
-                auto_main_project_id = dept.project_id
-
-        form_project_ids = request.form.getlist('project_ids', type=int)
+        # 计算项目权限（含强校验）
+        form_project_ids_csv = request.form.get('project_ids_csv', '')
         form_main_project_id = request.form.get('main_project_id', type=int)
-
-        all_project_ids = list(set(auto_project_ids + form_project_ids))
-
-        if form_main_project_id:
-            final_main_project_id = form_main_project_id
-        elif auto_main_project_id:
-            final_main_project_id = auto_main_project_id
-        elif all_project_ids:
-            final_main_project_id = all_project_ids[0]
-        else:
-            final_main_project_id = None
+        project_ids, main_project_id, err_msg = _compute_user_projects(
+            role_id, dept_id, form_project_ids_csv, form_main_project_id,
+            is_new_user=False, existing_user=user
+        )
+        if err_msg:
+            flash(err_msg, 'error')
+            return redirect(url_for('admin.edit_user', id=id))
 
         # 更新主项目
-        user.project_id = final_main_project_id
+        user.project_id = main_project_id
 
         # 删除旧关联，重建新关联
         SysUserProject.query.filter_by(user_id=user.id).delete()
-        for pid in all_project_ids:
-            is_main = (pid == final_main_project_id)
+        for pid in project_ids:
+            is_main = (pid == main_project_id)
             up = SysUserProject(user_id=user.id, project_id=pid, is_main=is_main)
             db.session.add(up)
 
@@ -1290,7 +1343,7 @@ def db_migrations():
 @admin_required
 @log_audit(module='系统管理', operation='执行数据库迁移')
 def run_db_migrations():
-    """执行待处理的迁移"""
+    """执行待发布的迁移"""
     from app.migration import run_migrations
     results = run_migrations()
     success_count = sum(1 for r in results if r['success'])
@@ -1300,3 +1353,149 @@ def run_db_migrations():
     else:
         flash(f'迁移完成：成功执行 {success_count} 个迁移', 'success')
     return redirect(url_for('admin.db_migrations'))
+
+
+# ============== 用户表单项目选择器接口 ==============
+
+def _get_admin_visible_dept_ids():
+    """获取当前操作管理员可见的部门ID列表（用于分级权限过滤）
+
+    返回 None 表示可见全部（集团管理员/全部数据权限）
+    返回列表表示仅可见这些部门（分公司管理员/本部门及下级权限）
+    """
+    if current_user.is_admin():
+        return None
+
+    data_scope = current_user.get_data_scope()
+    if data_scope == 'all':
+        return None
+
+    from app.utils import get_sub_dept_ids
+
+    if data_scope == 'dept' and current_user.dept_id:
+        return [current_user.dept_id]
+    if data_scope == 'dept_and_sub' and current_user.dept_id:
+        ids = get_sub_dept_ids(current_user.dept_id)
+        ids.append(current_user.dept_id)
+        return ids
+
+    # custom / self：返回空列表（实际可见部门由 custom_depts 决定，这里简化为无权限）
+    if data_scope == 'custom':
+        from app.models import SysRoleDataScope
+        if current_user.role_obj:
+            cfg = SysRoleDataScope.query.filter_by(role_id=current_user.role_obj.id).first()
+            if cfg and cfg.custom_depts:
+                import json
+                try:
+                    raw = json.loads(cfg.custom_depts)
+                    return [int(x) for x in raw if str(x).isdigit()]
+                except Exception:
+                    pass
+    return []
+
+
+@bp.route('/api/user/projects_tree')
+@login_required
+@admin_required
+def api_user_projects_tree():
+    """用户表单项目选择器：返回按公司分组的项目树
+
+    结构：公司节点 → 项目节点（两级）
+    规则：
+    - 只保留 company/branch 类型的部门作为分组节点
+    - 只显示有项目的分组节点
+    - 受当前管理员数据权限约束（分级权限过滤）
+    - 可选 dept_id 参数：联动时仅返回该部门范围内的项目（本部门数据权限场景）
+    """
+    # 当前管理员可见的部门ID
+    admin_dept_ids = _get_admin_visible_dept_ids()
+
+    # 查询公司/分公司（仅此两类作为分组节点）
+    dept_query = SysDept.query.filter(
+        SysDept.dept_type.in_(['company', 'branch']),
+        SysDept.status == True
+    ).order_by(SysDept.sort.asc(), SysDept.created_at.asc())
+    if admin_dept_ids is not None:
+        if admin_dept_ids:
+            dept_query = dept_query.filter(SysDept.id.in_(admin_dept_ids))
+        else:
+            dept_query = dept_query.filter(False)
+    depts = dept_query.all()
+
+    # 查询项目（受管理员权限约束）
+    proj_query = Project.query.filter_by(is_archived=False)
+    if admin_dept_ids is not None:
+        if admin_dept_ids:
+            proj_query = proj_query.filter(Project.dept_id.in_(admin_dept_ids))
+        else:
+            proj_query = proj_query.filter(False)
+    projects = proj_query.order_by(Project.created_at.desc()).all()
+
+    # 按 dept_id 分组
+    proj_by_dept = {}
+    for p in projects:
+        proj_by_dept.setdefault(p.dept_id, []).append(p)
+
+    # 构建树：只包含有项目的公司节点
+    tree = []
+    for d in depts:
+        dept_projects = proj_by_dept.get(d.id, [])
+        if not dept_projects:
+            continue
+        tree.append({
+            'id': d.id,
+            'label': d.dept_name,
+            'code': d.dept_code,
+            'dept_type': d.dept_type,
+            'project_count': len(dept_projects),
+            'children': [{
+                'id': p.id,
+                'label': p.name,
+                'code': p.code,
+                'status': p.status,
+                'dept_id': p.dept_id,
+            } for p in dept_projects],
+        })
+
+    return jsonify({'code': 0, 'tree': tree, 'total': len(projects)})
+
+
+@bp.route('/api/role_data_scope')
+@login_required
+@admin_required
+def api_role_data_scope():
+    """查询指定角色的数据权限范围
+
+    用于用户表单联动：根据角色数据权限决定项目选择区的显示状态
+    优先从 sys_role.data_scope 读取，SysRoleDataScope 表存在历史脏数据（role_id 与 sys_role.id 不匹配）
+    """
+    role_id = request.args.get('role_id', type=int)
+    if not role_id:
+        return jsonify({'code': 1, 'msg': '角色ID不能为空'})
+
+    role = SysRole.query.get(role_id)
+    if not role:
+        return jsonify({'code': 1, 'msg': '角色不存在'})
+
+    # 优先使用 sys_role.data_scope（当前生效值）
+    data_scope = role.data_scope or 'all'
+
+    # 数据权限范围说明
+    scope_map = {
+        'all': '全部数据',
+        'dept': '本部门数据',
+        'dept_and_sub': '本部门及下级',
+        'custom': '自定义数据权限',
+        'self': '仅本人数据',
+    }
+
+    return jsonify({
+        'code': 0,
+        'role_id': role_id,
+        'role_code': role.role_code,
+        'role_name': role.role_name,
+        'data_scope': data_scope,
+        'data_scope_display': scope_map.get(data_scope, data_scope),
+        # 是否显示项目选择区：仅 dept / custom / self 时显示
+        'show_project_selector': data_scope in ('dept', 'custom', 'self'),
+    })

@@ -288,14 +288,15 @@ class User(UserMixin, db.Model):
         return self.role
 
     def get_data_scope(self):
-        """获取数据权限范围（优先从 sys_role_data_scope 表读取）"""
+        """获取数据权限范围
+
+        优先使用 sys_role.data_scope（当前生效值）
+        注：sys_role_data_scope 表存在历史脏数据（role_id 与 sys_role.id 不匹配），
+        暂不作为主数据源，待数据清理后再启用
+        """
         if self.role_obj:
-            from app.models import SysRoleDataScope
-            scope_cfg = SysRoleDataScope.query.filter_by(role_id=self.role_obj.id).first()
-            if scope_cfg:
-                return scope_cfg.data_scope or 'all'
-            return self.role_obj.data_scope
-        return self.data_scope
+            return self.role_obj.data_scope or 'all'
+        return self.data_scope or 'all'
 
 
 class SysDept(db.Model):

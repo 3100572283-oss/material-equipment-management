@@ -17,6 +17,25 @@
 [data-bs-theme="dark"] .dept-tree-item.active {
     background-color: rgba(13, 110, 253, 0.25) !important;
 }
+/* 项目树状多选样式 */
+.proj-tree-node { user-select: none; }
+.proj-tree-row {
+    display: flex; align-items: center; padding: .3rem .5rem;
+    border-radius: .25rem; font-size: .875rem;
+}
+.proj-tree-row:hover { background: rgba(13, 110, 253, 0.06); }
+.proj-tree-toggle { width: 1rem; cursor: pointer; color: var(--bs-secondary); text-align: center; }
+.proj-tree-children { margin-left: 1.2rem; }
+.proj-tree-row .form-check { margin: 0 .25rem 0 0; min-height: 0; }
+.proj-tree-row .form-check-input { margin-left: 0; cursor: pointer; }
+.proj-tree-icon { margin-right: .3rem; }
+.proj-tree-count {
+    margin-left: auto; font-size: .7rem;
+    background: var(--bs-tertiary-bg); color: var(--bs-secondary);
+    padding: 0 .35rem; border-radius: .375rem;
+}
+[data-bs-theme="dark"] .proj-tree-row:hover { background: rgba(255,255,255,.06); }
+[data-bs-theme="dark"] .proj-tree-count { background: rgba(255,255,255,.08); }
 </style>
 {% endblock %}
 {% block content %}
@@ -119,40 +138,29 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        {% if projects %}
-                        <div class="col-md-6">
-                            <label class="form-label">可访问项目</label>
-                            <div class="project-multi-select" style="max-height: 200px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem; padding: 4px;">
-                                {% for p in projects %}
-                                <div class="form-check px-3 py-1">
-                                    <input type="checkbox" class="form-check-input project-checkbox" name="project_ids" value="{{ p.id }}"
-                                           id="project_{{ p.id }}"
-                                           {% if user and p.id in user.user_projects|map(attribute='project_id')|list %}checked{% endif %}
-                                           onchange="updateMainProjectOptions()">
-                                    <label class="form-check-label" for="project_{{ p.id }}">
-                                        {{ p.code }} - {{ p.name }}
-                                    </label>
+                        <!-- 项目选择区（角色数据权限联动：仅 dept/custom/self 显示） -->
+                        <div class="col-12" id="projectSelectorArea" style="display:none;">
+                            <label class="form-label">可访问项目 <span class="text-muted small">（按公司分组，勾选后自动加入主项目下拉）</span></label>
+                            <div class="project-tree-panel" style="border:1px solid #dee2e6; border-radius:.375rem; overflow:hidden;">
+                                <div class="p-2 border-bottom bg-light">
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" id="projectSearch" class="form-control" placeholder="搜索项目名称/编号..." oninput="filterProjectTree(this.value)">
+                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                    </div>
                                 </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">主项目</label>
-                            <div class="main-project-select" style="max-height: 200px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem; padding: 4px;">
-                                {% for p in projects %}
-                                <div class="form-check px-3 py-1">
-                                    <input type="radio" class="form-check-input main-project-radio" name="main_project_id" value="{{ p.id }}"
-                                           id="main_project_{{ p.id }}"
-                                           {% if user and p.id == user.project_id %}checked{% endif %}
-                                           {% if not user or p.id not in user.user_projects|map(attribute='project_id')|list %}disabled{% endif %}>
-                                    <label class="form-check-label" for="main_project_{{ p.id }}">
-                                        {{ p.code }} - {{ p.name }}
-                                    </label>
+                                <div id="projectTree" style="max-height:280px; overflow-y:auto; padding:.5rem;">
+                                    <div class="text-center text-muted py-3"><small>加载中...</small></div>
                                 </div>
-                                {% endfor %}
                             </div>
+                            <!-- 隐藏字段：存储已选项目ID（逗号分隔） -->
+                            <input type="hidden" name="project_ids_csv" id="projectIdsCsv" value="">
                         </div>
-                        {% endif %}
+                        <div class="col-md-6" id="mainProjectArea" style="display:none;">
+                            <label class="form-label">主项目 <span class="text-danger">*</span> <span class="text-muted small">（仅可从已勾选项目中选择）</span></label>
+                            <select class="form-select" name="main_project_id" id="mainProjectSelect" required>
+                                <option value="">— 请先勾选可访问项目 —</option>
+                            </select>
+                        </div>
                         <div class="col-md-6">
                             <label class="form-label">邮箱</label>
                             <input type="email" class="form-control" name="email" value="{{ user.email if user else '' }}">
@@ -293,60 +301,269 @@ function selectDept(id, path, projectId) {
     if (item) {
         item.classList.add('active', 'text-primary', 'fw-semibold', 'bg-primary-subtle');
     }
-    
-    if (projectId && projectId !== 'null') {
-        const projectCb = document.getElementById('project_' + projectId);
-        if (projectCb) {
-            projectCb.checked = true;
-        }
-        const mainProjectRadio = document.getElementById('main_project_' + projectId);
-        if (mainProjectRadio) {
-            mainProjectRadio.disabled = false;
-            mainProjectRadio.checked = true;
-        }
-        updateMainProjectOptions();
+    // 切换部门后，重新触发角色联动（本部门数据权限场景需重新计算默认勾选）
+    triggerRoleLinkage();
+}
+
+// ===== 项目树状多选选择器逻辑 =====
+var projectTreeData = [];          // 后端返回的原始树数据
+var selectedProjectIds = new Set(); // 已勾选的项目ID
+var userExistingProjectIds = [];   // 编辑模式：用户已有项目
+var userExistingMainProjectId = null; // 编辑模式：用户已有主项目
+
+// 编辑模式：初始化已有项目数据
+{% if user %}
+userExistingProjectIds = [{% for up in user.user_projects %}{{ up.project_id }}{% if not loop.last %},{% endif %}{% endfor %}];
+userExistingMainProjectId = {{ user.project_id if user.project_id else 'null' }};
+{% endif %}
+
+var projectTreeEl = document.getElementById('projectTree');
+var projectIdsCsvInput = document.getElementById('projectIdsCsv');
+var mainProjectSelect = document.getElementById('mainProjectSelect');
+var projectSelectorArea = document.getElementById('projectSelectorArea');
+var mainProjectArea = document.getElementById('mainProjectArea');
+var roleIdSelect = document.querySelector('select[name="role_id"]');
+
+function escapeHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// 渲染项目树
+function renderProjectTree() {
+    if (!projectTreeData.length) {
+        projectTreeEl.innerHTML = '<div class="text-center text-muted py-3"><small>暂无可选项目</small></div>';
+        return;
+    }
+    var html = '';
+    projectTreeData.forEach(function(node) {
+        html += '<div class="proj-tree-node" data-dept-id="' + node.id + '">';
+        html += '<div class="proj-tree-row">';
+        // 公司节点全选复选框
+        var allChecked = node.children.length > 0 && node.children.every(function(p){return selectedProjectIds.has(p.id);});
+        var someChecked = node.children.some(function(p){return selectedProjectIds.has(p.id);});
+        html += '<span class="proj-tree-toggle" data-action="toggle" data-dept-id="' + node.id + '"><i class="bi bi-caret-down-fill"></i></span>';
+        html += '<input type="checkbox" class="form-check-input dept-check-all" data-dept-id="' + node.id + '" ' + (allChecked ? 'checked' : '') + ' ' + (someChecked && !allChecked ? 'indeterminate' : '') + '>';
+        html += '<i class="bi bi-building-fill text-primary proj-tree-icon ms-1"></i>';
+        html += '<span>' + escapeHtml(node.label) + '</span>';
+        html += '<span class="proj-tree-count">' + node.project_count + '</span>';
+        html += '</div>';
+        html += '<div class="proj-tree-children" id="proj_children_' + node.id + '">';
+        node.children.forEach(function(p) {
+            var checked = selectedProjectIds.has(p.id);
+            html += '<div class="proj-tree-row" data-project-id="' + p.id + '" data-dept-id="' + node.id + '">';
+            html += '<span class="proj-tree-toggle"></span>';
+            html += '<input type="checkbox" class="form-check-input project-check" value="' + p.id + '" data-dept-id="' + node.id + '" ' + (checked ? 'checked' : '') + '>';
+            html += '<i class="bi bi-geo-alt-fill text-success proj-tree-icon ms-1"></i>';
+            html += '<span>' + escapeHtml(p.label) + '</span>';
+            if (p.code) { html += '<span class="proj-tree-count">' + escapeHtml(p.code) + '</span>'; }
+            html += '</div>';
+        });
+        html += '</div></div>';
+    });
+    projectTreeEl.innerHTML = html;
+    syncHiddenInput();
+    updateMainProjectSelect();
+}
+
+// 同步隐藏字段
+function syncHiddenInput() {
+    projectIdsCsvInput.value = Array.from(selectedProjectIds).join(',');
+}
+
+// 更新主项目下拉框（只包含已勾选项目）
+function updateMainProjectSelect() {
+    var currentVal = mainProjectSelect.value;
+    var opts = '<option value="">— 请选择主项目 —</option>';
+    projectTreeData.forEach(function(node) {
+        node.children.forEach(function(p) {
+            if (selectedProjectIds.has(p.id)) {
+                opts += '<option value="' + p.id + '">' + escapeHtml(p.label) + (p.code ? ' (' + escapeHtml(p.code) + ')' : '') + '</option>';
+            }
+        });
+    });
+    mainProjectSelect.innerHTML = opts;
+    // 保留原选择
+    if (currentVal && selectedProjectIds.has(parseInt(currentVal))) {
+        mainProjectSelect.value = currentVal;
+    } else if (userExistingMainProjectId && selectedProjectIds.has(userExistingMainProjectId)) {
+        mainProjectSelect.value = userExistingMainProjectId;
+    } else {
+        // 默认选中第一个已勾选项目
+        var firstId = Array.from(selectedProjectIds)[0];
+        if (firstId) mainProjectSelect.value = firstId;
     }
 }
 
-function updateMainProjectOptions() {
-    const checkedProjects = document.querySelectorAll('.project-checkbox:checked');
-    const checkedIds = new Set();
-    checkedProjects.forEach(cb => {
-        checkedIds.add(cb.value);
-    });
-    
-    document.querySelectorAll('.main-project-radio').forEach(radio => {
-        if (checkedIds.has(radio.value)) {
-            radio.disabled = false;
-        } else {
-            radio.disabled = true;
-            radio.checked = false;
-        }
-    });
-}
-
-// 页面加载时，若预填了部门且为项目部，自动带出项目
-(function() {
-    const presetDeptId = deptInput.value;
-    if (presetDeptId) {
-        const deptNode = deptDropdown.querySelector(`.dept-tree-node[data-id="${presetDeptId}"]`);
-        if (deptNode) {
-            const projectId = deptNode.dataset.projectId;
-            const deptType = deptNode.dataset.deptType;
-            if (projectId && deptType === 'project') {
-                const projectCb = document.getElementById('project_' + projectId);
-                if (projectCb) {
-                    projectCb.checked = true;
-                }
-                const mainProjectRadio = document.getElementById('main_project_' + projectId);
-                if (mainProjectRadio) {
-                    mainProjectRadio.disabled = false;
-                    mainProjectRadio.checked = true;
-                }
-                updateMainProjectOptions();
+// 事件委托：处理树点击
+projectTreeEl.addEventListener('click', function(e) {
+    // 折叠/展开
+    var toggle = e.target.closest('[data-action="toggle"]');
+    if (toggle) {
+        e.stopPropagation();
+        var deptId = toggle.getAttribute('data-dept-id');
+        var container = document.getElementById('proj_children_' + deptId);
+        if (container) {
+            var icon = toggle.querySelector('i');
+            if (container.style.display === 'none') {
+                container.style.display = '';
+                icon.className = 'bi bi-caret-down-fill';
+            } else {
+                container.style.display = 'none';
+                icon.className = 'bi bi-caret-right-fill';
             }
         }
+        return;
     }
+    // 公司节点全选
+    var deptCheck = e.target.closest('.dept-check-all');
+    if (deptCheck) {
+        e.stopPropagation();
+        var deptId = parseInt(deptCheck.getAttribute('data-dept-id'));
+        var node = projectTreeData.find(function(n){return n.id === deptId;});
+        if (!node) return;
+        if (deptCheck.checked) {
+            node.children.forEach(function(p){selectedProjectIds.add(p.id);});
+        } else {
+            node.children.forEach(function(p){selectedProjectIds.delete(p.id);});
+        }
+        renderProjectTree();
+        return;
+    }
+    // 项目单选
+    var projCheck = e.target.closest('.project-check');
+    if (projCheck) {
+        e.stopPropagation();
+        var pid = parseInt(projCheck.value);
+        if (projCheck.checked) {
+            selectedProjectIds.add(pid);
+        } else {
+            selectedProjectIds.delete(pid);
+        }
+        // 同步公司节点状态
+        var did = parseInt(projCheck.getAttribute('data-dept-id'));
+        var node = projectTreeData.find(function(n){return n.id === did;});
+        if (node) {
+            var allChecked = node.children.every(function(p){return selectedProjectIds.has(p.id);});
+            var deptCb = projectTreeEl.querySelector('.dept-check-all[data-dept-id="' + did + '"]');
+            if (deptCb) { deptCb.checked = allChecked; }
+        }
+        syncHiddenInput();
+        updateMainProjectSelect();
+    }
+});
+
+// 搜索过滤：命中项目时自动展开其所属公司
+function filterProjectTree(keyword) {
+    keyword = keyword.trim().toLowerCase();
+    if (!keyword) {
+        // 重置：显示全部，展开全部
+        projectTreeEl.querySelectorAll('.proj-tree-children').forEach(function(c){c.style.display='';});
+        projectTreeEl.querySelectorAll('.proj-tree-toggle i').forEach(function(i){i.className='bi bi-caret-down-fill';});
+        projectTreeEl.querySelectorAll('.proj-tree-node').forEach(function(n){n.style.display='';});
+        return;
+    }
+    projectTreeData.forEach(function(node) {
+        var nodeEl = projectTreeEl.querySelector('.proj-tree-node[data-dept-id="' + node.id + '"]');
+        if (!nodeEl) return;
+        var matchedProjects = node.children.filter(function(p) {
+            return (p.label && p.label.toLowerCase().indexOf(keyword) >= 0) ||
+                   (p.code && p.code.toLowerCase().indexOf(keyword) >= 0);
+        });
+        if (matchedProjects.length > 0) {
+            nodeEl.style.display = '';
+            var container = document.getElementById('proj_children_' + node.id);
+            if (container) {
+                container.style.display = '';
+                var toggle = nodeEl.querySelector('.proj-tree-toggle i');
+                if (toggle) toggle.className = 'bi bi-caret-down-fill';
+            }
+            // 隐藏未命中的项目行
+            container.querySelectorAll('.proj-tree-row[data-project-id]').forEach(function(row) {
+                var pid = parseInt(row.getAttribute('data-project-id'));
+                var p = node.children.find(function(x){return x.id === pid;});
+                if (p) {
+                    var hit = (p.label && p.label.toLowerCase().indexOf(keyword) >= 0) ||
+                              (p.code && p.code.toLowerCase().indexOf(keyword) >= 0);
+                    row.style.display = hit ? '' : 'none';
+                }
+            });
+        } else {
+            nodeEl.style.display = 'none';
+        }
+    });
+}
+
+// ===== 角色数据权限联动 =====
+function triggerRoleLinkage() {
+    var roleId = roleIdSelect.value;
+    var deptId = deptInput.value;
+    if (!roleId) {
+        // 未选角色，隐藏项目选择区
+        projectSelectorArea.style.display = 'none';
+        mainProjectArea.style.display = 'none';
+        return;
+    }
+    fetch('{{ url_for("admin.api_role_data_scope") }}?role_id=' + encodeURIComponent(roleId))
+        .then(function(r){return r.json();})
+        .then(function(data) {
+            if (data.code !== 0) return;
+            var show = data.show_project_selector;
+            if (show) {
+                projectSelectorArea.style.display = '';
+                mainProjectArea.style.display = '';
+                loadProjectTree(data.data_scope, deptId);
+            } else {
+                // 全部数据 / 本部门及下级：隐藏，后端自动赋权
+                projectSelectorArea.style.display = 'none';
+                mainProjectArea.style.display = 'none';
+                // 清空已选
+                selectedProjectIds.clear();
+                syncHiddenInput();
+            }
+        })
+        .catch(function() {
+            // 网络错误，保守隐藏
+            projectSelectorArea.style.display = 'none';
+            mainProjectArea.style.display = 'none';
+        });
+}
+
+// 加载项目树
+function loadProjectTree(dataScope, deptId) {
+    fetch('{{ url_for("admin.api_user_projects_tree") }}')
+        .then(function(r){return r.json();})
+        .then(function(data) {
+            if (data.code !== 0) return;
+            projectTreeData = data.tree || [];
+            // 根据数据权限计算默认勾选
+            selectedProjectIds.clear();
+            if (dataScope === 'dept' && deptId) {
+                // 本部门数据：默认勾选用户所属部门对应的项目
+                projectTreeData.forEach(function(node) {
+                    node.children.forEach(function(p) {
+                        if (p.dept_id === parseInt(deptId)) {
+                            selectedProjectIds.add(p.id);
+                        }
+                    });
+                });
+            } else if (userExistingProjectIds.length > 0) {
+                // 编辑模式：回显用户已有项目
+                userExistingProjectIds.forEach(function(pid){selectedProjectIds.add(pid);});
+            }
+            renderProjectTree();
+        })
+        .catch(function() {
+            projectTreeEl.innerHTML = '<div class="text-center text-danger py-3"><small>加载失败</small></div>';
+        });
+}
+
+// 角色选择变化时触发联动
+roleIdSelect.addEventListener('change', triggerRoleLinkage);
+
+// 页面加载后自动触发联动
+(function() {
+    triggerRoleLinkage();
 })();
 
 function filterDeptTree(keyword) {
