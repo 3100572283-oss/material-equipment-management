@@ -83,7 +83,6 @@ def index():
     categories = Category.query.filter_by(project_id=project_id).order_by(Category.sort_order.asc()).all()
     materials = Material.query.filter_by(project_id=project_id).order_by(Material.name).all()
 
-    from flask_login import current_user
     from app.utils import get_config
     show_estimated = request.args.get('show_estimated', '0') == '1'
     allow_initial = get_config('allow_initial_stock', 'false') == 'true' and current_user.is_admin()
@@ -226,7 +225,6 @@ def _gen_initial_stock_code(project_id):
 def initial_single():
     """单条期初录入"""
     from flask import session
-    from flask_login import current_user
     from app.utils import get_config, to_decimal
 
     project_id = session.get('current_project_id')
@@ -332,7 +330,6 @@ def initial_template():
 def initial_batch():
     """Excel批量导入期初库存"""
     from flask import session
-    from flask_login import current_user
     from app.utils import get_config, to_decimal
 
     project_id = session.get('current_project_id')
