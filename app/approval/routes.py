@@ -678,7 +678,7 @@ def my_approvals():
     else:
         approved_instances = []
 
-    projects = Project.query.all()
+    projects = current_user.get_visible_projects()
 
     return render_template('approval/my_approvals.html',
                            pending_instances=pending_instances,
@@ -725,7 +725,7 @@ def detail(instance_id):
             
             sign_details = []
             if node.pass_rule == 'ALL':
-                all_approvers = node.get_all_approvers()
+                all_approvers = node.get_all_approvers(project_id=instance.project_id)
                 for approver in all_approvers:
                     r = next((rec for rec in node_records if rec.approver_id == approver.id), None)
                     if r:
@@ -744,7 +744,7 @@ def detail(instance_id):
                         })
             elif node.pass_rule == 'ANY' and node_status == 'approved':
                 first_approver = next((r for r in node_records if r.action == 'approve'), None)
-                all_approvers = node.get_all_approvers()
+                all_approvers = node.get_all_approvers(project_id=instance.project_id)
                 for approver in all_approvers:
                     if first_approver and approver.id == first_approver.approver_id:
                         sign_details.append({
@@ -771,7 +771,7 @@ def detail(instance_id):
         elif node.id == instance.current_node_id:
             sign_details = []
             if node.pass_rule == 'ALL':
-                all_approvers = node.get_all_approvers()
+                all_approvers = node.get_all_approvers(project_id=instance.project_id)
                 for approver in all_approvers:
                     sign_details.append({
                         'user': approver,
@@ -780,7 +780,7 @@ def detail(instance_id):
                         'opinion': None
                     })
             elif node.pass_rule == 'ANY':
-                all_approvers = node.get_all_approvers()
+                all_approvers = node.get_all_approvers(project_id=instance.project_id)
                 for approver in all_approvers:
                     sign_details.append({
                         'user': approver,
@@ -809,7 +809,7 @@ def detail(instance_id):
 
     can_approve = (instance.status in ('pending', 'approving')
                    and instance.current_node is not None
-                   and instance.current_node.can_approve(current_user)
+                   and instance.current_node.can_approve(current_user, project_id=instance.project_id)
                    and instance.applicant_id != current_user.id)
     can_withdraw = (instance.status in ('pending', 'approving')
                     and instance.applicant_id == current_user.id)

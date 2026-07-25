@@ -1265,8 +1265,13 @@ class ApprovalNode(db.Model):
 
     approver_user = db.relationship('User', foreign_keys=[approve_user_id])
 
-    def can_approve(self, user):
-        """判断用户是否可审批此节点"""
+    def can_approve(self, user, project_id=None):
+        """判断用户是否可审批此节点
+
+        Args:
+            user: 用户对象
+            project_id: 项目ID（可选，传入时按项目所属部门范围校验）
+        """
         if not user:
             return False
         if self.approve_type == 'user':
@@ -1276,14 +1281,27 @@ class ApprovalNode(db.Model):
             if not roles:
                 return False
             user_role_code = user.get_role_code()
+            role_match = False
             if user_role_code in roles:
-                return True
+                role_match = True
             if user.role in roles:
-                return True
-            return False
+                role_match = True
+            if not role_match:
+                return False
+            if project_id:
+                dept_ids = self._get_project_dept_and_sub_ids(project_id)
+                if dept_ids and user.dept_id:
+                    return user.dept_id in dept_ids
+                if dept_ids and not user.dept_id:
+                    return False
+            return True
 
-    def get_all_approvers(self):
-        """获取所有审批人用户对象列表"""
+    def get_all_approvers(self, project_id=None):
+        """获取所有审批人用户对象列表
+
+        Args:
+            project_id: 项目ID（可选，传入时只返回项目所属部门及其子部门的角色用户）
+        """
         from app.models import User, SysRole
         approvers = []
         if self.approve_type == 'user':
@@ -1296,12 +1314,37 @@ class ApprovalNode(db.Model):
             if roles:
                 role_ids = [r.id for r in SysRole.query.filter(SysRole.role_code.in_(roles)).all()]
                 if role_ids:
-                    users = User.query.filter(User.role_id.in_(role_ids), User.status == 'active').all()
+                    query = User.query.filter(User.role_id.in_(role_ids), User.status == 'active')
+                    if project_id:
+                        dept_ids = self._get_project_dept_and_sub_ids(project_id)
+                        if dept_ids:
+                            query = query.filter(User.dept_id.in_(dept_ids))
+                    users = query.all()
                     approvers.extend(users)
                 # 兼容旧数据：role字段匹配
-                old_role_users = User.query.filter(User.role.in_(roles), User.status == 'active').all()
+                old_query = User.query.filter(User.role.in_(roles), User.status == 'active')
+                if project_id:
+                    dept_ids = self._get_project_dept_and_sub_ids(project_id)
+                    if dept_ids:
+                        old_query = old_query.filter(User.dept_id.in_(dept_ids))
+                old_role_users = old_query.all()
                 approvers.extend(old_role_users)
         return list(set(approvers))
+
+    @staticmethod
+    def _get_project_dept_and_sub_ids(project_id):
+        """获取项目所属部门及其所有子部门的ID列表"""
+        from app.models import Project, SysDept
+        project = Project.query.get(project_id)
+        if not project or not project.dept_id:
+            return None
+        dept = SysDept.query.get(project.dept_id)
+        if not dept:
+            return None
+        try:
+            return dept.get_children_recursive()
+        except Exception:
+            return [dept.id]
 
 
 class ApprovalInstance(db.Model):

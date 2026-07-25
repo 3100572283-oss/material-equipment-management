@@ -95,7 +95,8 @@ def create():
         flash('请先选择项目。', 'warning')
         return redirect(url_for('main.index'))
 
-    other_projects = Project.query.filter(Project.id != project_id).all()
+    all_visible_projects = current_user.get_visible_projects()
+    other_projects = [p for p in all_visible_projects if p.id != project_id]
 
     if request.method == 'POST':
         to_project_id = request.form.get('to_project_id', type=int)

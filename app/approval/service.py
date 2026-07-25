@@ -283,7 +283,7 @@ def submit_approval(biz_type, biz_id, applicant_id=None, opinion='', project_id=
     # 外部渠道推送（钉钉/微信等，保留原有逻辑）
     try:
         from app.notification_service import notify_pending_approval
-        approvers = first_node.get_all_approvers()
+        approvers = first_node.get_all_approvers(project_id=project_id)
         for approver in approvers:
             if approver and approver.id != applicant_id:
                 approver_name = approver.name or approver.username
@@ -320,7 +320,7 @@ def approve(instance_id, approver_id=None, opinion=''):
     if instance.applicant_id == approver_id:
         return False, '不能审批自己提交的单据'
 
-    if not current_node.can_approve(approver):
+    if not current_node.can_approve(approver, project_id=instance.project_id):
         return False, '您没有权限审批此节点'
 
     record = ApprovalRecord(
@@ -334,7 +334,7 @@ def approve(instance_id, approver_id=None, opinion=''):
     db.session.add(record)
 
     if current_node.pass_rule == 'ALL':
-        all_approvers = current_node.get_all_approvers()
+        all_approvers = current_node.get_all_approvers(project_id=instance.project_id)
         approved_ids = set()
         for rec in instance.records.filter(ApprovalRecord.node_id == current_node.id):
             if rec.action == 'approve':
@@ -367,7 +367,7 @@ def approve(instance_id, approver_id=None, opinion=''):
     else:
         pass_node = True
 
-        all_approvers = current_node.get_all_approvers()
+        all_approvers = current_node.get_all_approvers(project_id=instance.project_id)
         for approver in all_approvers:
             pending_id = approver.id
             if pending_id == approver_id:
@@ -406,7 +406,7 @@ def approve(instance_id, approver_id=None, opinion=''):
 
             try:
                 from app.notification_service import notify_pending_approval
-                approvers = next_node.get_all_approvers()
+                approvers = next_node.get_all_approvers(project_id=instance.project_id)
                 for next_approver in approvers:
                     if next_approver and next_approver.id != instance.applicant_id:
                         approver_name = next_approver.name or next_approver.username
@@ -470,7 +470,7 @@ def reject(instance_id, approver_id=None, reason=''):
     if not approver:
         return False, '审批人不存在'
 
-    if not current_node.can_approve(approver):
+    if not current_node.can_approve(approver, project_id=instance.project_id):
         return False, '您没有权限审批此节点'
 
     record = ApprovalRecord(
@@ -488,7 +488,7 @@ def reject(instance_id, approver_id=None, reason=''):
     instance.current_node_id = None
 
     if current_node.pass_rule == 'ANY':
-        all_approvers = current_node.get_all_approvers()
+        all_approvers = current_node.get_all_approvers(project_id=instance.project_id)
         for approver in all_approvers:
             pending_id = approver.id
             if pending_id == approver_id:
@@ -672,7 +672,7 @@ def can_view_approval(instance_id, user_id):
     # 当前节点审批人
     if instance.current_node and instance.status in ('pending', 'approving'):
         user = User.query.get(user_id)
-        if user and instance.current_node.can_approve(user):
+        if user and instance.current_node.can_approve(user, project_id=instance.project_id):
             return True
 
     # 历史审批人（有审批记录）
@@ -708,7 +708,7 @@ def can_operate_approval(instance_id, user_id):
     if not user:
         return False
 
-    return instance.current_node.can_approve(user)
+    return instance.current_node.can_approve(user, project_id=instance.project_id)
 
 
 def get_my_pending_approvals(user_id):
@@ -730,7 +730,7 @@ def get_my_pending_approvals(user_id):
         if not node:
             continue
 
-        if not node.can_approve(user):
+        if not node.can_approve(user, project_id=inst.project_id):
             continue
 
         if node.pass_rule == 'ANY':

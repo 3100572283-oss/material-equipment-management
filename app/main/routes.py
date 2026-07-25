@@ -438,7 +438,9 @@ def global_search():
     ]
 
     # 项目（全局搜索）
+    visible_project_ids = [p.id for p in current_user.get_visible_projects()]
     projs = Project.query.filter(
+        Project.id.in_(visible_project_ids),
         Project.name.like(keyword)
     ).limit(5).all()
     result['projects'] = [
