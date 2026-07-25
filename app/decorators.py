@@ -81,7 +81,7 @@ def module_required(module_key):
 
 
 def data_scope_required(get_instance):
-    """数据权限校验装饰器 - 单条数据访问级别
+    """数据权限校验装饰器 - 单条数据访问级别（委托给统一权限服务）
 
     用于详情/编辑/删除接口，检查当前用户是否有权限访问指定的业务对象。
 
@@ -91,7 +91,7 @@ def data_scope_required(get_instance):
     配合 apply_data_scope 使用：列表查询自动注入过滤条件，
     详情/编辑/删除接口需要本装饰器防止直接通过URL绕过。
     """
-    from app.models import SysRoleDataScope
+    from app.services.permission_service import permission_service
     from app.utils import get_sub_dept_ids
     from flask_login import current_user
 
@@ -108,20 +108,9 @@ def data_scope_required(get_instance):
             if instance is None:
                 abort(404)
 
-            role = current_user.role_obj
-            data_scope = 'all'
-            custom_depts = []
-            if role:
-                cfg = SysRoleDataScope.query.filter_by(role_id=role.id).first()
-                if cfg:
-                    data_scope = cfg.data_scope or 'all'
-                    if cfg.custom_depts:
-                        import json as _json
-                        try:
-                            raw = _json.loads(cfg.custom_depts)
-                            custom_depts = [int(x) for x in raw if str(x).isdigit()]
-                        except Exception:
-                            custom_depts = [int(x.strip()) for x in cfg.custom_depts.split(',') if x.strip().isdigit()]
+            scope_info = permission_service.get_user_data_scope(current_user)
+            data_scope = scope_info['scope']
+            custom_depts = scope_info['custom_depts']
 
             if data_scope == 'all':
                 return f(*args, **kwargs)

@@ -82,201 +82,28 @@ class User(UserMixin, db.Model):
         return {'admin': '管理员', 'editor': '录入员', 'viewer': '查看员'}.get(self.role, self.role)
 
     def has_permission(self, permission):
-        """检查用户是否拥有指定按钮权限
-
-        Args:
-            permission: 权限标识,支持多种格式:
-                - 'system:dept:list' (三段落: 模块:功能:操作)
-                - 'stock_in:create' (两段落: 权限代码:操作)
-                - '26:view' (菜单ID:操作)
-                - '26' (仅菜单ID, 默认检查view权限)
-
-        Returns:
-            bool: 是否有权限
-        """
-        if not permission:
-            return True
-        if self.is_admin():
-            return True
-        if not self.role_id:
-            if self.role in ('admin', 'editor'):
-                return True
-            return False
-        from app.models import SysMenu, SysRoleMenu
-
-        # 处理冒号分隔的权限标识
-        if ':' in permission:
-            parts = permission.split(':')
-
-            # 三段落格式: module:func:operation (如 system:dept:list, stock:in:create)
-            if len(parts) == 3:
-                module, func, operation = parts
-                # 优先用 permission 字段精确匹配
-                menu = SysMenu.query.filter_by(permission=permission).first()
-                if menu:
-                    # 如果匹配到的是按钮菜单，用其父菜单ID查权限关联
-                    check_menu_id = menu.parent_id if menu.menu_type == 'button' else menu.id
-                    exists = SysRoleMenu.query.filter_by(
-                        role_id=self.role_id,
-                        menu_id=check_menu_id,
-                        operation=operation
-                    ).first()
-                    return exists is not None
-                # 备用：用 menu_code 模糊匹配（兼容旧格式）
-                menus = SysMenu.query.filter(
-                    SysMenu.menu_code.like(f'{module}.{func}')
-                ).all()
-                if menus:
-                    menu_ids = [m.id for m in menus]
-                    exists = SysRoleMenu.query.filter(
-                        SysRoleMenu.role_id == self.role_id,
-                        SysRoleMenu.menu_id.in_(menu_ids),
-                        SysRoleMenu.operation == operation
-                    ).first()
-                    return exists is not None
-                return False
-
-            # 两段落格式: 可能是 menu_id:operation 或 perm_code:operation
-            if len(parts) == 2:
-                perm_code, operation = parts
-                try:
-                    # 尝试解析为菜单ID
-                    menu_id = int(perm_code)
-                    exists = SysRoleMenu.query.filter(
-                        SysRoleMenu.role_id == self.role_id,
-                        SysRoleMenu.menu_id == menu_id,
-                        SysRoleMenu.operation == operation
-                    ).first()
-                    return exists is not None
-                except ValueError:
-                    # 作为权限代码查找
-                    menus = SysMenu.query.filter_by(permission=perm_code).all()
-                    if menus:
-                        menu_ids = [m.id for m in menus]
-                        exists = SysRoleMenu.query.filter(
-                            SysRoleMenu.role_id == self.role_id,
-                            SysRoleMenu.menu_id.in_(menu_ids),
-                            SysRoleMenu.operation == operation
-                        ).first()
-                        return exists is not None
-                return False
-
-        # 纯数字: 菜单ID, 默认检查 view 权限
-        try:
-            menu_id = int(permission)
-            exists = SysRoleMenu.query.filter(
-                SysRoleMenu.role_id == self.role_id,
-                SysRoleMenu.menu_id == menu_id,
-                SysRoleMenu.operation == 'view'
-            ).first()
-            return exists is not None
-        except ValueError:
-            pass
-
-        return False
+        """检查用户是否拥有指定按钮权限（委托给统一权限服务）"""
+        from app.services.permission_service import permission_service
+        return permission_service.check_permission(self, permission)
 
     def get_allowed_projects(self):
-        """获取用户可访问的项目ID列表
+        """获取用户可访问的项目ID列表（委托给统一权限服务）
 
         返回 None 表示拥有全部数据权限，可访问所有项目；
         返回列表表示仅可访问这些项目ID。
-
-        规则：
-        - all: 所有项目
-        - dept_and_sub: 本部门及下级部门归属的项目
-        - dept: 仅本部门归属的项目
-        - self: 仅自己被分配的项目（sys_user_project）
-        - custom: 自定义部门列表归属的项目
         """
-        from app.models import SysRoleDataScope, Project
-
-        if self.get_data_scope() == 'all' or self.is_admin():
-            return None
-
-        data_scope = self.get_data_scope()
-        project_ids = set()
-
-        role = self.role_obj
-        if role:
-            scope_cfg = SysRoleDataScope.query.filter_by(role_id=role.id).first()
-            if scope_cfg:
-                data_scope = scope_cfg.data_scope or 'all'
-
-        if data_scope == 'dept_and_sub':
-            if self.dept_id:
-                dept = SysDept.query.get(self.dept_id)
-                if dept:
-                    dept_ids = [self.dept_id]
-                    try:
-                        dept_ids.extend(dept.get_children_recursive())
-                    except Exception:
-                        pass
-                    projects = Project.query.filter(
-                        Project.dept_id.in_(dept_ids),
-                        Project.is_archived == False
-                    ).all()
-                    for p in projects:
-                        project_ids.add(p.id)
-
-        elif data_scope == 'dept':
-            if self.dept_id:
-                projects = Project.query.filter_by(
-                    dept_id=self.dept_id, is_archived=False
-                ).all()
-                for p in projects:
-                    project_ids.add(p.id)
-
-        elif data_scope == 'self':
-            pass
-
-        elif data_scope == 'custom':
-            if role:
-                scope_cfg = SysRoleDataScope.query.filter_by(role_id=role.id).first()
-                if scope_cfg and scope_cfg.custom_depts:
-                    import json
-                    try:
-                        custom_dept_ids = json.loads(scope_cfg.custom_depts) if isinstance(scope_cfg.custom_depts, str) else scope_cfg.custom_depts
-                        custom_dept_ids = [int(x) for x in custom_dept_ids if str(x).isdigit()]
-                        projects = Project.query.filter(
-                            Project.dept_id.in_(custom_dept_ids),
-                            Project.is_archived == False
-                        ).all()
-                        for p in projects:
-                            project_ids.add(p.id)
-                    except Exception:
-                        pass
-
-        for up in self.user_projects:
-            project_ids.add(up.project_id)
-
-        return list(project_ids) if project_ids else []
+        from app.services.permission_service import permission_service
+        return permission_service.get_user_allowed_projects(self)
 
     def get_visible_projects(self):
-        """获取用户可见的Project对象列表"""
-        from app.models import Project
-        allowed = self.get_allowed_projects()
-        if allowed is None:
-            return Project.query.filter_by(is_archived=False).order_by(Project.created_at.desc()).all()
-        if not allowed:
-            return []
-        return Project.query.filter(Project.id.in_(allowed), Project.is_archived == False).order_by(Project.created_at.desc()).all()
-
-    def get_main_project(self):
-        """获取用户主项目，返回Project对象或None"""
-        for up in self.user_projects:
-            if up.is_main:
-                return up.project
-        # 没有主项目时取第一个
-        if self.user_projects:
-            return self.user_projects[0].project
-        return None
+        """获取用户可见的Project对象列表（委托给统一权限服务）"""
+        from app.services.permission_service import permission_service
+        return permission_service.get_user_visible_projects(self)
 
     def can_access_project(self, project_id):
-        """检查用户是否可访问指定项目"""
-        allowed = self.get_allowed_projects()
-        if allowed is None:
-            return True
-        return project_id in allowed
+        """检查用户是否可访问指定项目（委托给统一权限服务）"""
+        from app.services.permission_service import permission_service
+        return permission_service.can_access_project(self, project_id)
 
     def can_view_amount_field(self):
         return self.can_view_amount if self.can_view_amount is not None else True
@@ -288,15 +115,10 @@ class User(UserMixin, db.Model):
         return self.role
 
     def get_data_scope(self):
-        """获取数据权限范围
-
-        优先使用 sys_role.data_scope（当前生效值）
-        注：sys_role_data_scope 表存在历史脏数据（role_id 与 sys_role.id 不匹配），
-        暂不作为主数据源，待数据清理后再启用
-        """
-        if self.role_obj:
-            return self.role_obj.data_scope or 'all'
-        return self.data_scope or 'all'
+        """获取数据权限范围（委托给统一权限服务）"""
+        from app.services.permission_service import permission_service
+        scope_info = permission_service.get_user_data_scope(self)
+        return scope_info['scope']
 
 
 class SysDept(db.Model):

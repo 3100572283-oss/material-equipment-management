@@ -184,7 +184,7 @@ def change_password():
 @bp.route('/api/user/permissions')
 @login_required
 def api_user_permissions():
-    """获取当前用户权限上下文
+    """获取当前用户权限上下文（委托给统一权限服务）
 
     返回:
     {
@@ -195,6 +195,8 @@ def api_user_permissions():
         modules: {}         // 模块启用状态
     }
     """
+    from app.services.permission_service import permission_service
+
     user = current_user
     result = {
         'menus': [],
@@ -210,37 +212,21 @@ def api_user_permissions():
         enabled_modules[m.module_key] = bool(m.status)
     result['modules'] = enabled_modules
 
-    # 1. 获取数据权限配置
+    # 1. 获取数据权限配置（委托给统一权限服务）
+    scope_info = permission_service.get_user_data_scope(user)
     role = user.role_obj
     if role:
         result['dataScope'] = {
-            'scope': role.data_scope,
+            'scope': scope_info['scope'],
             'roleName': role.role_name,
             'roleCode': role.role_code
         }
 
-    # 2. 获取用户所有按钮权限标识（过滤已关闭模块）
-    if user.is_admin():
-        all_menus = SysMenu.query.filter_by(menu_type='menu').all()
-        for menu in all_menus:
-            if menu.permission:
-                if menu.module_key and not enabled_modules.get(menu.module_key, False):
-                    continue
-                base_perm = menu.permission.rsplit(':', 1)[0]
-                for op in ['view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print']:
-                    result['permissions'].append(f"{base_perm}:{op}")
-    else:
-        role_menus = SysRoleMenu.query.filter_by(role_id=user.role_id).all()
-        for rm in role_menus:
-            menu = SysMenu.query.get(rm.menu_id)
-            if menu and menu.permission:
-                if menu.module_key and not enabled_modules.get(menu.module_key, False):
-                    continue
-                base_perm = menu.permission.rsplit(':', 1)[0]
-                result['permissions'].append(f"{base_perm}:{rm.operation}")
+    # 2. 获取用户所有按钮权限标识（委托给统一权限服务）
+    result['permissions'] = permission_service.get_user_permissions_list(user)
 
-    # 3. 获取可见项目列表
-    visible_projects = user.get_visible_projects()
+    # 3. 获取可见项目列表（委托给统一权限服务）
+    visible_projects = permission_service.get_user_visible_projects(user)
     for p in visible_projects:
         result['projects'].append({
             'id': p.id,
@@ -249,42 +235,7 @@ def api_user_permissions():
             'status': p.status
         })
 
-    # 4. 获取有权限的菜单树（过滤已关闭模块）
-    def build_menu_tree(parent_id=0):
-        children = []
-        menus = SysMenu.query.filter_by(parent_id=parent_id, status=True).order_by(SysMenu.sort).all()
-        for menu in menus:
-            if menu.module_key and not enabled_modules.get(menu.module_key, False):
-                continue
-
-            has_view = False
-            if user.is_admin():
-                has_view = True
-            elif menu.menu_type == 'menu':
-                has_view = user.has_permission(f"{menu.permission}") if menu.permission else False
-            elif menu.menu_type == 'catalog':
-                sub_menus = SysMenu.query.filter_by(parent_id=menu.id).all()
-                for sub in sub_menus:
-                    if sub.menu_type == 'menu' and sub.permission and user.has_permission(sub.permission):
-                        has_view = True
-                        break
-
-            if has_view:
-                item = {
-                    'id': menu.id,
-                    'name': menu.menu_name,
-                    'code': menu.menu_code,
-                    'type': menu.menu_type,
-                    'icon': menu.icon,
-                    'path': menu.path,
-                    'component': menu.component,
-                    'permission': menu.permission,
-                    'moduleKey': menu.module_key,
-                    'children': build_menu_tree(menu.id)
-                }
-                children.append(item)
-        return children
-
-    result['menus'] = build_menu_tree()
+    # 4. 获取有权限的菜单树（委托给统一权限服务）
+    result['menus'] = permission_service.get_user_menu_tree(user)
 
     return json.dumps(result, ensure_ascii=False)

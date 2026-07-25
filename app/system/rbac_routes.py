@@ -227,56 +227,12 @@ def _reorder_depts(parent_id):
 
 
 def _get_allowed_dept_ids():
-    """获取当前用户有权限访问的部门ID集合
-
-    数据权限过滤规则：
-    - admin 或 data_scope='all'：返回 None 表示全部权限
-    - dept_and_sub：返回当前用户部门及其所有子部门ID
-    - dept：只返回当前用户所在部门ID
-    - self：只返回当前用户所在部门ID
-    - custom：返回自定义部门ID及其所有子部门ID
+    """获取当前用户有权限访问的部门ID集合（委托给统一权限服务）
 
     返回 None 表示拥有全部部门权限，无需过滤
     """
-    # 管理员或全部数据权限：直接返回全量
-    if current_user.is_admin() or current_user.get_data_scope() == 'all':
-        return None
-
-    data_scope = current_user.get_data_scope()
-    user_dept_id = current_user.dept_id
-    allowed_dept_ids = set()
-
-    if data_scope == 'dept_and_sub' and user_dept_id:
-        # 本部门及下级：包含当前用户部门及其所有子部门
-        user_dept = SysDept.query.get(user_dept_id)
-        if user_dept:
-            allowed_dept_ids = set(user_dept.get_children_recursive())
-
-    elif data_scope == 'dept' and user_dept_id:
-        # 本部门：只包含当前用户所在部门
-        allowed_dept_ids = {user_dept_id}
-
-    elif data_scope == 'self' and user_dept_id:
-        # 仅本人：部门层面只显示自己所在部门
-        allowed_dept_ids = {user_dept_id}
-
-    elif data_scope == 'custom':
-        # 自定义数据权限：从 SysRoleDataScope.custom_depts 读取
-        if current_user.role_obj:
-            scope_cfg = SysRoleDataScope.query.filter_by(role_id=current_user.role_obj.id).first()
-            if scope_cfg and scope_cfg.custom_depts:
-                try:
-                    custom_dept_ids = [int(x) for x in _json.loads(scope_cfg.custom_depts) if str(x).isdigit()]
-                except Exception:
-                    custom_dept_ids = [int(x.strip()) for x in scope_cfg.custom_depts.split(',') if x.strip().isdigit()]
-
-                # 自定义部门需要包含其所有子部门，确保树结构完整
-                for dept_id in custom_dept_ids:
-                    dept = SysDept.query.get(dept_id)
-                    if dept:
-                        allowed_dept_ids.update(dept.get_children_recursive())
-
-    return allowed_dept_ids
+    from app.services.permission_service import permission_service
+    return permission_service.get_allowed_dept_ids(current_user)
 
 
 def _reorder_roles():
@@ -828,9 +784,11 @@ def save_role_permissions(id):
     - data_scope: 数据范围 (all/dept_and_sub/dept/self/custom)
     - custom_depts: 自定义部门ID列表 (data_scope=custom时使用)
 
-    保存后立即回查验证，确保数据一致性
+    自动处理父子菜单联动：勾选子菜单权限时，自动同步授予所有上级父菜单的查看权限。
+    保存后立即回查验证，确保数据一致性。
     """
     from app.models import SysModule
+    from app.services.permission_service import permission_service
 
     role = SysRole.query.get_or_404(id)
 
@@ -850,6 +808,9 @@ def save_role_permissions(id):
                 except ValueError:
                     pass
 
+    # 自动补全父菜单查看权限（父子菜单联动）
+    final_ops = permission_service.apply_parent_menu_permissions(id, unique_ops)
+
     # 数据权限
     data_scope = request.form.get('data_scope', 'all')
     if data_scope not in {'all', 'dept_and_sub', 'dept', 'self', 'custom'}:
@@ -860,8 +821,8 @@ def save_role_permissions(id):
         # 删除旧功能权限
         SysRoleMenu.query.filter_by(role_id=id).delete()
 
-        # 保存新功能权限
-        for menu_id, operation in unique_ops:
+        # 保存新功能权限（包含自动补全的父菜单权限）
+        for menu_id, operation in final_ops:
             rm = SysRoleMenu(role_id=id, menu_id=menu_id, operation=operation)
             db.session.add(rm)
 
@@ -892,13 +853,12 @@ def save_role_permissions(id):
         flash(f'权限保存失败：{e}', 'danger')
         return redirect(url_for('system.role_permissions', id=id))
 
-    # ===== 回查验证：确保保存的数据与提交一致 =====
+    # ===== 回查验证：确保保存的数据与最终权限集合一致 =====
     saved = set((rm.menu_id, rm.operation) for rm in SysRoleMenu.query.filter_by(role_id=id).all())
-    submitted = unique_ops
 
-    if saved != submitted:
-        missing = submitted - saved
-        extra = saved - submitted
+    if saved != final_ops:
+        missing = final_ops - saved
+        extra = saved - final_ops
         error_msg = []
         if missing:
             error_msg.append(f"丢失权限: {missing}")
@@ -914,7 +874,8 @@ def save_role_permissions(id):
         flash(f'数据权限保存验证失败', 'danger')
         return redirect(url_for('system.role_permissions', id=id))
 
-    flash(f'权限配置已保存（功能权限 {len(unique_ops)} 项，数据权限：{dict([(d[0], d[1]) for d in [("all", "全部"), ("dept_and_sub", "本部门及下级"), ("dept", "本部门"), ("self", "仅本人"), ("custom", "自定义")]]).get(data_scope, data_scope)}）', 'success')
+    added_parent_count = len(final_ops) - len(unique_ops)
+    flash(f'权限配置已保存（功能权限 {len(final_ops)} 项，其中自动补全父菜单 {added_parent_count} 项，数据权限：{dict([(d[0], d[1]) for d in [("all", "全部"), ("dept_and_sub", "本部门及下级"), ("dept", "本部门"), ("self", "仅本人"), ("custom", "自定义")]]).get(data_scope, data_scope)}）', 'success')
     return redirect(url_for('system.role_permissions', id=id))
 
 

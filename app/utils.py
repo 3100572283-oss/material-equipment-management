@@ -533,41 +533,10 @@ def get_field_label(field_name):
 
 # ============== 数据权限过滤 ==============
 
-def _get_role_data_scope(user):
-    """获取角色的数据权限配置（优先从 sys_role_data_scope 表读取）
-
-    返回 (data_scope, custom_dept_ids)
-    """
-    from app.models import SysRoleDataScope
-    role = user.role_obj
-    if not role:
-        # 兜底：返回用户自身 data_scope
-        return user.data_scope or 'all', []
-
-    # 优先从 sys_role_data_scope 读取
-    scope_cfg = SysRoleDataScope.query.filter_by(role_id=role.id).first()
-    if scope_cfg:
-        custom_depts = []
-        if scope_cfg.custom_depts:
-            import json as _json
-            try:
-                raw = _json.loads(scope_cfg.custom_depts)
-                custom_depts = [int(x) for x in raw if str(x).isdigit()]
-            except Exception:
-                # 兜底：逗号分隔
-                custom_depts = [int(x.strip()) for x in scope_cfg.custom_depts.split(',') if x.strip().isdigit()]
-        return scope_cfg.data_scope or 'all', custom_depts
-
-    # 兜底：sys_role.data_scope + sys_role_dept
-    from app.models import SysRoleDept
-    custom_depts = [rd.dept_id for rd in SysRoleDept.query.filter_by(role_id=role.id).all()]
-    return role.data_scope or 'all', custom_depts
-
-
 def apply_data_scope(query, model_cls, user=None):
-    """对查询追加数据权限过滤
+    """对查询追加数据权限过滤（委托给统一权限服务）
 
-    按角色数据范围过滤（统一从 sys_role_data_scope 表读取）：
+    按角色数据范围过滤：
     - all: 全部数据，不追加过滤条件
     - dept_and_sub: 本部门及下级数据
     - dept: 本部门数据
@@ -576,55 +545,8 @@ def apply_data_scope(query, model_cls, user=None):
 
     同时按当前选中项目过滤（session.current_project_id）
     """
-    from flask_login import current_user
-    from flask import session
-
-    if user is None:
-        user = current_user
-    if not user.is_authenticated:
-        return query.filter(db.false())
-
-    role = user.role_obj
-    if role and role.role_code == 'super_admin':
-        return query
-
-    data_scope, custom_dept_ids = _get_role_data_scope(user)
-
-    if data_scope == 'all':
-        return query
-
-    # 先按当前项目过滤
-    project_id = session.get('current_project_id')
-    if project_id and hasattr(model_cls, 'project_id'):
-        query = query.filter(model_cls.project_id == project_id)
-
-    if data_scope == 'self':
-        # 仅本人数据
-        if hasattr(model_cls, 'created_by_id'):
-            query = query.filter(model_cls.created_by_id == user.id)
-        elif hasattr(model_cls, 'applicant_id'):
-            query = query.filter(model_cls.applicant_id == user.id)
-        elif hasattr(model_cls, 'operator_id'):
-            query = query.filter(model_cls.operator_id == user.id)
-        elif hasattr(model_cls, 'created_by'):
-            # created_by 可能是用户名字符串
-            query = query.filter(model_cls.created_by == user.username)
-    elif data_scope == 'dept':
-        # 本部门数据
-        if user.dept_id and hasattr(model_cls, 'dept_id'):
-            query = query.filter(model_cls.dept_id == user.dept_id)
-    elif data_scope == 'dept_and_sub':
-        # 本部门及下级数据
-        if user.dept_id and hasattr(model_cls, 'dept_id'):
-            dept_ids = get_sub_dept_ids(user.dept_id)
-            dept_ids.append(user.dept_id)
-            query = query.filter(model_cls.dept_id.in_(dept_ids))
-    elif data_scope == 'custom':
-        # 自定义数据权限
-        if custom_dept_ids and hasattr(model_cls, 'dept_id'):
-            query = query.filter(model_cls.dept_id.in_(custom_dept_ids))
-
-    return query
+    from app.services.permission_service import permission_service
+    return permission_service.apply_data_scope_filter(query, model_cls, user)
 
 
 def get_current_project_id():

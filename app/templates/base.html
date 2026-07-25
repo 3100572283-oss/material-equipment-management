@@ -333,7 +333,7 @@
                                 {% endif %}
                                 {% if current_project_id %}
                                 <div class="project-switcher-divider"></div>
-                                {% set can_config_project = current_user.is_authenticated and (current_user.is_admin() or current_user.get_role_code() == 'project_admin' or current_user.has_permission('project:config')) %}
+                                {% set can_config_project = current_user.is_authenticated and (current_user.is_admin() or current_user.has_permission('project:config')) %}
                                 <a class="project-switcher-item project-switcher-settings"
                                    href="{{ url_for('project.modules', id=current_project_id) if can_config_project else '#' }}"
                                    {% if not can_config_project %}onclick="return false;" title="您没有权限配置项目"{% endif %}>

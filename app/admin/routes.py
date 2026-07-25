@@ -14,7 +14,7 @@ from app import db
 # ============== 用户管理 ==============
 
 def _compute_user_projects(role_id, dept_id, form_project_ids_csv, main_project_id_form, is_new_user, existing_user=None):
-    """计算用户最终的可访问项目列表和主项目ID
+    """计算用户最终的可访问项目列表和主项目ID（委托给统一权限服务）
 
     根据角色数据权限规则计算项目范围：
     - all / dept_and_sub：自动赋予范围权限，忽略前端传参
@@ -30,17 +30,13 @@ def _compute_user_projects(role_id, dept_id, form_project_ids_csv, main_project_
     返回: (project_ids, main_project_id, error_msg)
     error_msg 非空时表示校验失败，应中止保存并提示
     """
-    from app.utils import get_sub_dept_ids
+    from app.services.permission_service import permission_service
 
-    role = SysRole.query.get(role_id) if role_id else None
-    # 优先使用 sys_role.data_scope（与 api_role_data_scope 接口保持一致）
-    data_scope = role.data_scope if role else 'all'
+    auto_project_ids, data_scope = permission_service.compute_project_scope_by_role(role_id, dept_id)
 
-    # 当前操作管理员可见的部门范围
-    admin_dept_ids = _get_admin_visible_dept_ids()
+    admin_dept_ids = permission_service.get_allowed_dept_ids(current_user)
 
-    if data_scope in ('all',):
-        # 全部数据：自动赋予全部项目（受管理员权限约束）
+    if data_scope == 'all':
         proj_query = Project.query.filter_by(is_archived=False)
         if admin_dept_ids is not None:
             if admin_dept_ids:
@@ -52,26 +48,20 @@ def _compute_user_projects(role_id, dept_id, form_project_ids_csv, main_project_
         main_project_id = main_project_id_form or (project_ids[0] if project_ids else None)
         return project_ids, main_project_id, None
 
-    if data_scope == 'dept_and_sub':
-        # 本部门及下级：自动赋予本部门及下属部门对应项目（无需前端勾选）
-        # 即使未选部门，也返回空列表而非报错，由后端自动处理
-        dept_ids = []
-        if dept_id:
-            dept_ids = get_sub_dept_ids(dept_id)
-            dept_ids.append(dept_id)
-            # 额外受管理员权限约束
-            if admin_dept_ids is not None:
-                dept_ids = [d for d in dept_ids if d in admin_dept_ids]
-        if dept_ids:
-            proj_query = Project.query.filter_by(is_archived=False).filter(Project.dept_id.in_(dept_ids))
+    if data_scope in ('dept_and_sub',):
+        if admin_dept_ids is not None and auto_project_ids:
+            proj_query = Project.query.filter(
+                Project.id.in_(auto_project_ids),
+                Project.is_archived == False,
+                Project.dept_id.in_(admin_dept_ids)
+            )
             all_projects = proj_query.all()
             project_ids = [p.id for p in all_projects]
         else:
-            project_ids = []
+            project_ids = auto_project_ids or []
         main_project_id = main_project_id_form or (project_ids[0] if project_ids else None)
         return project_ids, main_project_id, None
 
-    # dept / custom / self：使用前端勾选
     csv_str = form_project_ids_csv or ''
     form_project_ids = []
     for part in csv_str.split(','):
@@ -79,18 +69,15 @@ def _compute_user_projects(role_id, dept_id, form_project_ids_csv, main_project_
         if part.isdigit():
             form_project_ids.append(int(part))
 
-    # 校验：至少勾选1个
     if not form_project_ids:
         return [], None, '请至少勾选1个可访问项目'
 
-    # 校验：勾选的项目必须在管理员可见范围内
     if admin_dept_ids is not None:
         for pid in form_project_ids:
             p = Project.query.get(pid)
             if not p or p.dept_id not in admin_dept_ids:
                 return [], None, '勾选的项目超出您的权限范围，禁止授权'
 
-    # 校验：主项目必须在可访问项目范围内
     main_project_id = main_project_id_form
     if not main_project_id:
         main_project_id = form_project_ids[0]
