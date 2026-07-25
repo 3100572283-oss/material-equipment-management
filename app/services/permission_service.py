@@ -580,7 +580,7 @@ class PermissionService:
         for did in dept_id_list:
             d = SysDept.query.get(did)
             if d:
-                dept_names.append(d.name)
+                dept_names.append(d.dept_name)
 
         return {
             'scope': data_scope,
