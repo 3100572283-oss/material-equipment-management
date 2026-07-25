@@ -157,9 +157,10 @@
                         </div>
                         <div class="col-md-6" id="mainProjectArea" style="display:none;">
                             <label class="form-label">主项目 <span class="text-danger">*</span> <span class="text-muted small">（仅可从已勾选项目中选择）</span></label>
-                            <select class="form-select" name="main_project_id" id="mainProjectSelect" required>
+                            <select class="form-select" name="main_project_id" id="mainProjectSelect">
                                 <option value="">— 请先勾选可访问项目 —</option>
                             </select>
+                            <div class="invalid-feedback" id="mainProjectError">请选择主项目</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">邮箱</label>
@@ -502,6 +503,8 @@ function triggerRoleLinkage() {
         // 未选角色，隐藏项目选择区
         projectSelectorArea.style.display = 'none';
         mainProjectArea.style.display = 'none';
+        // 隐藏时移除必填校验，避免表单提交被静默拦截
+        mainProjectSelect.removeAttribute('required');
         return;
     }
     fetch('{{ url_for("admin.api_role_data_scope") }}?role_id=' + encodeURIComponent(roleId))
@@ -512,11 +515,15 @@ function triggerRoleLinkage() {
             if (show) {
                 projectSelectorArea.style.display = '';
                 mainProjectArea.style.display = '';
+                // 显示时启用必填校验
+                mainProjectSelect.setAttribute('required', 'required');
                 loadProjectTree(data.data_scope, deptId);
             } else {
                 // 全部数据 / 本部门及下级：隐藏，后端自动赋权
                 projectSelectorArea.style.display = 'none';
                 mainProjectArea.style.display = 'none';
+                // 隐藏时移除必填校验，避免表单提交被静默拦截
+                mainProjectSelect.removeAttribute('required');
                 // 清空已选
                 selectedProjectIds.clear();
                 syncHiddenInput();
@@ -526,6 +533,7 @@ function triggerRoleLinkage() {
             // 网络错误，保守隐藏
             projectSelectorArea.style.display = 'none';
             mainProjectArea.style.display = 'none';
+            mainProjectSelect.removeAttribute('required');
         });
 }
 
@@ -560,6 +568,43 @@ function loadProjectTree(dataScope, deptId) {
 
 // 角色选择变化时触发联动
 roleIdSelect.addEventListener('change', triggerRoleLinkage);
+
+// ===== 表单提交校验与错误提示 =====
+var userForm = document.querySelector('form[method="POST"]:not([action])');
+if (userForm) {
+    userForm.addEventListener('submit', function(e) {
+        // 清除上次的错误提示
+        mainProjectSelect.classList.remove('is-invalid');
+        var errMsgEl = document.getElementById('mainProjectError');
+        if (errMsgEl) errMsgEl.style.display = 'none';
+
+        // 项目选择区可见时，校验必填
+        if (projectSelectorArea.style.display !== 'none') {
+            var csv = projectIdsCsvInput.value.trim();
+            if (!csv) {
+                e.preventDefault();
+                mainProjectSelect.classList.add('is-invalid');
+                if (errMsgEl) {
+                    errMsgEl.textContent = '请至少勾选1个可访问项目';
+                    errMsgEl.style.display = 'block';
+                }
+                // 滚动到项目选择区
+                projectSelectorArea.scrollIntoView({behavior:'smooth', block:'center'});
+                return false;
+            }
+            if (!mainProjectSelect.value) {
+                e.preventDefault();
+                mainProjectSelect.classList.add('is-invalid');
+                if (errMsgEl) {
+                    errMsgEl.textContent = '请选择主项目';
+                    errMsgEl.style.display = 'block';
+                }
+                mainProjectArea.scrollIntoView({behavior:'smooth', block:'center'});
+                return false;
+            }
+        }
+    });
+}
 
 // 页面加载后自动触发联动
 (function() {

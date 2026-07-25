@@ -52,16 +52,22 @@ def _compute_user_projects(role_id, dept_id, form_project_ids_csv, main_project_
         main_project_id = main_project_id_form or (project_ids[0] if project_ids else None)
         return project_ids, main_project_id, None
 
-    if data_scope == 'dept_and_sub' and dept_id:
-        # 本部门及下级：自动赋予本部门及下属部门对应项目
-        dept_ids = get_sub_dept_ids(dept_id)
-        dept_ids.append(dept_id)
-        # 额外受管理员权限约束
-        if admin_dept_ids is not None:
-            dept_ids = [d for d in dept_ids if d in admin_dept_ids]
-        proj_query = Project.query.filter_by(is_archived=False).filter(Project.dept_id.in_(dept_ids))
-        all_projects = proj_query.all()
-        project_ids = [p.id for p in all_projects]
+    if data_scope == 'dept_and_sub':
+        # 本部门及下级：自动赋予本部门及下属部门对应项目（无需前端勾选）
+        # 即使未选部门，也返回空列表而非报错，由后端自动处理
+        dept_ids = []
+        if dept_id:
+            dept_ids = get_sub_dept_ids(dept_id)
+            dept_ids.append(dept_id)
+            # 额外受管理员权限约束
+            if admin_dept_ids is not None:
+                dept_ids = [d for d in dept_ids if d in admin_dept_ids]
+        if dept_ids:
+            proj_query = Project.query.filter_by(is_archived=False).filter(Project.dept_id.in_(dept_ids))
+            all_projects = proj_query.all()
+            project_ids = [p.id for p in all_projects]
+        else:
+            project_ids = []
         main_project_id = main_project_id_form or (project_ids[0] if project_ids else None)
         return project_ids, main_project_id, None
 
@@ -178,29 +184,34 @@ def create_user():
 
         from werkzeug.security import generate_password_hash
 
-        user = User(
-            username=username,
-            password_hash=generate_password_hash(password, method='pbkdf2:sha256'),
-            role='viewer',
-            role_id=role_id,
-            dept_id=dept_id,
-            project_id=main_project_id,
-            name=name or None,
-            department=request.form.get('department', '').strip() or None,
-            email=request.form.get('email', '').strip() or None,
-            phone=request.form.get('phone', '').strip() or None,
-        )
-        db.session.add(user)
-        db.session.flush()
+        try:
+            user = User(
+                username=username,
+                password_hash=generate_password_hash(password, method='pbkdf2:sha256'),
+                role='viewer',
+                role_id=role_id,
+                dept_id=dept_id,
+                project_id=main_project_id,
+                name=name or None,
+                department=request.form.get('department', '').strip() or None,
+                email=request.form.get('email', '').strip() or None,
+                phone=request.form.get('phone', '').strip() or None,
+            )
+            db.session.add(user)
+            db.session.flush()
 
-        for pid in project_ids:
-            is_main = (pid == main_project_id)
-            up = SysUserProject(user_id=user.id, project_id=pid, is_main=is_main)
-            db.session.add(up)
+            for pid in project_ids:
+                is_main = (pid == main_project_id)
+                up = SysUserProject(user_id=user.id, project_id=pid, is_main=is_main)
+                db.session.add(up)
 
-        db.session.commit()
-        flash('用户创建成功', 'success')
-        return redirect(url_for('admin.users'))
+            db.session.commit()
+            flash('用户创建成功', 'success')
+            return redirect(url_for('admin.users'))
+        except Exception as e:
+            db.session.rollback()
+            flash('用户创建失败：' + str(e), 'error')
+            return redirect(url_for('admin.create_user'))
 
     depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
@@ -267,19 +278,24 @@ def edit_user(id):
             flash(err_msg, 'error')
             return redirect(url_for('admin.edit_user', id=id))
 
-        # 更新主项目
-        user.project_id = main_project_id
+        try:
+            # 更新主项目
+            user.project_id = main_project_id
 
-        # 删除旧关联，重建新关联
-        SysUserProject.query.filter_by(user_id=user.id).delete()
-        for pid in project_ids:
-            is_main = (pid == main_project_id)
-            up = SysUserProject(user_id=user.id, project_id=pid, is_main=is_main)
-            db.session.add(up)
+            # 删除旧关联，重建新关联
+            SysUserProject.query.filter_by(user_id=user.id).delete()
+            for pid in project_ids:
+                is_main = (pid == main_project_id)
+                up = SysUserProject(user_id=user.id, project_id=pid, is_main=is_main)
+                db.session.add(up)
 
-        db.session.commit()
-        flash('用户信息更新成功', 'success')
-        return redirect(url_for('admin.users'))
+            db.session.commit()
+            flash('用户信息更新成功', 'success')
+            return redirect(url_for('admin.users'))
+        except Exception as e:
+            db.session.rollback()
+            flash('用户信息更新失败：' + str(e), 'error')
+            return redirect(url_for('admin.edit_user', id=id))
 
     depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     roles = SysRole.query.filter_by(status=True).order_by(SysRole.sort).all()
