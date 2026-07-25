@@ -38,6 +38,7 @@ def get_sys_menu_data():
     section_map = {
         '用户管理': '用户与权限',
         '组织架构': '用户与权限',
+        '项目管理': '用户与权限',
         '角色管理': '用户与权限',
         '菜单管理': '用户与权限',
         '基础信息管理': '业务配置',
@@ -66,6 +67,7 @@ def get_sys_menu_data():
     icon_map = {
         '用户管理': 'bi-person',
         '组织架构': 'bi-diagram-3',
+        '项目管理': 'bi-folder',
         '角色管理': 'bi-shield-lock',
         '菜单管理': 'bi-list-nested',
         '基础信息管理': 'bi-book',
@@ -121,6 +123,13 @@ def get_sys_menu_data():
             ).order_by(SysMenu.sort).all()
             for menu in menu_items:
                 endpoint = menu.menu_code
+                # 如果配置了path且指向其他蓝图，从path推导endpoint
+                # 例如 path='/project/' 对应 endpoint 'project.index'
+                if menu.path and menu.path.startswith('/') and not menu.path.startswith('/system/'):
+                    path_parts = [p for p in menu.path.strip('/').split('/') if p]
+                    if path_parts:
+                        bp_name = path_parts[0]
+                        endpoint = f'{bp_name}.index'
                 if not endpoint:
                     continue
                 if menu.permission and menu.permission.startswith('module_'):
@@ -134,7 +143,9 @@ def get_sys_menu_data():
                         if str(enabled).lower() != 'true':
                             continue
                 if not current_user.is_admin():
-                    if endpoint and allowed_endpoints and endpoint not in allowed_endpoints:
+                    # 用menu_code判断权限（因为跨蓝图菜单的endpoint与menu_code不同）
+                    perm_key = menu.menu_code
+                    if perm_key and allowed_endpoints and perm_key not in allowed_endpoints:
                         continue
                 item_extra = {}
                 if menu.remark:
@@ -147,10 +158,16 @@ def get_sys_menu_data():
                     menu_icon = menu.icon
                     if not menu_icon or menu_icon == 'bi-circle':
                         menu_icon = icon_map.get(menu.menu_name, 'bi-circle')
+                    # active默认值：跨蓝图菜单用 blueprint_name. 作为前缀匹配
+                    default_active = endpoint
+                    if menu.path and menu.path.startswith('/') and not menu.path.startswith('/system/'):
+                        path_parts = [p for p in menu.path.strip('/').split('/') if p]
+                        if path_parts:
+                            default_active = f'{path_parts[0]}.'
                     sys_group_map[group_name].append({
                         'title': menu.menu_name,
                         'endpoint': endpoint,
-                        'active': item_extra.get('active', endpoint or ''),
+                        'active': item_extra.get('active', default_active),
                         'icon': menu_icon,
                     })
     except Exception:
@@ -394,8 +411,10 @@ def create_dept():
         flash('部门创建成功', 'success')
         return redirect(url_for('system.depts'))
 
-    # 查询所有部门并按数据权限过滤（只显示有权限的部门作为可选父部门）
-    all_depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
+    # 查询所有行政部门并按数据权限过滤（只显示有权限的部门作为可选父部门）
+    all_depts = SysDept.query.filter(
+        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team'])
+    ).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     allowed_dept_ids = _get_allowed_dept_ids()
     if allowed_dept_ids is not None:
         all_depts = [d for d in all_depts if d.id in allowed_dept_ids]
@@ -438,7 +457,7 @@ def create_dept():
 
     return render_template('system/dept_form.html', dept=None, all_depts=all_depts,
                            default_sort=default_sort, parent_id=parent_id_param, parent_dept=parent_dept,
-                           DEPT_TYPE_LABELS=SysDept._DEPT_TYPE_MAP if hasattr(SysDept, '_DEPT_TYPE_MAP') else {})
+                           DEPT_TYPE_LABELS=DEPT_TYPE_LABELS)
 
 
 @bp.route('/depts/<int:id>/edit', methods=['GET', 'POST'])
@@ -492,8 +511,10 @@ def edit_dept(id):
         flash('部门已更新', 'success')
         return redirect(url_for('system.depts'))
 
-    # 查询所有部门并按数据权限过滤（只显示有权限的部门作为可选父部门）
-    all_depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
+    # 查询所有行政部门并按数据权限过滤（只显示有权限的部门作为可选父部门）
+    all_depts = SysDept.query.filter(
+        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team'])
+    ).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
     allowed_dept_ids = _get_allowed_dept_ids()
     if allowed_dept_ids is not None:
         all_depts = [d for d in all_depts if d.id in allowed_dept_ids]
@@ -528,7 +549,7 @@ def edit_dept(id):
 
     return render_template('system/dept_form.html', dept=dept, all_depts=all_depts,
                            parent_id=dept.parent_id, parent_dept=dept_map.get(dept.parent_id) if dept.parent_id else None,
-                           DEPT_TYPE_LABELS=SysDept._DEPT_TYPE_MAP if hasattr(SysDept, '_DEPT_TYPE_MAP') else {})
+                           DEPT_TYPE_LABELS=DEPT_TYPE_LABELS)
 
 
 @bp.route('/depts/<int:id>/delete', methods=['POST'])
@@ -771,7 +792,9 @@ def role_permissions(id):
         current_data_scope = role.data_scope or 'all'
         custom_dept_ids = [rd.dept_id for rd in SysRoleDept.query.filter_by(role_id=id).all()]
 
-    all_depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
+    all_depts = SysDept.query.filter(
+        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team'])
+    ).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
 
     # 数据范围枚举
     data_scope_options = [
@@ -1073,9 +1096,18 @@ def api_dept_tree():
     - dept：只返回当前用户所在部门
     - self：只返回当前用户所在部门
     - custom：返回自定义部门ID列表对应的部门及其子部门树
+
+    参数：
+    - admin_only: 1=只返回行政部门（排除项目部），默认0=全部
     """
-    # 查询所有启用状态的部门，保留原有的排序逻辑
-    all_depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
+    admin_only = request.args.get('admin_only', '0') == '1'
+
+    # 查询所有部门（包含禁用状态），保留原有的排序逻辑
+    query = SysDept.query
+    if admin_only:
+        # 只返回行政部门类型：company/branch/dept/team
+        query = query.filter(SysDept.dept_type.in_(['company', 'branch', 'dept', 'team']))
+    all_depts = query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
 
     # ========== 数据权限过滤：计算有权限的部门ID集合 ==========
     allowed_dept_ids = None  # None 表示全部权限
@@ -1141,7 +1173,12 @@ def api_dept_tree():
                 node = {
                     'id': d.id,
                     'label': d.dept_name,
+                    'name': d.dept_name,
                     'code': d.dept_code,
+                    'dept_type': d.dept_type,
+                    'leader': d.leader or '',
+                    'status': d.status,
+                    'sort': d.sort,
                     'children': build_tree(d.id)
                 }
                 children.append(node)
@@ -1158,7 +1195,12 @@ def api_dept_tree():
                 node = {
                     'id': d.id,
                     'label': d.dept_name,
+                    'name': d.dept_name,
                     'code': d.dept_code,
+                    'dept_type': d.dept_type,
+                    'leader': d.leader or '',
+                    'status': d.status,
+                    'sort': d.sort,
                     'children': build_tree(d.id)
                 }
                 tree.append(node)

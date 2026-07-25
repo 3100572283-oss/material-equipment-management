@@ -28,7 +28,7 @@ def migrate_menus():
                 return True
 
             # ===== 1. 更新组织架构菜单权限标识 =====
-            print("\n[1/3] 更新组织架构菜单权限标识...")
+            print("\n[1/3] 更新组织架构菜单及按钮权限...")
             dept_menu = SysMenu.query.filter_by(menu_code='system.depts').first()
             if dept_menu:
                 old_perm = dept_menu.permission
@@ -37,32 +37,76 @@ def migrate_menus():
                 dept_menu.menu_name = '组织架构'
                 print(f"  组织架构菜单: {old_perm} → {new_perm}")
 
-                # 更新按钮权限
-                dept_buttons = SysMenu.query.filter_by(
+                # 检查是否已有按钮菜单
+                existing_buttons = SysMenu.query.filter_by(
                     parent_id=dept_menu.id, menu_type='button'
-                ).all()
-                op_map = {
-                    'view': 'list',
-                    'create': 'add',
-                    'edit': 'edit',
-                    'delete': 'delete',
-                }
-                for btn in dept_buttons:
-                    old_btn_perm = btn.permission
-                    parts = old_btn_perm.split(':') if old_btn_perm else []
-                    if len(parts) == 3 and parts[1] == 'depts':
-                        new_op = op_map.get(parts[2], parts[2])
-                        new_btn_perm = f'system:dept:{new_op}'
-                        btn.permission = new_btn_perm
-                        print(f"  按钮 {btn.menu_name}: {old_btn_perm} → {new_btn_perm}")
+                ).count()
+                if existing_buttons == 0:
+                    # 新增按钮权限点
+                    buttons = [
+                        ('查看', 'list', 'system:dept:list'),
+                        ('新增', 'add', 'system:dept:add'),
+                        ('编辑', 'edit', 'system:dept:edit'),
+                        ('删除', 'delete', 'system:dept:delete'),
+                    ]
+                    for i, (name, op, perm) in enumerate(buttons):
+                        btn = SysMenu(
+                            parent_id=dept_menu.id,
+                            menu_name=name,
+                            menu_code=f'system.dept.{op}',
+                            menu_type='button',
+                            permission=perm,
+                            sort=i + 1,
+                            status=True,
+                        )
+                        db.session.add(btn)
+                        print(f"    新增按钮: {name} - {perm}")
 
-                        # 迁移角色权限关联
-                        old_links = SysRoleMenu.query.filter_by(
-                            menu_id=btn.id
-                        ).all()
-                        for link in old_links:
-                            if link.operation == parts[2]:
-                                link.operation = new_op
+                    # 给超级管理员分配组织架构全部权限
+                    super_admin = SysRole.query.filter_by(role_code='super_admin').first()
+                    if super_admin:
+                        all_operations = ['list', 'add', 'edit', 'delete']
+                        for op in all_operations:
+                            existing = SysRoleMenu.query.filter_by(
+                                role_id=super_admin.id,
+                                menu_id=dept_menu.id,
+                                operation=op
+                            ).first()
+                            if not existing:
+                                link = SysRoleMenu(
+                                    role_id=super_admin.id,
+                                    menu_id=dept_menu.id,
+                                    operation=op
+                                )
+                                db.session.add(link)
+                        print(f"  已确保超级管理员拥有组织架构全部权限")
+                else:
+                    # 更新现有按钮的权限标识
+                    dept_buttons = SysMenu.query.filter_by(
+                        parent_id=dept_menu.id, menu_type='button'
+                    ).all()
+                    op_map = {
+                        'view': 'list',
+                        'create': 'add',
+                        'edit': 'edit',
+                        'delete': 'delete',
+                    }
+                    for btn in dept_buttons:
+                        old_btn_perm = btn.permission
+                        parts = old_btn_perm.split(':') if old_btn_perm else []
+                        if len(parts) == 3 and parts[1] == 'depts':
+                            new_op = op_map.get(parts[2], parts[2])
+                            new_btn_perm = f'system:dept:{new_op}'
+                            btn.permission = new_btn_perm
+                            print(f"  按钮 {btn.menu_name}: {old_btn_perm} → {new_btn_perm}")
+
+                            # 迁移角色权限关联
+                            old_links = SysRoleMenu.query.filter_by(
+                                menu_id=btn.id
+                            ).all()
+                            for link in old_links:
+                                if link.operation == parts[2]:
+                                    link.operation = new_op
 
             # ===== 2. 新增项目管理菜单 =====
             print("\n[2/3] 新增项目管理菜单及权限点...")
@@ -77,7 +121,7 @@ def migrate_menus():
                     menu_name='项目管理',
                     menu_code='system.project',
                     menu_type='menu',
-                    path='/system/projects',
+                    path='/project/',
                     permission='system:project:view',
                     icon='bi-houses',
                     sort=dept_sort + 1,

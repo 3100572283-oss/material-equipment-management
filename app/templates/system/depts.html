@@ -14,6 +14,15 @@
 .tree-toggle-icon {
     transition: transform 0.2s ease;
 }
+.tree-loading {
+    text-align: center;
+    padding: 40px 0;
+    color: #999;
+}
+.dept-icon-company { color: #0d6efd; }
+.dept-icon-branch { color: #0dcaf0; }
+.dept-icon-dept { color: #6c757d; }
+.dept-icon-team { color: #6f42c1; }
 [data-bs-theme="dark"] .dept-row:hover {
     background-color: rgba(255, 255, 255, 0.05);
 }
@@ -31,9 +40,11 @@
             <li class="breadcrumb-item active">组织架构</li>
         </ol>
     </nav>
+    {% if current_user.has_permission('system:dept:add') %}
     <a href="{{ url_for('system.create_dept') }}" class="btn btn-primary btn-sm">
         <i class="bi bi-plus-lg me-1"></i>新增部门
     </a>
+    {% endif %}
 </div>
 
 <div class="card shadow-sm">
@@ -45,84 +56,152 @@
         </div>
     </div>
     <div class="card-body">
-        {% macro dept_tree(dept, level=0) %}
-        {% set children = dept.children.order_by(dept.__class__.sort.asc(), dept.__class__.created_at.asc()).all() %}
-        {% set expanded = level < 2 %}
-        <div class="dept-node" data-name="{{ dept.dept_name }}" data-level="{{ level }}" style="margin-left:{{ level * 24 }}px;">
-            <div class="d-flex align-items-center justify-content-between py-2 border-bottom dept-row">
-                <div class="d-flex align-items-center">
-                    {% if children %}
-                    <i class="bi {% if expanded %}bi-caret-down-fill{% else %}bi-caret-right-fill{% endif %} text-muted me-1 toggle-icon tree-toggle-icon"
-                       style="cursor:pointer;" onclick="toggleDeptNode(this)"></i>
-                    {% else %}
-                    <span style="width:1rem; display:inline-block; margin-right:0.25rem;"></span>
-                    {% endif %}
-                    <i class="bi {% if dept.dept_type == 'company' %}bi-building-fill text-primary{% elif dept.dept_type == 'project' %}bi-geo-alt-fill text-success{% elif dept.dept_type == 'branch' %}bi-building text-info{% else %}bi-folder{% endif %} me-2"></i>
-                    <span class="{% if level == 0 %}fw-bold{% endif %}">{{ dept.dept_name }}</span>
-                    <span class="text-muted small ms-2">（{{ dept.dept_code }}）</span>
-                    <span class="badge bg-{% if dept.dept_type == 'company' %}primary{% elif dept.dept_type == 'project' %}success{% elif dept.dept_type == 'branch' %}info{% else %}secondary{% endif %} ms-2">{{ DEPT_TYPE_LABELS.get(dept.dept_type, dept.dept_type) }}</span>
-                    {% if dept.project %}
-                    <span class="badge bg-light text-dark ms-1"><i class="bi bi-geo-alt me-1"></i>{{ dept.project.name }}</span>
-                    {% endif %}
-                    {% if dept.leader %}
-                    <span class="text-muted small ms-2"><i class="bi bi-person me-1"></i>{{ dept.leader }}</span>
-                    {% endif %}
-                    {% if not dept.status %}
-                    <span class="badge bg-danger ms-2">已禁用</span>
-                    {% endif %}
-                </div>
-                <div class="btn-group btn-group-sm">
-                    <a href="{{ url_for('system.create_dept') }}?parent_id={{ dept.id }}" class="btn btn-outline-success" title="新增子部门">
-                        <i class="bi bi-plus"></i>
-                    </a>
-                    <a href="{{ url_for('admin.create_user') }}?dept_id={{ dept.id }}" class="btn btn-outline-info" title="新增用户到该部门">
-                        <i class="bi bi-person-plus"></i>
-                    </a>
-                    <a href="{{ url_for('system.edit_dept', id=dept.id) }}" class="btn btn-outline-primary" title="编辑">
-                        <i class="bi bi-pencil"></i>
-                    </a>
-                    <form method="POST" action="{{ url_for('system.toggle_dept', id=dept.id) }}" class="d-inline">
-                        <button type="submit" class="btn btn-outline-secondary" title="启用/禁用">
-                            <i class="bi {% if dept.status %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
-                        </button>
-                    </form>
-                    <form method="POST" action="{{ url_for('system.delete_dept', id=dept.id) }}"
-                          class="d-inline" onsubmit="return confirm('确定删除部门「{{ dept.dept_name }}」？\n有子部门或用户的部门不可删除。');">
-                        <button type="submit" class="btn btn-outline-danger" title="删除">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </form>
-                </div>
-            </div>
-            {% if children %}
-            <div class="dept-children" style="display:{% if expanded %}block{% else %}none{% endif %};">
-                {% for child in children %}
-                {{ dept_tree(child, level + 1) }}
-                {% endfor %}
-            </div>
-            {% endif %}
+        <div class="tree-loading" id="treeLoading">
+            <div class="spinner-border spinner-border-sm text-muted me-2" role="status"></div>
+            <span>加载中...</span>
         </div>
-        {% endmacro %}
-
-        {% if depts %}
-        <div class="tree-view" id="deptTree">
-            {% for dept in depts if dept.parent_id == 0 %}
-            {{ dept_tree(dept, 0) }}
-            {% endfor %}
+        <div class="tree-view" id="deptTree" style="display:none;">
         </div>
-        {% else %}
-        <div class="text-center text-muted py-5">
+        <div class="text-center text-muted py-5" id="emptyTip" style="display:none;">
             <i class="bi bi-inbox d-block mb-2" style="font-size:2.5rem;"></i>
             <p>暂无部门数据</p>
+            {% if current_user.has_permission('system:dept:add') %}
             <a href="{{ url_for('system.create_dept') }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-plus-lg me-1"></i>添加第一个部门
             </a>
+            {% endif %}
         </div>
-        {% endif %}
     </div>
 </div>
 
 <script>
+const DEPT_TYPE_LABELS = {
+    'company': '公司',
+    'branch': '分公司',
+    'dept': '部门',
+    'team': '班组'
+};
+
+const DEPT_TYPE_BADGE_CLASS = {
+    'company': 'bg-primary',
+    'branch': 'bg-info',
+    'dept': 'bg-secondary',
+    'team': 'bg-purple'
+};
+
+const DEPT_TYPE_ICON_CLASS = {
+    'company': 'bi-building-fill dept-icon-company',
+    'branch': 'bi-building dept-icon-branch',
+    'dept': 'bi-folder dept-icon-dept',
+    'team': 'bi-people dept-icon-team'
+};
+
+const CAN_ADD = {{ 'true' if current_user.has_permission('system:dept:add') else 'false' }};
+const CAN_EDIT = {{ 'true' if current_user.has_permission('system:dept:edit') else 'false' }};
+const CAN_DELETE = {{ 'true' if current_user.has_permission('system:dept:delete') else 'false' }};
+
+function buildDeptNode(dept, level) {
+    const hasChildren = dept.children && dept.children.length > 0;
+    const expanded = level < 2;
+    
+    let iconClass = DEPT_TYPE_ICON_CLASS[dept.dept_type] || 'bi-folder';
+    let badgeClass = DEPT_TYPE_BADGE_CLASS[dept.dept_type] || 'bg-secondary';
+    let typeLabel = DEPT_TYPE_LABELS[dept.dept_type] || dept.dept_type;
+    
+    let html = `
+    <div class="dept-node" data-name="${dept.name}" data-level="${level}" style="margin-left:${level * 24}px;">
+        <div class="d-flex align-items-center justify-content-between py-2 border-bottom dept-row">
+            <div class="d-flex align-items-center">
+                ${hasChildren ? `
+                <i class="bi ${expanded ? 'bi-caret-down-fill' : 'bi-caret-right-fill'} text-muted me-1 toggle-icon tree-toggle-icon"
+                   style="cursor:pointer;" onclick="toggleDeptNode(this)"></i>
+                ` : `
+                <span style="width:1rem; display:inline-block; margin-right:0.25rem;"></span>
+                `}
+                <i class="bi ${iconClass} me-2"></i>
+                <span class="${level === 0 ? 'fw-bold' : ''}">${dept.name}</span>
+                <span class="text-muted small ms-2">（${dept.code || ''}）</span>
+                <span class="badge ${badgeClass} ms-2">${typeLabel}</span>
+                ${dept.leader ? `
+                <span class="text-muted small ms-2"><i class="bi bi-person me-1"></i>${dept.leader}</span>
+                ` : ''}
+                ${!dept.status ? `
+                <span class="badge bg-danger ms-2">已禁用</span>
+                ` : ''}
+            </div>
+            <div class="btn-group btn-group-sm">
+                ${CAN_ADD ? `
+                <a href="{{ url_for('system.create_dept') }}?parent_id=${dept.id}" class="btn btn-outline-success" title="新增子部门">
+                    <i class="bi bi-plus"></i>
+                </a>
+                ` : ''}
+                <a href="{{ url_for('admin.create_user') }}?dept_id=${dept.id}" class="btn btn-outline-info" title="新增用户到该部门">
+                    <i class="bi bi-person-plus"></i>
+                </a>
+                ${CAN_EDIT ? `
+                <a href="/system/depts/${dept.id}/edit" class="btn btn-outline-primary" title="编辑">
+                    <i class="bi bi-pencil"></i>
+                </a>
+                <form method="POST" action="/system/depts/${dept.id}/toggle" class="d-inline">
+                    <button type="submit" class="btn btn-outline-secondary" title="启用/禁用">
+                        <i class="bi ${dept.status ? 'bi-toggle-on' : 'bi-toggle-off'}"></i>
+                    </button>
+                </form>
+                ` : ''}
+                ${CAN_DELETE ? `
+                <form method="POST" action="/system/depts/${dept.id}/delete"
+                      class="d-inline" onsubmit="return confirm('确定删除部门「${dept.name}」？\n有子部门或用户的部门不可删除。');">
+                    <button type="submit" class="btn btn-outline-danger" title="删除">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </form>
+                ` : ''}
+            </div>
+        </div>
+        ${hasChildren ? `
+        <div class="dept-children" style="display:${expanded ? 'block' : 'none'};">
+            ${dept.children.map(child => buildDeptNode(child, level + 1)).join('')}
+        </div>
+        ` : ''}
+    </div>
+    `;
+    return html;
+}
+
+function loadDeptTree() {
+    const treeLoading = document.getElementById('treeLoading');
+    const deptTree = document.getElementById('deptTree');
+    const emptyTip = document.getElementById('emptyTip');
+    
+    treeLoading.style.display = '';
+    deptTree.style.display = 'none';
+    emptyTip.style.display = 'none';
+    
+    fetch('/system/api/depts/tree?admin_only=1')
+        .then(response => response.json())
+        .then(data => {
+            treeLoading.style.display = 'none';
+            
+            if (!data || data.length === 0) {
+                emptyTip.style.display = '';
+                return;
+            }
+            
+            let html = '';
+            data.forEach(dept => {
+                html += buildDeptNode(dept, 0);
+            });
+            deptTree.innerHTML = html;
+            deptTree.style.display = '';
+        })
+        .catch(error => {
+            treeLoading.style.display = 'none';
+            emptyTip.style.display = '';
+            emptyTip.querySelector('p').textContent = '加载失败，请刷新重试';
+            console.error('加载部门树失败:', error);
+        });
+}
+
 function toggleDeptNode(icon) {
     const node = icon.closest('.dept-node');
     const children = node.querySelector(':scope > .dept-children');
@@ -209,5 +288,9 @@ function filterDeptTree(keyword) {
         }
     });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadDeptTree();
+});
 </script>
 {% endblock %}

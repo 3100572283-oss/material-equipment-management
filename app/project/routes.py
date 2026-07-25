@@ -125,6 +125,8 @@ def index():
     page = request.args.get('page', 1, type=int)
     keyword = request.args.get('keyword', '', type=str)
     archived = request.args.get('archived', '', type=str)
+    dept_id = request.args.get('dept_id', type=int, default=0)
+    status = request.args.get('status', '', type=str)
 
     query = Project.query
     if keyword:
@@ -133,6 +135,10 @@ def index():
         query = query.filter_by(is_archived=True)
     elif archived == '0':
         query = query.filter_by(is_archived=False)
+    if dept_id:
+        query = query.filter_by(dept_id=dept_id)
+    if status:
+        query = query.filter_by(status=status)
 
     # 数据权限过滤：按用户数据权限范围过滤项目
     query = _apply_project_data_scope(query)
@@ -140,7 +146,30 @@ def index():
     pagination = query.order_by(Project.created_at.desc()).paginate(
         page=page, per_page=10, error_out=False
     )
-    return render_template('project/index.html', pagination=pagination, keyword=keyword, archived=archived)
+
+    # 获取有权限的行政部门列表（供筛选使用）
+    from app.models import SysDept
+    dept_query = SysDept.query.filter(
+        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team'])
+    ).order_by(SysDept.sort.asc(), SysDept.created_at.asc())
+    
+    # 按数据权限过滤部门
+    dept_ids = _get_project_data_scope_dept_ids()
+    if dept_ids is not None:
+        if dept_ids:
+            dept_query = dept_query.filter(SysDept.id.in_(dept_ids))
+        else:
+            dept_query = dept_query.filter(False)
+    
+    filter_depts = dept_query.all()
+
+    return render_template('project/index.html', 
+                           pagination=pagination, 
+                           keyword=keyword, 
+                           archived=archived,
+                           dept_id=dept_id,
+                           status=status,
+                           filter_depts=filter_depts)
 
 
 @bp.route('/create', methods=['GET', 'POST'])
