@@ -172,22 +172,19 @@ class User(UserMixin, db.Model):
 
         规则：
         - all: 所有项目
-        - dept_and_sub: 本部门及下级部门下的项目部关联的项目
-        - dept: 仅本部门关联的项目（本部门是项目部类型时取其project_id）
+        - dept_and_sub: 本部门及下级部门归属的项目
+        - dept: 仅本部门归属的项目
         - self: 仅自己被分配的项目（sys_user_project）
-        - custom: 自定义部门列表下的项目部关联的项目
+        - custom: 自定义部门列表归属的项目
         """
-        from app.models import SysRoleDataScope
+        from app.models import SysRoleDataScope, Project
 
-        # 全部数据权限或管理员：所有项目
         if self.get_data_scope() == 'all' or self.is_admin():
             return None
 
-        # 从 sys_role_data_scope 获取数据权限配置
         data_scope = self.get_data_scope()
         project_ids = set()
 
-        # 获取用户的角色数据权限配置
         role = self.role_obj
         if role:
             scope_cfg = SysRoleDataScope.query.filter_by(role_id=role.id).first()
@@ -195,7 +192,6 @@ class User(UserMixin, db.Model):
                 data_scope = scope_cfg.data_scope or 'all'
 
         if data_scope == 'dept_and_sub':
-            # 本部门及下级：收集所有子部门ID，筛选项目部类型部门关联的项目
             if self.dept_id:
                 dept = SysDept.query.get(self.dept_id)
                 if dept:
@@ -204,30 +200,25 @@ class User(UserMixin, db.Model):
                         dept_ids.extend(dept.get_children_recursive())
                     except Exception:
                         pass
-                    # 筛选项目部类型的部门
-                    project_depts = SysDept.query.filter(
-                        SysDept.id.in_(dept_ids),
-                        SysDept.dept_type == 'project',
-                        SysDept.project_id.isnot(None)
+                    projects = Project.query.filter(
+                        Project.dept_id.in_(dept_ids),
+                        Project.is_archived == False
                     ).all()
-                    for d in project_depts:
-                        project_ids.add(d.project_id)
+                    for p in projects:
+                        project_ids.add(p.id)
 
         elif data_scope == 'dept':
-            # 本部门：仅本部门关联的项目
             if self.dept_id:
-                dept = SysDept.query.get(self.dept_id)
-                if dept:
-                    # 如果本部门是项目部类型，取其关联项目
-                    if dept.dept_type == 'project' and dept.project_id:
-                        project_ids.add(dept.project_id)
+                projects = Project.query.filter_by(
+                    dept_id=self.dept_id, is_archived=False
+                ).all()
+                for p in projects:
+                    project_ids.add(p.id)
 
         elif data_scope == 'self':
-            # 仅本人：仅自己被分配的项目
-            pass  # 下面统一处理 sys_user_project
+            pass
 
         elif data_scope == 'custom':
-            # 自定义：从 sys_role_data_scope 读取自定义部门列表
             if role:
                 scope_cfg = SysRoleDataScope.query.filter_by(role_id=role.id).first()
                 if scope_cfg and scope_cfg.custom_depts:
@@ -235,18 +226,15 @@ class User(UserMixin, db.Model):
                     try:
                         custom_dept_ids = json.loads(scope_cfg.custom_depts) if isinstance(scope_cfg.custom_depts, str) else scope_cfg.custom_depts
                         custom_dept_ids = [int(x) for x in custom_dept_ids if str(x).isdigit()]
-                        # 筛选这些部门下的项目部
-                        project_depts = SysDept.query.filter(
-                            SysDept.id.in_(custom_dept_ids),
-                            SysDept.dept_type == 'project',
-                            SysDept.project_id.isnot(None)
+                        projects = Project.query.filter(
+                            Project.dept_id.in_(custom_dept_ids),
+                            Project.is_archived == False
                         ).all()
-                        for d in project_depts:
-                            project_ids.add(d.project_id)
+                        for p in projects:
+                            project_ids.add(p.id)
                     except Exception:
                         pass
 
-        # 2. 用户被直接分配的项目（sys_user_project）- 并集
         for up in self.user_projects:
             project_ids.add(up.project_id)
 
@@ -315,7 +303,8 @@ class SysDept(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     children = db.relationship('SysDept', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
-    project = db.relationship('Project', backref='depts')
+    project = db.relationship('Project', backref=db.backref('dept_records', lazy='dynamic'),
+                              foreign_keys='SysDept.project_id')
 
     _DEPT_TYPE_MAP = {
         'company': '公司', 'branch': '分公司', 'project': '项目部',
@@ -489,6 +478,7 @@ class Project(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(128), nullable=False)
     code = db.Column(db.String(64), nullable=True)
+    dept_id = db.Column(db.Integer, db.ForeignKey('sys_dept.id'), nullable=True)  # 所属行政部门
     address = db.Column(db.String(256), nullable=True)
     start_date = db.Column(db.Date, nullable=True)
     planned_end_date = db.Column(db.Date, nullable=True)
@@ -501,9 +491,12 @@ class Project(db.Model):
     project_type = db.Column(db.String(32), nullable=True)  # 项目类型（字典 project_type）
     is_archived = db.Column(db.Boolean, default=False)
     module_config = db.Column(db.Text, nullable=True)  # JSON格式存储模块开关配置
+    remark = db.Column(db.String(512), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     # Relationships
+    dept = db.relationship('SysDept', backref=db.backref('admin_projects', lazy='dynamic'),
+                           foreign_keys='Project.dept_id')
     materials = db.relationship('Material', backref='project', lazy='dynamic', cascade='all, delete-orphan')
     suppliers = db.relationship('Supplier', backref='project', lazy='dynamic', cascade='all, delete-orphan')
     categories = db.relationship('Category', backref='project', lazy='dynamic', cascade='all, delete-orphan')

@@ -224,6 +224,10 @@ def init_db_schema():
     _add_column_if_missing('reconciliation_items', 'capital_fee_days', 'INTEGER')
     _add_column_if_missing('sys_message', 'read_at', 'DATETIME')
 
+    # 架构重构：双树分离 - projects 表增加 dept_id 行政归属 + remark
+    _add_column_if_missing('projects', 'dept_id', 'INTEGER')
+    _add_column_if_missing('projects', 'remark', 'VARCHAR(512)')
+
     # 增强阶段一：付款申请
     _add_column_if_missing('payments', 'source_application_id', 'INTEGER')
     _add_column_if_missing('payments', 'amount_without_tax', 'NUMERIC(18,2) DEFAULT 0')
@@ -617,21 +621,6 @@ def init_rbac_data():
             db.session.flush()
             data['id'] = dept.id
             depts_data[i] = data
-
-    # 为现有项目创建对应的项目部部门
-    for project in Project.query.all():
-        dept_code = f'PRJ_{project.id}'
-        if not SysDept.query.filter_by(dept_code=dept_code).first():
-            project_dept = SysDept(
-                dept_code=dept_code,
-                dept_name=project.name,
-                parent_id=1,  # 挂在总公司下
-                dept_type='project',
-                project_id=project.id,
-                sort=10 + project.id
-            )
-            db.session.add(project_dept)
-            db.session.flush()
 
     # ===== 4. 初始化角色 =====
     roles_data = [
