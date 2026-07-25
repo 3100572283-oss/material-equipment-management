@@ -111,12 +111,14 @@ class User(UserMixin, db.Model):
             # 三段落格式: module:func:operation (如 system:dept:list, stock:in:create)
             if len(parts) == 3:
                 module, func, operation = parts
-                # 优先用 permission 字段精确匹配（最准确）
+                # 优先用 permission 字段精确匹配
                 menu = SysMenu.query.filter_by(permission=permission).first()
                 if menu:
+                    # 如果匹配到的是按钮菜单，用其父菜单ID查权限关联
+                    check_menu_id = menu.parent_id if menu.menu_type == 'button' else menu.id
                     exists = SysRoleMenu.query.filter_by(
                         role_id=self.role_id,
-                        menu_id=menu.id,
+                        menu_id=check_menu_id,
                         operation=operation
                     ).first()
                     return exists is not None
