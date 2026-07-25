@@ -6,8 +6,8 @@ from datetime import datetime
 from app import db
 from app.system import bp
 from app.models import SysDept, SysRole, SysMenu, SysRoleMenu, SysRoleDept, SysRoleDataScope, User, Project
-from app.decorators import admin_required, log_audit
-from app.utils import gen_dept_code, gen_project_code, gen_role_code
+from app.decorators import admin_required, permission_required, log_audit
+from app.utils import gen_dept_code, gen_role_code
 import json as _json
 
 
@@ -20,7 +20,6 @@ TYPE_LABELS = {
 DEPT_TYPE_LABELS = {
     'company': '公司',
     'branch': '分公司',
-    'project': '项目部',
     'dept': '部门',
     'team': '班组',
 }
@@ -210,6 +209,59 @@ def _reorder_depts(parent_id):
     db.session.commit()
 
 
+def _get_allowed_dept_ids():
+    """获取当前用户有权限访问的部门ID集合
+
+    数据权限过滤规则：
+    - admin 或 data_scope='all'：返回 None 表示全部权限
+    - dept_and_sub：返回当前用户部门及其所有子部门ID
+    - dept：只返回当前用户所在部门ID
+    - self：只返回当前用户所在部门ID
+    - custom：返回自定义部门ID及其所有子部门ID
+
+    返回 None 表示拥有全部部门权限，无需过滤
+    """
+    # 管理员或全部数据权限：直接返回全量
+    if current_user.is_admin() or current_user.get_data_scope() == 'all':
+        return None
+
+    data_scope = current_user.get_data_scope()
+    user_dept_id = current_user.dept_id
+    allowed_dept_ids = set()
+
+    if data_scope == 'dept_and_sub' and user_dept_id:
+        # 本部门及下级：包含当前用户部门及其所有子部门
+        user_dept = SysDept.query.get(user_dept_id)
+        if user_dept:
+            allowed_dept_ids = set(user_dept.get_children_recursive())
+
+    elif data_scope == 'dept' and user_dept_id:
+        # 本部门：只包含当前用户所在部门
+        allowed_dept_ids = {user_dept_id}
+
+    elif data_scope == 'self' and user_dept_id:
+        # 仅本人：部门层面只显示自己所在部门
+        allowed_dept_ids = {user_dept_id}
+
+    elif data_scope == 'custom':
+        # 自定义数据权限：从 SysRoleDataScope.custom_depts 读取
+        if current_user.role_obj:
+            scope_cfg = SysRoleDataScope.query.filter_by(role_id=current_user.role_obj.id).first()
+            if scope_cfg and scope_cfg.custom_depts:
+                try:
+                    custom_dept_ids = [int(x) for x in _json.loads(scope_cfg.custom_depts) if str(x).isdigit()]
+                except Exception:
+                    custom_dept_ids = [int(x.strip()) for x in scope_cfg.custom_depts.split(',') if x.strip().isdigit()]
+
+                # 自定义部门需要包含其所有子部门，确保树结构完整
+                for dept_id in custom_dept_ids:
+                    dept = SysDept.query.get(dept_id)
+                    if dept:
+                        allowed_dept_ids.update(dept.get_children_recursive())
+
+    return allowed_dept_ids
+
+
 def _reorder_roles():
     """删除角色后重新整理排序号"""
     roles = SysRole.query.order_by(SysRole.sort, SysRole.id).all()
@@ -274,72 +326,54 @@ def index():
 
 @bp.route('/depts')
 @login_required
-@admin_required
+@permission_required('system:dept:list')
 def depts():
-    """组织架构管理页"""
+    """组织架构管理页
+    
+    数据权限过滤：只显示当前用户有权限访问的部门
+    """
     all_depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
-    all_projects = Project.query.filter_by(is_archived=False).all()
-    return render_template('system/depts.html', depts=all_depts, all_projects=all_projects)
+
+    # 按数据权限过滤部门
+    allowed_dept_ids = _get_allowed_dept_ids()
+    if allowed_dept_ids is not None:
+        depts_filtered = [d for d in all_depts if d.id in allowed_dept_ids]
+    else:
+        depts_filtered = all_depts
+
+    return render_template('system/depts.html', depts=depts_filtered)
 
 
 @bp.route('/depts/create', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@permission_required('system:dept:add')
 @log_audit(module='rbac', operation='新增部门')
 def create_dept():
-    """新增部门"""
+    """新增部门
+    
+    数据权限校验：非管理员只能在自己权限范围内新增部门（父部门必须在权限内）
+    """
     if request.method == 'POST':
         dept_name = request.form.get('dept_name', '').strip()
         parent_id = request.form.get('parent_id', type=int, default=0)
         dept_type = request.form.get('dept_type', 'dept')
-        project_id = request.form.get('project_id', type=int, default=0)
         leader = request.form.get('leader', '').strip()
         sort_input = request.form.get('sort', type=int, default=None)
         remark = request.form.get('remark', '').strip()
-
-        # 项目相关字段
-        project_name = request.form.get('project_name', '').strip()
-        project_address = request.form.get('project_address', '').strip()
-        project_manager = request.form.get('project_manager', '').strip()
-        project_phone = request.form.get('project_phone', '').strip()
-        start_date = request.form.get('start_date', '').strip() or None
-        planned_end_date = request.form.get('planned_end_date', '').strip() or None
-        project_status = request.form.get('project_status', 'active')
-        building_area = request.form.get('building_area', type=float, default=0)
-        contract_amount = request.form.get('contract_amount', type=float, default=0)
-        project_type = request.form.get('project_type', '').strip()
 
         if not dept_name:
             flash('部门名称不能为空', 'error')
             return redirect(url_for('system.create_dept'))
 
+        # 数据权限校验：非管理员只能在有权限的部门下新增
+        allowed_dept_ids = _get_allowed_dept_ids()
+        if allowed_dept_ids is not None and parent_id != 0:
+            if parent_id not in allowed_dept_ids:
+                flash('无权在此部门下新增子部门', 'error')
+                return redirect(url_for('system.depts'))
+
         # 自动生成部门编码
         dept_code = gen_dept_code()
-
-        if dept_type == 'project':
-            # 项目部类型：同步创建项目
-            if not project_name:
-                project_name = dept_name
-
-            # 自动生成项目编码
-            project_code = gen_project_code()
-
-            new_project = Project(
-                name=project_name,
-                code=project_code,
-                address=project_address or None,
-                manager=project_manager or None,
-                contact_phone=project_phone or None,
-                start_date=datetime.strptime(start_date, '%Y-%m-%d').date() if start_date else None,
-                planned_end_date=datetime.strptime(planned_end_date, '%Y-%m-%d').date() if planned_end_date else None,
-                status=project_status,
-                building_area=building_area,
-                contract_amount=contract_amount,
-                project_type=project_type or None,
-            )
-            db.session.add(new_project)
-            db.session.flush()
-            project_id = new_project.id
 
         if sort_input is None:
             max_sort = db.session.query(db.func.max(SysDept.sort)).filter_by(
@@ -351,7 +385,6 @@ def create_dept():
             dept_name=dept_name,
             parent_id=parent_id if parent_id else 0,
             dept_type=dept_type,
-            project_id=project_id if project_id and dept_type == 'project' else None,
             leader=leader or None,
             sort=sort_input,
             remark=remark or None
@@ -361,8 +394,11 @@ def create_dept():
         flash('部门创建成功', 'success')
         return redirect(url_for('system.depts'))
 
+    # 查询所有部门并按数据权限过滤（只显示有权限的部门作为可选父部门）
     all_depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
-    all_projects = Project.query.filter_by(is_archived=False).all()
+    allowed_dept_ids = _get_allowed_dept_ids()
+    if allowed_dept_ids is not None:
+        all_depts = [d for d in all_depts if d.id in allowed_dept_ids]
 
     dept_map = {d.id: d for d in all_depts}
 
@@ -400,38 +436,35 @@ def create_dept():
 
     parent_dept = dept_map.get(parent_id_param) if parent_id_param else None
 
-    return render_template('system/dept_form.html', dept=None, all_depts=all_depts, all_projects=all_projects,
+    return render_template('system/dept_form.html', dept=None, all_depts=all_depts,
                            default_sort=default_sort, parent_id=parent_id_param, parent_dept=parent_dept,
                            DEPT_TYPE_LABELS=SysDept._DEPT_TYPE_MAP if hasattr(SysDept, '_DEPT_TYPE_MAP') else {})
 
 
 @bp.route('/depts/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@permission_required('system:dept:edit')
 @log_audit(module='rbac', operation='编辑部门')
 def edit_dept(id):
-    """编辑部门"""
+    """编辑部门
+    
+    数据权限校验：只能编辑权限范围内的部门
+    """
     dept = SysDept.query.get_or_404(id)
+
+    # 数据权限校验：只能编辑有权限的部门
+    allowed_dept_ids = _get_allowed_dept_ids()
+    if allowed_dept_ids is not None and dept.id not in allowed_dept_ids:
+        flash('无权编辑此部门', 'error')
+        return redirect(url_for('system.depts'))
+
     if request.method == 'POST':
         dept_name = request.form.get('dept_name', '').strip()
         parent_id = request.form.get('parent_id', type=int, default=0)
         dept_type = request.form.get('dept_type', 'dept')
-        project_id = request.form.get('project_id', type=int, default=0)
         leader = request.form.get('leader', '').strip()
         sort = request.form.get('sort', type=int, default=dept.sort)
         remark = request.form.get('remark', '').strip()
-
-        # 项目相关字段
-        project_name = request.form.get('project_name', '').strip()
-        project_address = request.form.get('project_address', '').strip()
-        project_manager = request.form.get('project_manager', '').strip()
-        project_phone = request.form.get('project_phone', '').strip()
-        start_date = request.form.get('start_date', '').strip() or None
-        planned_end_date = request.form.get('planned_end_date', '').strip() or None
-        project_status = request.form.get('project_status', 'active')
-        building_area = request.form.get('building_area', type=float, default=0)
-        contract_amount = request.form.get('contract_amount', type=float, default=0)
-        project_type = request.form.get('project_type', '').strip()
 
         if not dept_name:
             flash('部门名称不能为空', 'error')
@@ -442,6 +475,12 @@ def edit_dept(id):
             flash('不能将上级部门设为自己', 'error')
             return redirect(url_for('system.edit_dept', id=id))
 
+        # 数据权限校验：非管理员修改父部门时，新父部门必须在权限范围内
+        if allowed_dept_ids is not None and parent_id != 0 and parent_id != dept.parent_id:
+            if parent_id not in allowed_dept_ids:
+                flash('无权将部门移动到该父部门下', 'error')
+                return redirect(url_for('system.edit_dept', id=id))
+
         dept.dept_name = dept_name
         dept.parent_id = parent_id if parent_id else 0
         dept.dept_type = dept_type
@@ -449,52 +488,15 @@ def edit_dept(id):
         dept.sort = sort
         dept.remark = remark or None
 
-        if dept_type == 'project':
-            # 项目部类型：同步更新或创建项目
-            if dept.project_id and Project.query.get(dept.project_id):
-                # 更新已有项目
-                project = Project.query.get(dept.project_id)
-                project.name = project_name if project_name else dept_name
-                project.address = project_address or None
-                project.manager = project_manager or None
-                project.contact_phone = project_phone or None
-                project.start_date = datetime.strptime(start_date, '%Y-%m-%d').date() if start_date else None
-                project.planned_end_date = datetime.strptime(planned_end_date, '%Y-%m-%d').date() if planned_end_date else None
-                project.status = project_status
-                project.building_area = building_area
-                project.contract_amount = contract_amount
-                project.project_type = project_type or None
-                project_id = project.id
-            else:
-                # 创建新项目
-                project_code = gen_project_code()
-                new_project = Project(
-                    name=project_name if project_name else dept_name,
-                    code=project_code,
-                    address=project_address or None,
-                    manager=project_manager or None,
-                    contact_phone=project_phone or None,
-                    start_date=datetime.strptime(start_date, '%Y-%m-%d').date() if start_date else None,
-                    planned_end_date=datetime.strptime(planned_end_date, '%Y-%m-%d').date() if planned_end_date else None,
-                    status=project_status,
-                    building_area=building_area,
-                    contract_amount=contract_amount,
-                    project_type=project_type or None,
-                )
-                db.session.add(new_project)
-                db.session.flush()
-                project_id = new_project.id
-            dept.project_id = project_id
-        else:
-            # 非项目部类型清空项目关联
-            dept.project_id = None
-
         db.session.commit()
         flash('部门已更新', 'success')
         return redirect(url_for('system.depts'))
 
+    # 查询所有部门并按数据权限过滤（只显示有权限的部门作为可选父部门）
     all_depts = SysDept.query.order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
-    all_projects = Project.query.filter_by(is_archived=False).all()
+    allowed_dept_ids = _get_allowed_dept_ids()
+    if allowed_dept_ids is not None:
+        all_depts = [d for d in all_depts if d.id in allowed_dept_ids]
 
     dept_map = {d.id: d for d in all_depts}
 
@@ -524,18 +526,27 @@ def edit_dept(id):
         d._depth = get_dept_depth(d)
         d._path = get_dept_path(d)
 
-    return render_template('system/dept_form.html', dept=dept, all_depts=all_depts, all_projects=all_projects,
+    return render_template('system/dept_form.html', dept=dept, all_depts=all_depts,
                            parent_id=dept.parent_id, parent_dept=dept_map.get(dept.parent_id) if dept.parent_id else None,
                            DEPT_TYPE_LABELS=SysDept._DEPT_TYPE_MAP if hasattr(SysDept, '_DEPT_TYPE_MAP') else {})
 
 
 @bp.route('/depts/<int:id>/delete', methods=['POST'])
 @login_required
-@admin_required
+@permission_required('system:dept:delete')
 @log_audit(module='rbac', operation='删除部门')
 def delete_dept(id):
-    """删除部门"""
+    """删除部门
+    
+    数据权限校验：只能删除权限范围内的部门
+    """
     dept = SysDept.query.get_or_404(id)
+
+    # 数据权限校验：只能删除有权限的部门
+    allowed_dept_ids = _get_allowed_dept_ids()
+    if allowed_dept_ids is not None and dept.id not in allowed_dept_ids:
+        flash('无权删除此部门', 'error')
+        return redirect(url_for('system.depts'))
 
     if dept.children.count() > 0:
         flash('该部门有子部门，请先转移子部门后再删除', 'error')
@@ -544,12 +555,6 @@ def delete_dept(id):
     if dept.users.count() > 0:
         flash('该部门下有用户，请先转移用户后再删除', 'error')
         return redirect(url_for('system.depts'))
-
-    # 项目部类型：归档对应项目而非物理删除
-    if dept.dept_type == 'project' and dept.project_id:
-        project = Project.query.get(dept.project_id)
-        if project:
-            project.is_archived = True
 
     parent_id = dept.parent_id
     db.session.delete(dept)
@@ -561,11 +566,21 @@ def delete_dept(id):
 
 @bp.route('/depts/<int:id>/toggle', methods=['POST'])
 @login_required
-@admin_required
+@permission_required('system:dept:edit')
 @log_audit(module='rbac', operation='启用/禁用部门')
 def toggle_dept(id):
-    """启用/禁用部门"""
+    """启用/禁用部门
+    
+    数据权限校验：只能启停权限范围内的部门
+    """
     dept = SysDept.query.get_or_404(id)
+
+    # 数据权限校验：只能启停有权限的部门
+    allowed_dept_ids = _get_allowed_dept_ids()
+    if allowed_dept_ids is not None and dept.id not in allowed_dept_ids:
+        flash('无权操作此部门', 'error')
+        return redirect(url_for('system.depts'))
+
     dept.status = not dept.status
     db.session.commit()
     flash(f'部门已{"启用" if dept.status else "禁用"}', 'success')
@@ -1050,9 +1065,72 @@ def toggle_menu(id):
 @bp.route('/api/depts/tree')
 @login_required
 def api_dept_tree():
-    """获取部门树形数据"""
-    depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
-    
+    """获取部门树形数据（按数据权限过滤）
+
+    数据权限过滤规则：
+    - all 或 admin：返回全部部门树
+    - dept_and_sub：返回当前用户部门及其所有子部门
+    - dept：只返回当前用户所在部门
+    - self：只返回当前用户所在部门
+    - custom：返回自定义部门ID列表对应的部门及其子部门树
+    """
+    # 查询所有启用状态的部门，保留原有的排序逻辑
+    all_depts = SysDept.query.filter_by(status=True).order_by(SysDept.sort.asc(), SysDept.created_at.asc()).all()
+
+    # ========== 数据权限过滤：计算有权限的部门ID集合 ==========
+    allowed_dept_ids = None  # None 表示全部权限
+
+    # 管理员或全部数据权限：直接返回全量
+    if current_user.is_admin() or current_user.get_data_scope() == 'all':
+        allowed_dept_ids = None  # 表示不过滤
+    else:
+        data_scope = current_user.get_data_scope()
+        user_dept_id = current_user.dept_id
+
+        # 初始化有权限的部门ID集合
+        allowed_dept_ids = set()
+
+        if data_scope == 'dept_and_sub' and user_dept_id:
+            # 本部门及下级：包含当前用户部门及其所有子部门
+            user_dept = SysDept.query.get(user_dept_id)
+            if user_dept:
+                # 递归获取所有子部门ID（包含自身）
+                allowed_dept_ids = set(user_dept.get_children_recursive())
+
+        elif data_scope == 'dept' and user_dept_id:
+            # 本部门：只包含当前用户所在部门
+            allowed_dept_ids = {user_dept_id}
+
+        elif data_scope == 'self' and user_dept_id:
+            # 仅本人：部门树层面只显示自己所在部门
+            allowed_dept_ids = {user_dept_id}
+
+        elif data_scope == 'custom':
+            # 自定义数据权限：从 SysRoleDataScope.custom_depts 读取自定义部门ID列表
+            if current_user.role_obj:
+                scope_cfg = SysRoleDataScope.query.filter_by(role_id=current_user.role_obj.id).first()
+                if scope_cfg and scope_cfg.custom_depts:
+                    import json as _json
+                    try:
+                        custom_dept_ids = [int(x) for x in _json.loads(scope_cfg.custom_depts) if str(x).isdigit()]
+                    except Exception:
+                        # 兜底：逗号分隔格式
+                        custom_dept_ids = [int(x.strip()) for x in scope_cfg.custom_depts.split(',') if x.strip().isdigit()]
+
+                    # 自定义部门需要包含其所有子部门，确保树结构完整
+                    for dept_id in custom_dept_ids:
+                        dept = SysDept.query.get(dept_id)
+                        if dept:
+                            allowed_dept_ids.update(dept.get_children_recursive())
+
+    # 过滤出有权限的部门列表
+    if allowed_dept_ids is not None:
+        depts = [d for d in all_depts if d.id in allowed_dept_ids]
+    else:
+        depts = all_depts
+    # ============================================================
+
+    # 构建部门树（只包含有权限的部门节点）
     def build_tree(parent_id):
         children = []
         for d in depts:
@@ -1065,7 +1143,7 @@ def api_dept_tree():
                 }
                 children.append(node)
         return children
-    
+
     return jsonify(build_tree(0))
 
 

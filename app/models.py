@@ -86,9 +86,9 @@ class User(UserMixin, db.Model):
 
         Args:
             permission: 权限标识,支持多种格式:
-                - 'stock_in:create' (旧格式: 权限代码:操作)
+                - 'system:dept:list' (三段落: 模块:功能:操作)
+                - 'stock_in:create' (两段落: 权限代码:操作)
                 - '26:view' (菜单ID:操作)
-                - 'stock:in:create' (新格式: 模块:功能:操作)
                 - '26' (仅菜单ID, 默认检查view权限)
 
         Returns:
@@ -108,10 +108,19 @@ class User(UserMixin, db.Model):
         if ':' in permission:
             parts = permission.split(':')
 
-            # 三段落格式: module:func:operation (如 stock:in:create)
+            # 三段落格式: module:func:operation (如 system:dept:list, stock:in:create)
             if len(parts) == 3:
                 module, func, operation = parts
-                # 查找匹配的菜单
+                # 优先用 permission 字段精确匹配（最准确）
+                menu = SysMenu.query.filter_by(permission=permission).first()
+                if menu:
+                    exists = SysRoleMenu.query.filter_by(
+                        role_id=self.role_id,
+                        menu_id=menu.id,
+                        operation=operation
+                    ).first()
+                    return exists is not None
+                # 备用：用 menu_code 模糊匹配（兼容旧格式）
                 menus = SysMenu.query.filter(
                     SysMenu.menu_code.like(f'{module}.{func}')
                 ).all()
