@@ -1131,6 +1131,9 @@ def api_dept_tree():
     # ============================================================
 
     # 构建部门树（只包含有权限的部门节点）
+    # 找根节点：父节点不在当前权限列表中的部门（即顶层可见部门）
+    dept_ids_set = {d.id for d in depts}
+
     def build_tree(parent_id):
         children = []
         for d in depts:
@@ -1144,7 +1147,23 @@ def api_dept_tree():
                 children.append(node)
         return children
 
-    return jsonify(build_tree(0))
+    # 如果是全量权限，从parent_id=0开始；否则从顶层可见部门开始
+    if allowed_dept_ids is None:
+        tree = build_tree(0)
+    else:
+        # 找到所有根节点（父部门不在可见范围内的部门）
+        tree = []
+        for d in depts:
+            if d.parent_id not in dept_ids_set:
+                node = {
+                    'id': d.id,
+                    'label': d.dept_name,
+                    'code': d.dept_code,
+                    'children': build_tree(d.id)
+                }
+                tree.append(node)
+
+    return jsonify(tree)
 
 
 @bp.route('/api/roles')
