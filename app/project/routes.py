@@ -147,12 +147,13 @@ def index():
         page=page, per_page=10, error_out=False
     )
 
-    # 获取有权限的行政部门列表（供筛选使用）
+    # 获取有权限的公司/分公司列表（供筛选使用，与树接口保持一致）
     from app.models import SysDept
     dept_query = SysDept.query.filter(
-        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team'])
+        SysDept.dept_type.in_(['company', 'branch']),
+        SysDept.status == True
     ).order_by(SysDept.sort.asc(), SysDept.created_at.asc())
-    
+
     # 按数据权限过滤部门
     dept_ids = _get_project_data_scope_dept_ids()
     if dept_ids is not None:
@@ -160,7 +161,7 @@ def index():
             dept_query = dept_query.filter(SysDept.id.in_(dept_ids))
         else:
             dept_query = dept_query.filter(False)
-    
+
     filter_depts = dept_query.all()
 
     return render_template('project/index.html', 
@@ -207,10 +208,10 @@ def create():
         db.session.commit()
         flash('项目创建成功。', 'success')
         return redirect(url_for('project.index'))
-    # GET：获取可选部门列表，支持 URL 参数 prefill dept_id
+    # GET：获取可选公司/分公司列表（仅此两类可归属项目），支持 URL 参数 prefill dept_id
     from app.models import SysDept
     dept_query = SysDept.query.filter(
-        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team']),
+        SysDept.dept_type.in_(['company', 'branch']),
         SysDept.status == True
     ).order_by(SysDept.sort.asc(), SysDept.created_at.asc())
     allowed_dept_ids = _get_project_data_scope_dept_ids()
@@ -257,10 +258,10 @@ def edit(id):
         db.session.commit()
         flash('项目更新成功。', 'success')
         return redirect(url_for('project.index'))
-    # GET：获取可选部门列表
+    # GET：获取可选公司/分公司列表（仅此两类可归属项目）
     from app.models import SysDept
     dept_query = SysDept.query.filter(
-        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team']),
+        SysDept.dept_type.in_(['company', 'branch']),
         SysDept.status == True
     ).order_by(SysDept.sort.asc(), SysDept.created_at.asc())
     allowed_dept_ids = _get_project_data_scope_dept_ids()
@@ -376,17 +377,20 @@ def api_list():
 def api_tree():
     """返回按公司分组的项目树（左树右表用）
 
-    结构：公司节点 → 项目节点（两级）
-    数据权限过滤：只返回用户有权限的部门和项目
+    结构：公司/分公司节点 → 项目节点（两级）
+    规则：
+    - 只保留 company/branch 类型的部门作为分组节点，剔除所有职能部门（dept/team）
+    - 只显示有项目的分组节点，无项目的节点不返回
+    - 数据权限过滤：只返回用户有权限的部门和项目
     """
     from app.models import SysDept
 
     # 获取用户数据权限范围内的部门ID
     dept_ids = _get_project_data_scope_dept_ids()
 
-    # 查询有权限的行政部门（公司/分公司/部门/班组）
+    # 查询有权限的公司/分公司（仅此两类作为分组节点，剔除职能部门）
     dept_query = SysDept.query.filter(
-        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team']),
+        SysDept.dept_type.in_(['company', 'branch']),
         SysDept.status == True
     ).order_by(SysDept.sort.asc(), SysDept.created_at.asc())
     if dept_ids is not None:
@@ -406,10 +410,12 @@ def api_tree():
     for p in projects:
         proj_by_dept.setdefault(p.dept_id, []).append(p)
 
-    # 构建树
+    # 构建树：只包含有项目的公司节点
     tree = []
     for d in depts:
         dept_projects = proj_by_dept.get(d.id, [])
+        if not dept_projects:
+            continue  # 无项目的节点不显示
         node = {
             'id': d.id,
             'label': d.dept_name,

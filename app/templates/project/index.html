@@ -103,7 +103,7 @@
                             <tr>
                                 <th>项目名称</th>
                                 <th>项目编号</th>
-                                <th>所属部门</th>
+                                <th>所属公司</th>
                                 <th>项目状态</th>
                                 <th>项目经理</th>
                                 <th>开工日期</th>
@@ -117,50 +117,55 @@
                                     <i class="bi bi-folder{% if p.is_archived %}2-open{% endif %} text-{% if p.is_archived %}secondary{% else %}primary{% endif %} me-1"></i>
                                     {{ p.name }}
                                 </td>
-                                <td>{{ p.code or '-' }}</td>
-                                <td>{{ p.dept.dept_name if p.dept else '-' }}</td>
+                                <td>{{ p.code or '—' }}</td>
+                                <td>{{ p.dept.dept_name if p.dept else '—' }}</td>
                                 <td>
-                                    {% set status_map = dict(get_dict_items('project_status')) %}
-                                    {% set status_label = status_map.get(p.status, p.status) %}
-                                    {% if p.status == 'active' %}
-                                    <span class="badge bg-success">{{ status_label }}</span>
-                                    {% elif p.status == 'completed' %}
-                                    <span class="badge bg-secondary">{{ status_label }}</span>
+                                    {% if p.status == 'active' and not p.is_archived %}
+                                    <span class="badge bg-success">在建</span>
+                                    {% elif p.status == 'completed' or p.is_archived %}
+                                    <span class="badge bg-secondary">已完工</span>
                                     {% elif p.status == 'suspended' %}
-                                    <span class="badge bg-warning text-dark">{{ status_label }}</span>
+                                    <span class="badge bg-warning text-dark">已停工</span>
+                                    {% else %}
+                                    <span class="badge bg-light text-dark">{{ p.status }}</span>
                                     {% endif %}
                                     {% if p.is_archived %}
                                     <span class="badge bg-danger ms-1">已归档</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ p.manager or '-' }}</td>
-                                <td>{{ p.start_date or '-' }}</td>
-                                <td class="text-end">
-                                    {% if p.status == 'active' and not p.is_archived %}
-                                    <a href="{{ url_for('main.set_project', project_id=p.id) }}" class="btn btn-sm btn-outline-success {% if p.id == session.get('current_project_id') %}disabled{% endif %}" title="切换到该项目">
-                                        <i class="bi bi-check-circle"></i>
-                                    </a>
-                                    {% endif %}
+                                <td>{{ p.manager or '—' }}</td>
+                                <td>{{ p.start_date or '—' }}</td>
+                                <td class="text-end text-nowrap">
                                     {% if current_user.has_permission('system:project:edit') %}
                                     <a href="{{ url_for('project.edit', id=p.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
                                     {% endif %}
+                                    {% if current_user.has_permission('system:project:delete') %}
+                                    <form method="POST" action="{{ url_for('project.delete', id=p.id) }}" class="m-0 d-inline" onsubmit="return confirm('确定删除项目「{{ p.name }}」？');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                    {% endif %}
+                                    {% set has_more = current_user.has_permission('system:project:config') or current_user.has_permission('system:project:edit') %}
+                                    {% if has_more %}
                                     <div class="btn-group btn-group-sm" role="group">
-                                        {% if current_user.has_permission('system:project:config') %}
-                                        <a href="{{ url_for('project.modules', id=p.id) }}" class="btn btn-outline-info" title="功能配置"><i class="bi bi-gear"></i></a>
-                                        {% endif %}
-                                        {% if current_user.has_permission('system:project:edit') %}
-                                        <form method="POST" action="{{ url_for('project.toggle_archive', id=p.id) }}" class="m-0 d-inline">
-                                            <button type="submit" class="btn btn-outline-warning border-start-0" title="{{ '取消归档' if p.is_archived else '归档' }}">
-                                                <i class="bi bi-archive{{ '-fill' if p.is_archived }}"></i>
-                                            </button>
-                                        </form>
-                                        {% endif %}
-                                        {% if current_user.has_permission('system:project:delete') %}
-                                        <form method="POST" action="{{ url_for('project.delete', id=p.id) }}" class="m-0 d-inline" onsubmit="return confirm('确定删除项目「{{ p.name }}」？');">
-                                            <button type="submit" class="btn btn-outline-danger border-start-0" title="删除"><i class="bi bi-trash"></i></button>
-                                        </form>
-                                        {% endif %}
+                                        <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="更多">
+                                            <i class="bi bi-three-dots"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            {% if current_user.has_permission('system:project:config') %}
+                                            <li><a href="{{ url_for('project.modules', id=p.id) }}" class="dropdown-item"><i class="bi bi-gear me-2"></i>功能配置</a></li>
+                                            {% endif %}
+                                            {% if current_user.has_permission('system:project:edit') %}
+                                            <li>
+                                                <form method="POST" action="{{ url_for('project.toggle_archive', id=p.id) }}" class="m-0">
+                                                    <button type="submit" class="dropdown-item">
+                                                        <i class="bi bi-archive{{ '-fill' if p.is_archived }} me-2"></i>{{ '取消归档' if p.is_archived else '归档' }}
+                                                    </button>
+                                                </form>
+                                            </li>
+                                            {% endif %}
+                                        </ul>
                                     </div>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% else %}
