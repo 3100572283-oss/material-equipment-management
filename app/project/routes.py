@@ -207,7 +207,23 @@ def create():
         db.session.commit()
         flash('项目创建成功。', 'success')
         return redirect(url_for('project.index'))
-    return render_template('project/form.html')
+    # GET：获取可选部门列表，支持 URL 参数 prefill dept_id
+    from app.models import SysDept
+    dept_query = SysDept.query.filter(
+        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team']),
+        SysDept.status == True
+    ).order_by(SysDept.sort.asc(), SysDept.created_at.asc())
+    allowed_dept_ids = _get_project_data_scope_dept_ids()
+    if allowed_dept_ids is not None:
+        if allowed_dept_ids:
+            dept_query = dept_query.filter(SysDept.id.in_(allowed_dept_ids))
+        else:
+            dept_query = dept_query.filter(False)
+    available_depts = dept_query.all()
+    prefill_dept_id = request.args.get('dept_id', type=int)
+    return render_template('project/form.html',
+                           available_depts=available_depts,
+                           prefill_dept_id=prefill_dept_id)
 
 
 @bp.route('/<int:id>/edit', methods=['GET', 'POST'])
@@ -241,7 +257,21 @@ def edit(id):
         db.session.commit()
         flash('项目更新成功。', 'success')
         return redirect(url_for('project.index'))
-    return render_template('project/form.html', project=project)
+    # GET：获取可选部门列表
+    from app.models import SysDept
+    dept_query = SysDept.query.filter(
+        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team']),
+        SysDept.status == True
+    ).order_by(SysDept.sort.asc(), SysDept.created_at.asc())
+    allowed_dept_ids = _get_project_data_scope_dept_ids()
+    if allowed_dept_ids is not None:
+        if allowed_dept_ids:
+            dept_query = dept_query.filter(SysDept.id.in_(allowed_dept_ids))
+        else:
+            dept_query = dept_query.filter(False)
+    available_depts = dept_query.all()
+    return render_template('project/form.html', project=project,
+                           available_depts=available_depts)
 
 
 @bp.route('/<int:id>/delete', methods=['POST'])
@@ -338,3 +368,66 @@ def api_list():
         'dept_id': p.dept_id,
     } for p in projects]
     return jsonify({'code': 0, 'data': data, 'count': len(data)})
+
+
+@bp.route('/api/tree')
+@login_required
+@permission_required('system:project:list')
+def api_tree():
+    """返回按公司分组的项目树（左树右表用）
+
+    结构：公司节点 → 项目节点（两级）
+    数据权限过滤：只返回用户有权限的部门和项目
+    """
+    from app.models import SysDept
+
+    # 获取用户数据权限范围内的部门ID
+    dept_ids = _get_project_data_scope_dept_ids()
+
+    # 查询有权限的行政部门（公司/分公司/部门/班组）
+    dept_query = SysDept.query.filter(
+        SysDept.dept_type.in_(['company', 'branch', 'dept', 'team']),
+        SysDept.status == True
+    ).order_by(SysDept.sort.asc(), SysDept.created_at.asc())
+    if dept_ids is not None:
+        if dept_ids:
+            dept_query = dept_query.filter(SysDept.id.in_(dept_ids))
+        else:
+            dept_query = dept_query.filter(False)
+    depts = dept_query.all()
+
+    # 查询有权限的项目
+    proj_query = Project.query
+    proj_query = _apply_project_data_scope(proj_query)
+    projects = proj_query.order_by(Project.created_at.desc()).all()
+
+    # 按 dept_id 分组项目
+    proj_by_dept = {}
+    for p in projects:
+        proj_by_dept.setdefault(p.dept_id, []).append(p)
+
+    # 构建树
+    tree = []
+    for d in depts:
+        dept_projects = proj_by_dept.get(d.id, [])
+        node = {
+            'id': d.id,
+            'label': d.dept_name,
+            'code': d.dept_code,
+            'dept_type': d.dept_type,
+            'project_count': len(dept_projects),
+            'children': [{
+                'id': 'p_%d' % p.id,
+                'project_id': p.id,
+                'label': p.name,
+                'code': p.code,
+                'status': p.status,
+                'is_archived': p.is_archived,
+                'dept_id': p.dept_id,
+            } for p in dept_projects],
+        }
+        tree.append(node)
+
+    # 统计总数
+    total = len(projects)
+    return jsonify({'code': 0, 'tree': tree, 'total': total})

@@ -21,6 +21,24 @@
                                    placeholder="保存后自动生成">
                             {% if not project %}<small class="text-muted">保存后自动生成</small>{% endif %}
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label">所属部门 <span class="text-danger">*</span></label>
+                            <select class="form-select" name="dept_id" required>
+                                <option value="">— 请选择 —</option>
+                                {% for d in available_depts %}
+                                <option value="{{ d.id }}" {% if (project and project.dept_id == d.id) or (not project and prefill_dept_id == d.id) %}selected{% endif %}>{{ d.dept_name }}（{{ d.dept_code }}）</option>
+                                {% endfor %}
+                            </select>
+                            {% if not available_depts %}<small class="text-danger">无可用部门，请联系管理员</small>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">项目状态</label>
+                            <select class="form-select" name="status">
+                                {% for label, value in get_dict_items('project_status') %}
+                                <option value="{{ value }}" {% if project and project.status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                         <div class="col-12">
                             <label class="form-label">项目地址</label>
                             <input type="text" class="form-control" name="address" value="{{ project.address if project else '' }}">
@@ -40,14 +58,6 @@
                         <div class="col-md-6">
                             <label class="form-label">联系电话</label>
                             <input type="text" class="form-control" name="contact_phone" value="{{ project.contact_phone if project else '' }}">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">项目状态</label>
-                            <select class="form-select" name="status">
-                                {% for label, value in get_dict_items('project_status') %}
-                                <option value="{{ value }}" {% if project and project.status == value %}selected{% endif %}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">项目类型</label>

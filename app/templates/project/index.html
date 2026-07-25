@@ -1,5 +1,48 @@
 {% extends "base.html" %}
 {% block title %}项目管理 - 物资设备管理系统{% endblock %}
+{% block extra_css %}
+<style>
+.proj-layout { display: flex; gap: 1rem; align-items: flex-start; }
+.proj-sidebar {
+    width: 25%; min-width: 220px; max-width: 360px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: .375rem;
+    overflow: hidden;
+}
+.proj-sidebar-header {
+    padding: .625rem .875rem;
+    background: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    font-weight: 600; font-size: .875rem;
+    display: flex; align-items: center; gap: .375rem;
+}
+.proj-tree { padding: .5rem .25rem; max-height: calc(100vh - 220px); overflow-y: auto; }
+.proj-tree-node { user-select: none; }
+.proj-tree-row {
+    display: flex; align-items: center; padding: .3rem .5rem;
+    cursor: pointer; border-radius: .25rem; font-size: .875rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.proj-tree-row:hover { background: var(--bs-tertiary-bg); }
+.proj-tree-row.active { background: var(--bs-primary); color: #fff; }
+.proj-tree-row.active .text-muted { color: rgba(255,255,255,.8) !important; }
+.proj-tree-row.is-archived { opacity: .5; }
+.proj-tree-toggle { width: 1rem; display: inline-block; text-align: center; cursor: pointer; color: var(--bs-secondary); }
+.proj-tree-icon { margin-right: .3rem; }
+.proj-tree-children { margin-left: 1.1rem; }
+.proj-tree-count {
+    margin-left: auto; font-size: .7rem;
+    background: var(--bs-tertiary-bg); color: var(--bs-secondary);
+    padding: 0 .35rem; border-radius: .375rem;
+}
+.proj-tree-row.active .proj-tree-count { background: rgba(255,255,255,.25); color: #fff; }
+.proj-main { flex: 1; min-width: 0; }
+[data-bs-theme="dark"] .proj-sidebar-header { background: rgba(255,255,255,.05); }
+[data-bs-theme="dark"] .proj-tree-row:hover { background: rgba(255,255,255,.06); }
+[data-bs-theme="dark"] .proj-tree-count { background: rgba(255,255,255,.08); }
+</style>
+{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <nav aria-label="breadcrumb">
@@ -9,140 +52,328 @@
         </ol>
     </nav>
     {% if current_user.has_permission('system:project:add') %}
-    <a href="{{ url_for('project.create') }}" class="btn btn-primary btn-sm">
+    <a href="{{ url_for('project.create') }}{% if dept_id %}?dept_id={{ dept_id }}{% endif %}" class="btn btn-primary btn-sm" id="btnAddProject">
         <i class="bi bi-plus-lg me-1"></i>新增项目
     </a>
     {% endif %}
 </div>
 
-<div class="card shadow-sm">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-building me-2"></i>项目列表</h5>
-    </div>
-    <div class="card-body">
-        <form class="row g-2 mb-3" method="GET" action="{{ url_for('project.index') }}">
-            <div class="col-md-3">
-                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索项目名称/编号" value="{{ keyword or '' }}">
-            </div>
-            <div class="col-md-2">
-                <select class="form-select form-select-sm" name="dept_id">
-                    <option value="">全部部门</option>
-                    {% for d in filter_depts %}
-                    <option value="{{ d.id }}" {% if dept_id == d.id %}selected{% endif %}>{{ d.dept_name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <select class="form-select form-select-sm" name="status">
-                    <option value="">全部状态</option>
-                    {% for label, value in get_dict_items('project_status') %}
-                    <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
-                <a href="{{ url_for('project.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
-            </div>
-        </form>
-
-        <div class="table-responsive">
-            <table class="table table-striped table-hover align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>项目名称</th>
-                        <th>项目编号</th>
-                        <th>所属部门</th>
-                        <th>项目状态</th>
-                        <th>项目地址</th>
-                        <th>开工日期</th>
-                        <th>计划完工</th>
-                        <th>项目经理</th>
-                        <th>建筑面积</th>
-                        <th>合同金额</th>
-                        <th class="text-end">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for p in pagination.items %}
-                    <tr>
-                        <td>{{ p.name }}</td>
-                        <td>{{ p.code or '-' }}</td>
-                        <td>{{ p.dept.dept_name if p.dept else '-' }}</td>
-                        <td>
-                            {% set status_map = dict(get_dict_items('project_status')) %}
-                            {% set status_label = status_map.get(p.status, p.status) %}
-                            {% if p.status == 'active' %}
-                            <span class="badge bg-success">{{ status_label }}</span>
-                            {% elif p.status == 'completed' %}
-                            <span class="badge bg-secondary">{{ status_label }}</span>
-                            {% elif p.status == 'suspended' %}
-                            <span class="badge bg-warning text-dark">{{ status_label }}</span>
-                            {% endif %}
-                            {% if p.is_archived %}
-                            <span class="badge bg-danger ms-1">已归档</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ p.address or '-' }}</td>
-                        <td>{{ p.start_date or '-' }}</td>
-                        <td>{{ p.planned_end_date or '-' }}</td>
-                        <td>{{ p.manager or '-' }}</td>
-                        <td>{{ p.building_area }} ㎡</td>
-                        <td>¥ {{ "{:,.2f}".format(p.contract_amount) }}</td>
-                        <td class="text-end">
-                            {% if p.status == 'active' and not p.is_archived %}
-                            <a href="{{ url_for('main.set_project', project_id=p.id) }}" class="btn btn-sm btn-outline-success {% if p.id == session.get('current_project_id') %}disabled{% endif %}">
-                                <i class="bi bi-check-circle"></i> 切换
-                            </a>
-                            {% endif %}
-                            {% if current_user.has_permission('system:project:edit') %}
-                            <a href="{{ url_for('project.edit', id=p.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
-                            {% endif %}
-                            {% if current_user.has_permission('system:project:config') %}
-                            <a href="{{ url_for('project.modules', id=p.id) }}" class="btn btn-sm btn-outline-info" title="功能配置"><i class="bi bi-gear"></i></a>
-                            {% endif %}
-                            {% if current_user.has_permission('system:project:edit') %}
-                            <form method="POST" action="{{ url_for('project.toggle_archive', id=p.id) }}" class="d-inline">
-                                <button type="submit" class="btn btn-sm btn-outline-warning" title="{{ '取消归档' if p.is_archived else '归档' }}">
-                                    <i class="bi bi-archive{{ '-fill' if p.is_archived }}"></i>
-                                </button>
-                            </form>
-                            {% endif %}
-                            {% if current_user.has_permission('system:project:delete') %}
-                            <form method="POST" action="{{ url_for('project.delete', id=p.id) }}" class="d-inline" onsubmit="return confirm('确定删除项目「{{ p.name }}」？');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </form>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="11" class="text-center text-muted">暂无数据</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+<div class="proj-layout">
+    <!-- 左侧：公司树 -->
+    <div class="proj-sidebar">
+        <div class="proj-sidebar-header">
+            <i class="bi bi-diagram-3"></i>
+            <span>项目归属</span>
+            <span class="proj-tree-count" id="treeTotal" title="项目总数">0</span>
         </div>
+        <div class="proj-tree" id="projTree">
+            <div class="text-center text-muted py-3"><small>加载中...</small></div>
+        </div>
+    </div>
 
-        {% if pagination.pages > 1 %}
-        <nav>
-            <ul class="pagination pagination-sm justify-content-center">
-                {% if pagination.has_prev %}
-                <li class="page-item"><a class="page-link" href="{{ url_for('project.index', page=pagination.prev_num, keyword=keyword, dept_id=dept_id, status=status, archived=archived) }}">上一页</a></li>
+    <!-- 右侧：项目列表 -->
+    <div class="proj-main">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-building me-2"></i><span id="listTitle">全部项目</span></h5>
+            </div>
+            <div class="card-body">
+                <form class="row g-2 mb-3" method="GET" action="{{ url_for('project.index') }}" id="filterForm">
+                    <input type="hidden" name="dept_id" id="hiddenDeptId" value="{{ dept_id or '' }}">
+                    <div class="col-md-3">
+                        <input type="text" class="form-control form-control-sm" name="keyword" id="searchKeyword" placeholder="搜索项目名称/编号" value="{{ keyword or '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" name="status" id="statusFilter">
+                            <option value="">全部状态</option>
+                            {% for label, value in get_dict_items('project_status') %}
+                            <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                        <a href="{{ url_for('project.index') }}" class="btn btn-sm btn-outline-secondary" id="btnReset">重置</a>
+                    </div>
+                </form>
+
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>项目名称</th>
+                                <th>项目编号</th>
+                                <th>所属部门</th>
+                                <th>项目状态</th>
+                                <th>项目经理</th>
+                                <th>开工日期</th>
+                                <th class="text-end">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="projectTableBody">
+                            {% for p in pagination.items %}
+                            <tr class="{% if p.is_archived %}table-secondary text-muted{% endif %}" data-project-name="{{ p.name }}">
+                                <td>
+                                    <i class="bi bi-folder{% if p.is_archived %}2-open{% endif %} text-{% if p.is_archived %}secondary{% else %}primary{% endif %} me-1"></i>
+                                    {{ p.name }}
+                                </td>
+                                <td>{{ p.code or '-' }}</td>
+                                <td>{{ p.dept.dept_name if p.dept else '-' }}</td>
+                                <td>
+                                    {% set status_map = dict(get_dict_items('project_status')) %}
+                                    {% set status_label = status_map.get(p.status, p.status) %}
+                                    {% if p.status == 'active' %}
+                                    <span class="badge bg-success">{{ status_label }}</span>
+                                    {% elif p.status == 'completed' %}
+                                    <span class="badge bg-secondary">{{ status_label }}</span>
+                                    {% elif p.status == 'suspended' %}
+                                    <span class="badge bg-warning text-dark">{{ status_label }}</span>
+                                    {% endif %}
+                                    {% if p.is_archived %}
+                                    <span class="badge bg-danger ms-1">已归档</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ p.manager or '-' }}</td>
+                                <td>{{ p.start_date or '-' }}</td>
+                                <td class="text-end">
+                                    {% if p.status == 'active' and not p.is_archived %}
+                                    <a href="{{ url_for('main.set_project', project_id=p.id) }}" class="btn btn-sm btn-outline-success {% if p.id == session.get('current_project_id') %}disabled{% endif %}" title="切换到该项目">
+                                        <i class="bi bi-check-circle"></i>
+                                    </a>
+                                    {% endif %}
+                                    {% if current_user.has_permission('system:project:edit') %}
+                                    <a href="{{ url_for('project.edit', id=p.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
+                                    {% endif %}
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        {% if current_user.has_permission('system:project:config') %}
+                                        <a href="{{ url_for('project.modules', id=p.id) }}" class="btn btn-outline-info" title="功能配置"><i class="bi bi-gear"></i></a>
+                                        {% endif %}
+                                        {% if current_user.has_permission('system:project:edit') %}
+                                        <form method="POST" action="{{ url_for('project.toggle_archive', id=p.id) }}" class="m-0 d-inline">
+                                            <button type="submit" class="btn btn-outline-warning border-start-0" title="{{ '取消归档' if p.is_archived else '归档' }}">
+                                                <i class="bi bi-archive{{ '-fill' if p.is_archived }}"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                        {% if current_user.has_permission('system:project:delete') %}
+                                        <form method="POST" action="{{ url_for('project.delete', id=p.id) }}" class="m-0 d-inline" onsubmit="return confirm('确定删除项目「{{ p.name }}」？');">
+                                            <button type="submit" class="btn btn-outline-danger border-start-0" title="删除"><i class="bi bi-trash"></i></button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" class="text-center text-muted py-4"><i class="bi bi-inbox d-block mb-2" style="font-size:1.5rem;"></i>暂无数据</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if pagination.pages > 1 %}
+                <nav>
+                    <ul class="pagination pagination-sm justify-content-center">
+                        {% if pagination.has_prev %}
+                        <li class="page-item"><a class="page-link" href="{{ url_for('project.index', page=pagination.prev_num, keyword=keyword, dept_id=dept_id, status=status) }}">上一页</a></li>
+                        {% endif %}
+                        {% for p in pagination.iter_pages() %}
+                            {% if p %}
+                            <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('project.index', page=p, keyword=keyword, dept_id=dept_id, status=status) }}">{{ p }}</a></li>
+                            {% else %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                            {% endif %}
+                        {% endfor %}
+                        {% if pagination.has_next %}
+                        <li class="page-item"><a class="page-link" href="{{ url_for('project.index', page=pagination.next_num, keyword=keyword, dept_id=dept_id, status=status) }}">下一页</a></li>
+                        {% endif %}
+                    </ul>
+                </nav>
                 {% endif %}
-                {% for p in pagination.iter_pages() %}
-                    {% if p %}
-                    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('project.index', page=p, keyword=keyword, dept_id=dept_id, status=status, archived=archived) }}">{{ p }}</a></li>
-                    {% else %}
-                    <li class="page-item disabled"><span class="page-link">...</span></li>
-                    {% endif %}
-                {% endfor %}
-                {% if pagination.has_next %}
-                <li class="page-item"><a class="page-link" href="{{ url_for('project.index', page=pagination.next_num, keyword=keyword, dept_id=dept_id, status=status, archived=archived) }}">下一页</a></li>
-                {% endif %}
-            </ul>
-        </nav>
-        {% endif %}
+            </div>
+        </div>
     </div>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function() {
+    var treeEl = document.getElementById('projTree');
+    var totalEl = document.getElementById('treeTotal');
+    var listTitleEl = document.getElementById('listTitle');
+    var currentDeptId = '{{ dept_id or "" }}';
+    var treeData = [];
+    var baseUrl = '{{ url_for("project.index") }}';
+    var createUrl = '{{ url_for("project.create") }}';
+    var btnAdd = document.getElementById('btnAddProject');
+
+    // 图标映射
+    var deptIcons = {
+        'company': 'bi-building-fill text-primary',
+        'branch': 'bi-building text-info',
+        'dept': 'bi-folder text-secondary',
+        'team': 'bi-people text-secondary'
+    };
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function renderTree() {
+        if (!treeData.length) {
+            treeEl.innerHTML = '<div class="text-center text-muted py-3"><small>暂无项目归属数据</small></div>';
+            return;
+        }
+        var html = '';
+        // 全部节点
+        var isActive = !currentDeptId;
+        html += '<div class="proj-tree-node">';
+        html += '<div class="proj-tree-row' + (isActive ? ' active' : '') + '" data-action="select-dept" data-dept-id="">';
+        html += '<span class="proj-tree-toggle"></span>';
+        html += '<i class="bi bi-list-ul proj-tree-icon"></i>';
+        html += '<span>全部项目</span>';
+        html += '<span class="proj-tree-count">' + (treeData.reduce(function(a,n){return a+n.project_count;},0)) + '</span>';
+        html += '</div></div>';
+
+        treeData.forEach(function(node) {
+            var nodeActive = currentDeptId == String(node.id);
+            html += '<div class="proj-tree-node">';
+            html += '<div class="proj-tree-row' + (nodeActive ? ' active' : '') + '" data-action="select-dept" data-dept-id="' + node.id + '">';
+            html += '<span class="proj-tree-toggle" data-action="toggle" data-dept-id="' + node.id + '"><i class="bi bi-caret-down-fill"></i></span>';
+            html += '<i class="bi ' + (deptIcons[node.dept_type] || 'bi-folder') + ' proj-tree-icon"></i>';
+            html += '<span>' + escapeHtml(node.label) + '</span>';
+            html += '<span class="proj-tree-count">' + node.project_count + '</span>';
+            html += '</div>';
+            html += '<div class="proj-tree-children" id="children_' + node.id + '">';
+            if (node.children && node.children.length) {
+                node.children.forEach(function(p) {
+                    var archivedClass = p.is_archived ? ' is-archived' : '';
+                    html += '<div class="proj-tree-row' + archivedClass + '" data-action="select-project" data-project-id="' + p.project_id + '" title="' + escapeHtml(p.label) + '">';
+                    html += '<span class="proj-tree-toggle"></span>';
+                    html += '<i class="bi bi-geo-alt-fill proj-tree-icon text-success"></i>';
+                    html += '<span>' + escapeHtml(p.label) + '</span>';
+                    html += '</div>';
+                });
+            } else {
+                html += '<div class="proj-tree-row text-muted"><span class="proj-tree-toggle"></span><span class="small">暂无项目</span></div>';
+            }
+            html += '</div></div>';
+        });
+        treeEl.innerHTML = html;
+    }
+
+    // 使用事件委托处理树节点点击
+    treeEl.addEventListener('click', function(e) {
+        var toggleEl = e.target.closest('[data-action="toggle"]');
+        if (toggleEl) {
+            e.stopPropagation();
+            var deptId = toggleEl.getAttribute('data-dept-id');
+            var container = document.getElementById('children_' + deptId);
+            if (container) {
+                var icon = toggleEl.querySelector('i');
+                if (container.style.display === 'none') {
+                    container.style.display = '';
+                    icon.className = 'bi bi-caret-down-fill';
+                } else {
+                    container.style.display = 'none';
+                    icon.className = 'bi bi-caret-right-fill';
+                }
+            }
+            return;
+        }
+
+        var deptRow = e.target.closest('[data-action="select-dept"]');
+        if (deptRow) {
+            var deptId = deptRow.getAttribute('data-dept-id');
+            navigateTo(deptId);
+            return;
+        }
+
+        var projRow = e.target.closest('[data-action="select-project"]');
+        if (projRow) {
+            var projectId = projRow.getAttribute('data-project-id');
+            window.location.href = '/project/' + projectId + '/edit';
+            return;
+        }
+    });
+
+    // 使用 location.href 导航，避免 form.submit() 问题
+    function navigateTo(deptId) {
+        var params = new URLSearchParams();
+        if (deptId) params.set('dept_id', deptId);
+        var keyword = document.getElementById('searchKeyword').value.trim();
+        var status = document.getElementById('statusFilter').value;
+        if (keyword) params.set('keyword', keyword);
+        if (status) params.set('status', status);
+        var qs = params.toString();
+        window.location.href = baseUrl + (qs ? '?' + qs : '');
+    }
+
+    // 更新增"新增项目"链接，携带当前选中的部门
+    function updateAddLink() {
+        if (!btnAdd) return;
+        if (currentDeptId) {
+            btnAdd.setAttribute('href', createUrl + '?dept_id=' + encodeURIComponent(currentDeptId));
+        } else {
+            btnAdd.setAttribute('href', createUrl);
+        }
+    }
+
+    // 搜索命中高亮：自动展开包含匹配项目的公司节点
+    function highlightSearch(keyword) {
+        if (!keyword) return;
+        treeData.forEach(function(node) {
+            var matched = false;
+            if (node.children) {
+                node.children.forEach(function(p) {
+                    if (p.label.indexOf(keyword) >= 0 || (p.code && p.code.indexOf(keyword) >= 0)) {
+                        matched = true;
+                    }
+                });
+            }
+            if (matched) {
+                var container = document.getElementById('children_' + node.id);
+                if (container && container.style.display === 'none') {
+                    container.style.display = '';
+                    var toggle = container.previousElementSibling.querySelector('.proj-tree-toggle i');
+                    if (toggle) toggle.className = 'bi bi-caret-down-fill';
+                }
+            }
+        });
+    }
+
+    // 更新列表标题
+    function updateTitle() {
+        if (!currentDeptId) {
+            listTitleEl.textContent = '全部项目';
+        } else {
+            for (var i = 0; i < treeData.length; i++) {
+                if (String(treeData[i].id) === String(currentDeptId)) {
+                    listTitleEl.textContent = treeData[i].label + ' 项目';
+                    break;
+                }
+            }
+        }
+    }
+
+    // 加载树数据
+    fetch('{{ url_for("project.api_tree") }}')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.code === 0) {
+                treeData = data.tree || [];
+                totalEl.textContent = data.total || 0;
+                renderTree();
+                var kw = document.getElementById('searchKeyword').value.trim();
+                if (kw) highlightSearch(kw);
+            }
+        })
+        .catch(function() {
+            treeEl.innerHTML = '<div class="text-center text-danger py-3"><small>加载失败</small></div>';
+        });
+
+    updateTitle();
+    updateAddLink();
+})();
+</script>
 {% endblock %}
