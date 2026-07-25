@@ -174,7 +174,10 @@ class PermissionService:
                     ).first()
                     return exists is not None
                 except ValueError:
-                    menus = SysMenu.query.filter_by(permission=perm_code).all()
+                    menus = SysMenu.query.filter(
+                        (SysMenu.permission == perm_code) |
+                        (SysMenu.menu_code == perm_code)
+                    ).all()
                     if menus:
                         menu_ids = [m.id for m in menus]
                         exists = SysRoleMenu.query.filter(
@@ -521,6 +524,205 @@ class PermissionService:
                 query = query.filter(model_cls.dept_id.in_(custom_depts))
 
         return query
+
+
+    def get_org_data_scope(self, user):
+        """获取用户组织数据范围（部门维度）
+
+        方法三：获取用户组织数据范围
+        输入：用户对象
+        输出：数据权限类型 + 有权限的部门ID列表
+
+        Returns:
+            dict: {
+                'scope': 'all' | 'dept_and_sub' | 'dept' | 'self' | 'custom',
+                'dept_ids': list,   # 有权限的部门ID列表（all 时为 None 表示全部）
+                'dept_names': list  # 部门名称列表（用于展示）
+            }
+        """
+        scope_info = self.get_user_data_scope(user)
+        data_scope = scope_info['scope']
+        custom_depts = scope_info['custom_depts']
+
+        if data_scope == 'all':
+            return {'scope': 'all', 'dept_ids': None, 'dept_names': ['全部']}
+
+        from app.models import SysDept
+        dept_ids = set()
+
+        if data_scope == 'dept_and_sub' and user.dept_id:
+            dept = SysDept.query.get(user.dept_id)
+            if dept:
+                dept_ids.add(user.dept_id)
+                try:
+                    dept_ids.update(dept.get_children_recursive())
+                except Exception:
+                    pass
+
+        elif data_scope == 'dept' and user.dept_id:
+            dept_ids.add(user.dept_id)
+
+        elif data_scope == 'self' and user.dept_id:
+            dept_ids.add(user.dept_id)
+
+        elif data_scope == 'custom':
+            for dept_id in custom_depts:
+                dept = SysDept.query.get(dept_id)
+                if dept:
+                    dept_ids.add(dept_id)
+                    try:
+                        dept_ids.update(dept.get_children_recursive())
+                    except Exception:
+                        pass
+
+        dept_id_list = list(dept_ids)
+        dept_names = []
+        for did in dept_id_list:
+            d = SysDept.query.get(did)
+            if d:
+                dept_names.append(d.name)
+
+        return {
+            'scope': data_scope,
+            'dept_ids': dept_id_list,
+            'dept_names': dept_names
+        }
+
+    def get_accessible_projects(self, user):
+        """获取用户可访问的项目列表（含基础信息）
+
+        方法四：获取用户可访问项目列表
+        输入：用户对象
+        输出：用户有权限的项目ID列表 + 项目基础信息
+
+        Returns:
+            list: 项目字典列表，每个项目包含 id, name, code, dept_id, status
+        """
+        projects = self.get_user_visible_projects(user)
+        result = []
+        for p in projects:
+            result.append({
+                'id': p.id,
+                'name': p.name,
+                'code': p.code,
+                'dept_id': p.dept_id,
+                'status': p.status
+            })
+        return result
+
+    def get_menu_button_permissions(self, user, menu_identifier=None):
+        """获取指定菜单下用户拥有的按钮权限集
+
+        方法二：获取用户页面按钮权限集
+        输入：用户对象 + 菜单路径/菜单ID
+        输出：该菜单下用户拥有的按钮权限标识列表
+
+        Args:
+            user: 用户对象
+            menu_identifier: 菜单标识，可以是菜单ID（int/str数字）、菜单路径、菜单code
+
+        Returns:
+            list: 按钮权限标识列表，如 ['view', 'create', 'edit', 'delete', 'export', 'import', 'approve', 'print']
+        """
+        if user.is_admin():
+            return ['view', 'create', 'edit', 'delete', 'export', 'import', 'approve', 'print']
+
+        from app.models import SysMenu, SysRoleMenu
+
+        menu_id = None
+
+        if menu_identifier is None:
+            return []
+
+        try:
+            menu_id = int(menu_identifier)
+        except (ValueError, TypeError):
+            menu = SysMenu.query.filter(
+                (SysMenu.path == menu_identifier) |
+                (SysMenu.menu_code == menu_identifier)
+            ).first()
+            if menu:
+                menu_id = menu.id
+
+        if not menu_id:
+            return []
+
+        role_menus = SysRoleMenu.query.filter_by(
+            role_id=user.role_id,
+            menu_id=menu_id
+        ).all()
+
+        permissions = [rm.operation for rm in role_menus if rm.operation]
+        return list(set(permissions))
+
+    def get_permission_detail(self, user):
+        """权限自检：获取用户所有权限明细（用于排查问题）
+
+        输入：用户对象
+        输出：该用户所有权限明细，确保配置、内核计算、前端显示三者可追溯
+
+        Returns:
+            dict: 完整的权限明细
+        """
+        from app.models import SysRole, SysMenu
+
+        result = {
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'real_name': getattr(user, 'name', None) or getattr(user, 'real_name', None) or user.username,
+                'dept_id': user.dept_id,
+                'role_id': user.role_id,
+                'is_admin': user.is_admin()
+            },
+            'role': None,
+            'data_scope': {},
+            'org_data_scope': {},
+            'allowed_projects': [],
+            'menu_tree': [],
+            'button_permissions': [],
+            'menu_permissions_detail': []
+        }
+
+        if user.role_id:
+            role = SysRole.query.get(user.role_id)
+            if role:
+                result['role'] = {
+                    'id': role.id,
+                    'role_code': role.role_code,
+                    'role_name': role.role_name,
+                    'data_scope': role.data_scope
+                }
+
+        result['data_scope'] = self.get_user_data_scope(user)
+
+        result['org_data_scope'] = self.get_org_data_scope(user)
+
+        result['allowed_projects'] = self.get_accessible_projects(user)
+
+        result['menu_tree'] = self.get_user_menu_tree(user)
+
+        result['button_permissions'] = self.get_user_permissions_list(user)
+
+        if not user.is_admin() and user.role_id:
+            from app.models import SysRoleMenu
+            rms = SysRoleMenu.query.filter_by(role_id=user.role_id).all()
+            detail = []
+            for rm in rms:
+                menu = SysMenu.query.get(rm.menu_id)
+                if menu:
+                    detail.append({
+                        'menu_id': rm.menu_id,
+                        'menu_name': menu.menu_name,
+                        'menu_code': menu.menu_code,
+                        'menu_path': menu.path,
+                        'menu_type': menu.menu_type,
+                        'operation': rm.operation,
+                        'permission': menu.permission
+                    })
+            result['menu_permissions_detail'] = detail
+
+        return result
 
 
 permission_service = PermissionService()

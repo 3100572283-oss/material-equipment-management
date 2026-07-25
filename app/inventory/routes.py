@@ -9,9 +9,11 @@ from app.inventory import bp
 from app import db
 from app.models import Inventory, Material, Category, StockIn, StockInItem, StockOut, StockOutItem
 from app.utils import apply_data_scope
+from app.decorators import menu_view_required, button_action_required
 
 @bp.route('/')
 @login_required
+@menu_view_required('inventory')
 def index():
     from flask import session
     project_id = session.get('current_project_id')
@@ -94,6 +96,7 @@ def index():
 
 @bp.route('/export')
 @login_required
+@button_action_required('inventory', 'export')
 def export():
     from flask import session
     project_id = session.get('current_project_id')
@@ -168,6 +171,7 @@ def export():
 
 @bp.route('/<int:material_id>/history')
 @login_required
+@menu_view_required('inventory')
 def history(material_id):
     from flask import session
     project_id = session.get('current_project_id')

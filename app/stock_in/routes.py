@@ -8,7 +8,7 @@ from app.stock_in import bp
 from app import db
 from app.models import (StockIn, StockInItem, Inventory, Material, Supplier,
                        Contract, ContractItem)
-from app.decorators import editor_required, log_audit
+from app.decorators import editor_required, log_audit, menu_view_required, button_action_required
 from app.utils import (to_decimal, record_changes, get_change_logs, model_to_dict,
                        get_field_label, apply_data_scope,
                        get_project_materials, get_project_suppliers, ConfigCache)
@@ -137,6 +137,7 @@ def check_contract_over(contract_id, material_id, quantity, contract_item_id=Non
 
 @bp.route('/')
 @login_required
+@menu_view_required('stock_in')
 def index():
     from flask import session
     from app.utils import get_project_filter, is_module_enabled
@@ -222,7 +223,7 @@ def index():
 
 @bp.route('/create', methods=['GET', 'POST'])
 @login_required
-@editor_required
+@button_action_required('stock_in', 'create')
 @log_audit(module='stock_in', operation='新增')
 def create():
     from flask import session
@@ -466,6 +467,7 @@ def create():
 
 @bp.route('/<int:id>')
 @login_required
+@menu_view_required('stock_in')
 def detail(id):
     stock_in = StockIn.query.filter(StockIn.status != 'voided').filter_by(id=id).first_or_404()
     from app.approval.service import get_instance_by_biz
@@ -481,7 +483,7 @@ def detail(id):
 
 @bp.route('/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@editor_required
+@button_action_required('stock_in', 'edit')
 @log_audit(module='stock_in', operation='编辑')
 def edit(id):
     from app.utils import reject_in_all_projects_mode
@@ -670,7 +672,7 @@ def edit(id):
 
 @bp.route('/<int:id>/delete', methods=['POST'])
 @login_required
-@editor_required
+@button_action_required('stock_in', 'delete')
 @log_audit(module='stock_in', operation='作废')
 def delete(id):
     from app.utils import reject_in_all_projects_mode
@@ -882,6 +884,7 @@ def quality_resubmit(id):
 
 @bp.route('/<int:id>/print')
 @login_required
+@button_action_required('stock_in', 'print')
 def print_stock_in(id):
     """打印入库单"""
     import time as _time
@@ -905,6 +908,7 @@ def print_stock_in(id):
 
 @bp.route('/export')
 @login_required
+@button_action_required('stock_in', 'export')
 def export():
     """导出入库单列表Excel"""
     project_id = session.get('current_project_id')

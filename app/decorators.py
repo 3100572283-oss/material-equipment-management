@@ -24,13 +24,84 @@ def editor_required(f):
 
 
 def permission_required(permission):
-    """权限校验装饰器，检查用户是否拥有指定操作权限"""
+    """权限校验装饰器，检查用户是否拥有指定操作权限（三级权限校验）
+
+    输入：权限标识，支持多种格式：
+    - 'system:dept:view' (三段落: 模块:功能:操作)
+    - 'stock_in:create' (两段落: 权限代码:操作)
+    - '26:view' (菜单ID:操作)
+
+    返回：有权限继续执行，无权限返回403
+    """
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not current_user.is_authenticated:
                 abort(403)
+            if current_user.is_admin():
+                return f(*args, **kwargs)
             if not current_user.has_permission(permission):
+                if request.path.startswith('/api/') or request.is_json:
+                    return jsonify({'code': 403, 'message': f'无权限执行此操作：{permission}'}), 403
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def menu_view_required(menu_code):
+    """菜单级权限校验装饰器 - 检查用户是否有该菜单的查看权限
+
+    用于页面入口和列表查询接口，防止未授权访问页面。
+
+    输入：menu_code - 菜单标识，可以是菜单code或菜单路径
+
+    返回：有权限继续执行，无权限返回403或重定向到首页
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                abort(403)
+            if current_user.is_admin():
+                return f(*args, **kwargs)
+
+            from app.services.permission_service import permission_service
+            buttons = permission_service.get_menu_button_permissions(current_user, menu_code)
+            if 'view' not in buttons:
+                if request.path.startswith('/api/') or request.is_json:
+                    return jsonify({'code': 403, 'message': f'无权限访问菜单：{menu_code}'}), 403
+                flash('无权限访问该页面', 'warning')
+                return redirect(url_for('main.index'))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def button_action_required(menu_code, action):
+    """按钮级权限校验装饰器 - 检查用户是否有指定按钮操作权限
+
+    用于新增、编辑、删除、导出、审批等操作接口。
+
+    输入：
+    - menu_code: 菜单标识（菜单code或菜单路径）
+    - action: 操作类型（view/create/edit/delete/export/import/approve/print）
+
+    返回：有权限继续执行，无权限返回403
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                abort(403)
+            if current_user.is_admin():
+                return f(*args, **kwargs)
+
+            from app.services.permission_service import permission_service
+            buttons = permission_service.get_menu_button_permissions(current_user, menu_code)
+            if action not in buttons:
+                if request.path.startswith('/api/') or request.is_json:
+                    return jsonify({'code': 403, 'message': f'无权限执行操作：{action}'}), 403
                 abort(403)
             return f(*args, **kwargs)
         return decorated_function

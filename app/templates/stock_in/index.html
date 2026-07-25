@@ -6,9 +6,9 @@
         <h5 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>入库管理
             {% if is_all_projects_mode %}<span class="badge bg-warning text-dark ms-1">汇总</span>{% endif %}
         </h5>
-        {% if current_user.can_edit() and can_edit_in_current_mode() %}
+        {% if has_button_permission('stock_in', 'create') and can_edit_in_current_mode() %}
         <a href="{{ url_for('stock_in.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增入库单</a>
-        {% elif current_user.can_edit() and not can_edit_in_current_mode() %}
+        {% elif has_button_permission('stock_in', 'create') and not can_edit_in_current_mode() %}
         <span class="text-muted small"><i class="bi bi-info-circle me-1"></i>汇总视图下不可新增，请先切换到具体项目</span>
         {% endif %}
     </div>

@@ -184,26 +184,39 @@ def change_password():
 @bp.route('/api/user/permissions')
 @login_required
 def api_user_permissions():
-    """获取当前用户权限上下文（委托给统一权限服务）
+    """获取当前用户全部权限信息（统一权限服务唯一出口）
 
-    返回:
-    {
-        menus: [],          // 有权限的菜单树（前端动态路由用）
-        permissions: [],    // 所有按钮权限标识数组
-        dataScope: {},      // 数据权限配置
-        projects: []        // 可见项目列表
-        modules: {}         // 模块启用状态
-    }
+    前端登录后仅调用这一次，缓存全局使用。
+    返回内容包含：
+    - userInfo: 用户基础信息
+    - menus: 有权限的菜单树（用于渲染左侧菜单）
+    - permissions: 所有页面的按钮权限标识集合
+    - dataScope: 组织数据范围
+    - orgDataScope: 组织数据范围（部门ID列表）
+    - projects: 可访问项目列表
+    - modules: 模块启用状态
     """
     from app.services.permission_service import permission_service
 
     user = current_user
     result = {
+        'userInfo': {},
         'menus': [],
         'permissions': [],
         'dataScope': {},
+        'orgDataScope': {},
         'projects': [],
         'modules': {}
+    }
+
+    # 用户基础信息
+    result['userInfo'] = {
+        'id': user.id,
+        'username': user.username,
+        'realName': getattr(user, 'name', None) or user.username,
+        'deptId': user.dept_id,
+        'roleId': user.role_id,
+        'isAdmin': user.is_admin()
     }
 
     # 获取启用的模块列表（系统级）
@@ -222,20 +235,28 @@ def api_user_permissions():
             'roleCode': role.role_code
         }
 
-    # 2. 获取用户所有按钮权限标识（委托给统一权限服务）
+    # 2. 获取组织数据范围（部门维度）
+    result['orgDataScope'] = permission_service.get_org_data_scope(user)
+
+    # 3. 获取用户所有按钮权限标识（委托给统一权限服务）
     result['permissions'] = permission_service.get_user_permissions_list(user)
 
-    # 3. 获取可见项目列表（委托给统一权限服务）
-    visible_projects = permission_service.get_user_visible_projects(user)
-    for p in visible_projects:
-        result['projects'].append({
-            'id': p.id,
-            'name': p.name,
-            'code': p.code,
-            'status': p.status
-        })
+    # 4. 获取可见项目列表（委托给统一权限服务）
+    result['projects'] = permission_service.get_accessible_projects(user)
 
-    # 4. 获取有权限的菜单树（委托给统一权限服务）
+    # 5. 获取有权限的菜单树（委托给统一权限服务）
     result['menus'] = permission_service.get_user_menu_tree(user)
 
     return json.dumps(result, ensure_ascii=False)
+
+
+@bp.route('/api/user/permission-detail')
+@login_required
+def api_user_permission_detail():
+    """权限自检接口：获取当前用户所有权限明细
+
+    用于排查问题，确保配置、内核计算、前端显示三者可追溯、可核对。
+    """
+    from app.services.permission_service import permission_service
+    detail = permission_service.get_permission_detail(current_user)
+    return json.dumps(detail, ensure_ascii=False)

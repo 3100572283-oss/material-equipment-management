@@ -1139,26 +1139,17 @@ def create_app(config_class=Config):
         return str(enabled).lower() == 'true'
 
     def get_menu_groups():
-        """根据当前用户权限、项目模块开关和菜单状态返回可见菜单分组"""
+        """根据当前用户权限、项目模块开关和菜单状态返回可见菜单分组
+        使用统一的 PermissionService 获取菜单树，确保前后端权限判断一致
+        """
         from flask_login import current_user
-        from app.models import SysMenu, SysRoleMenu, Project
+        from app.services.permission_service import permission_service
+        from app.models import Project
         from flask import session
         import json as _json
-        # 获取当前项目的模块配置
+
         project_module_config = {}
-        allowed_endpoints = set()
         try:
-            # 非管理员需按角色权限过滤菜单（只显示有view权限的菜单）
-            if current_user.is_authenticated and not current_user.is_admin():
-                role_menus = db.session.query(SysMenu.menu_code).join(
-                    SysRoleMenu, SysRoleMenu.menu_id == SysMenu.id
-                ).filter(
-                    SysRoleMenu.role_id == current_user.role_id,
-                    SysRoleMenu.operation == 'view',
-                    SysMenu.menu_code.isnot(None)
-                ).all()
-                allowed_endpoints = {row[0] for row in role_menus if row[0]}
-            # 获取当前项目模块配置
             project_id = session.get('current_project_id')
             if project_id:
                 project = Project.query.get(project_id)
@@ -1169,23 +1160,14 @@ def create_app(config_class=Config):
 
         result = []
         try:
-            # 从数据库读取所有启用的菜单
-            catalogs = SysMenu.query.filter_by(
-                parent_id=0, menu_type='catalog', status=True
-            ).order_by(SysMenu.sort).all()
+            if not current_user.is_authenticated:
+                return result
 
-            for catalog in catalogs:
-                # 解析目录扩展属性
-                catalog_extra = {}
-                if catalog.remark:
-                    try:
-                        catalog_extra = _json.loads(catalog.remark)
-                    except Exception:
-                        pass
-                # 使用 module_key 字段检查模块开关
-                module_key = catalog.module_key if catalog.module_key else None
+            menu_tree = permission_service.get_user_menu_tree(current_user)
 
-                # 项目模块开关过滤（分组级别）
+            for catalog in menu_tree:
+                module_key = catalog.get('moduleKey')
+
                 if module_key:
                     if module_key in project_module_config:
                         if not project_module_config[module_key]:
@@ -1195,21 +1177,16 @@ def create_app(config_class=Config):
                         if str(enabled).lower() != 'true':
                             continue
 
-                # 管理员权限过滤
-                if catalog_extra.get('require_admin') and (not current_user.is_authenticated or not current_user.is_admin()):
+                catalog_extra = {}
+                if catalog.get('code') == 'system' and (not current_user.is_admin()):
                     continue
 
-                # 查询该分组下的菜单项
-                items_db = SysMenu.query.filter_by(
-                    parent_id=catalog.id, menu_type='menu', status=True
-                ).order_by(SysMenu.sort).all()
-
                 items = []
-                for menu in items_db:
-                    endpoint = menu.menu_code
-                    # 模块开关过滤（菜单项级别）
-                    if menu.module_key:
-                        item_module = menu.module_key
+                for menu in catalog.get('children', []):
+                    endpoint = menu.get('code')
+                    item_module = menu.get('moduleKey')
+
+                    if item_module:
                         if item_module in project_module_config:
                             if not project_module_config[item_module]:
                                 continue
@@ -1217,39 +1194,38 @@ def create_app(config_class=Config):
                             enabled = get_config(item_module, 'true')
                             if str(enabled).lower() != 'true':
                                 continue
-                    # 非管理员权限过滤
-                    if current_user.is_authenticated and not current_user.is_admin():
-                        if endpoint and allowed_endpoints and endpoint not in allowed_endpoints:
-                            continue
-                    # 解析菜单项扩展属性
+
                     item_extra = {}
-                    if menu.remark:
-                        try:
-                            item_extra = _json.loads(menu.remark)
-                        except Exception:
-                            pass
+                    try:
+                        if menu.get('permission'):
+                            item_extra['active'] = menu['permission']
+                    except Exception:
+                        pass
+
                     items.append({
-                        'title': menu.menu_name,
+                        'title': menu.get('name', ''),
                         'endpoint': endpoint,
                         'active': item_extra.get('active', endpoint or ''),
-                        'section': item_extra.get('section', ''),
-                        'icon': menu.icon or '',
-                        'module': menu.module_key,
+                        'section': '',
+                        'icon': menu.get('icon', ''),
+                        'module': item_module,
                     })
 
                 if not items:
                     continue
+
+                catalog_extra = {}
                 result.append({
-                    'id': catalog.menu_code or f'group_{catalog.id}',
-                    'title': catalog.menu_name,
-                    'icon': catalog.icon or '',
+                    'id': catalog.get('code') or f'group_{catalog.get("id")}',
+                    'title': catalog.get('name', ''),
+                    'icon': catalog.get('icon', ''),
                     'module': module_key,
                     'require_admin': catalog_extra.get('require_admin', False),
                     'divider_before': catalog_extra.get('divider_before', False),
                     'items': items,
                 })
-        except Exception:
-            # 数据库读取失败时回退到JSON配置
+        except Exception as e:
+            print(f"get_menu_groups error: {e}")
             try:
                 for group in _menu_config.get('groups', []):
                     module_key = group.get('module')
@@ -1267,6 +1243,19 @@ def create_app(config_class=Config):
                     for item in group.get('items', []):
                         endpoint = item.get('endpoint')
                         if current_user.is_authenticated and not current_user.is_admin():
+                            allowed_endpoints = set()
+                            try:
+                                from app.models import SysMenu, SysRoleMenu
+                                role_menus = db.session.query(SysMenu.menu_code).join(
+                                    SysRoleMenu, SysRoleMenu.menu_id == SysMenu.id
+                                ).filter(
+                                    SysRoleMenu.role_id == current_user.role_id,
+                                    SysRoleMenu.operation == 'view',
+                                    SysMenu.menu_code.isnot(None)
+                                ).all()
+                                allowed_endpoints = {row[0] for row in role_menus if row[0]}
+                            except Exception:
+                                pass
                             if endpoint and allowed_endpoints and endpoint not in allowed_endpoints:
                                 continue
                         if not _is_item_module_enabled(item, project_module_config):
@@ -1280,6 +1269,28 @@ def create_app(config_class=Config):
 
     app.jinja_env.globals['get_menu_groups'] = get_menu_groups
     app.jinja_env.globals['_menu_config'] = _menu_config
+
+    def has_button_permission(menu_code, action):
+        """检查当前用户是否拥有指定菜单的按钮权限
+        统一调用 PermissionService，确保前后端权限判断一致
+        
+        Args:
+            menu_code: 菜单code标识
+            action: 按钮操作，如 'view', 'create', 'edit', 'delete', 'export', 'import', 'approve', 'print'
+        
+        Returns:
+            bool: 是否有权限
+        """
+        from flask_login import current_user
+        from app.services.permission_service import permission_service
+        
+        if not current_user.is_authenticated:
+            return False
+        
+        buttons = permission_service.get_menu_button_permissions(current_user, menu_code)
+        return action in buttons
+
+    app.jinja_env.globals['has_button_permission'] = has_button_permission
 
     def _is_system_page():
         """判断当前页面是否是系统管理页面"""
