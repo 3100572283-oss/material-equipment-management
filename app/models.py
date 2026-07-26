@@ -120,6 +120,21 @@ class User(UserMixin, db.Model):
         scope_info = permission_service.get_user_data_scope(self)
         return scope_info['scope']
 
+    def get_main_project(self):
+        """获取用户的主项目（is_main=True 的项目关联）
+        
+        返回 Project 对象或 None
+        """
+        for up in self.user_projects:
+            if up.is_main:
+                return up.project
+        # 如果没有标记主项目，取第一个可访问项目
+        from app.services.permission_service import permission_service
+        projects = permission_service.get_accessible_projects(self)
+        if projects:
+            return Project.query.get(projects[0]['id'])
+        return None
+
 
 class SysDept(db.Model):
     """部门表 - 支持树形组织架构"""
