@@ -238,7 +238,7 @@ def index():
             Contract.is_deleted == False
         ).order_by(Contract.code.desc()).all()
     else:
-        suppliers = Supplier.query.filter_by(is_deleted=False).order_by(Supplier.name).all()
+        suppliers = Supplier.query.filter(Supplier.status != 'blacklist').order_by(Supplier.name).all()
         contracts = Contract.query.filter(
             Contract.status == '正常履约',
             Contract.is_deleted == False
