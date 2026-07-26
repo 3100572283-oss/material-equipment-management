@@ -697,11 +697,22 @@ def statistics():
     ).scalar() or 0
     success_rate = round(success_count / total_count * 100, 1) if total_count > 0 else 0
 
+    # 转为字典列表，避免Row对象无法JSON序列化
+    daily_data = [{'date': str(r.date), 'count': r.count,
+                   'tokens': int(r.tokens or 0), 'cost': float(r.cost or 0)}
+                  for r in daily_stats]
+    scene_data = [{'scene_code': r.scene_code or '', 'count': r.count,
+                   'tokens': int(r.tokens or 0), 'cost': float(r.cost or 0)}
+                  for r in scene_stats]
+    user_data = [{'username': r.username or '', 'count': r.count,
+                  'tokens': int(r.tokens or 0), 'cost': float(r.cost or 0)}
+                 for r in user_stats]
+
     return render_template('admin/ai_statistics.html',
                          days=days,
-                         daily_stats=daily_stats,
-                         scene_stats=scene_stats,
-                         user_stats=user_stats,
+                         daily_stats=daily_data,
+                         scene_stats=scene_data,
+                         user_stats=user_data,
                          total_count=total_count,
                          total_tokens=int(total_tokens or 0),
                          total_cost=float(total_cost or 0),
