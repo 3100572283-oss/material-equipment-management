@@ -1,0 +1,76 @@
+{% extends "mobile/base.html" %}
+{% block title %}发票台账{% endblock %}
+{% block nav_title %}发票台账{% endblock %}
+{% block hide_tab %}true{% endblock %}
+
+{% block nav_right %}
+<a href="{{ url_for('mobile.invoice_create') }}" style="color:#165DFF; font-size:14px; margin-right:8px;">
+    <i class="bi bi-plus-lg"></i> 新增
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- 搜索 -->
+<div class="m-card" style="padding:10px 16px;">
+    <form method="GET" action="{{ url_for('mobile.invoice_list') }}">
+        <div style="display:flex;gap:8px;">
+            <input type="text" name="keyword" value="{{ keyword }}" class="m-form-control"
+                   placeholder="搜索发票号码/销售方" style="flex:1;">
+            <button type="submit" class="m-btn m-btn-primary" style="padding:0 14px;">
+                <i class="bi bi-search"></i>
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- 发票列表 -->
+<div id="invoiceList">
+    {% if invoices %}
+    {% for inv in invoices %}
+    <div class="m-card invoice-item" onclick="window.location.href='{{ url_for('mobile.invoice_edit', id=inv.id) }}'">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="flex:1;">
+                <div style="font-size:15px;font-weight:600;color:#212529;">
+                    {% if inv.invoice_number %}{{ inv.invoice_number }}{% else %}(无发票号){% endif %}
+                </div>
+                {% if inv.contract %}
+                <div style="font-size:12px;color:#6c757d;margin-top:4px;">
+                    合同：{{ inv.contract.code }} - {{ inv.contract.name|truncate(20, true, '..') }}
+                </div>
+                {% endif %}
+                {% if inv.supplier %}
+                <div style="font-size:12px;color:#6c757d;margin-top:2px;">
+                    供应商：{{ inv.supplier.name }}
+                </div>
+                {% endif %}
+                <div style="font-size:12px;color:#6c757d;margin-top:2px;">
+                    开票日期：{{ inv.invoice_date.strftime('%Y-%m-%d') if inv.invoice_date else '-' }}
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:15px;font-weight:600;color:#165DFF;">
+                    ¥{{ '%.2f'|format(inv.amount_with_tax or 0) }}
+                </div>
+                <div style="font-size:11px;color:#6c757d;margin-top:2px;">
+                    税率 {{ inv.tax_rate or 0 }}%
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-card" style="text-align:center;padding:40px 16px;color:#adb5bd;font-size:13px;">
+        <i class="bi bi-receipt" style="font-size:32px;display:block;margin-bottom:8px;"></i>
+        暂无发票记录
+    </div>
+    {% endif %}
+</div>
+
+<div style="text-align:center;padding:12px 16px;color:#adb5bd;font-size:12px;">
+    共 {{ total }} 条记录
+</div>
+
+<style>
+.invoice-item:active{ background:#f1f8ff; }
+</style>
+{% endblock %}

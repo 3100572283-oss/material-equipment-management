@@ -25,8 +25,13 @@
         username: "{{ current_user.username if current_user.is_authenticated else '' }}"
     };
     window.MOBILE_LOCATION_ENABLED = {{ 'true' if get_config('mobile_location_enabled', 'false') == 'true' else 'false' }};
+    // AI视觉识别开关（与PC端共用同一套配置：系统启用AI + 启用视觉识别）
+    window.MOBILE_AI_VISION_ENABLED = {{ 'true' if (get_config('ai_enabled', 'false') == 'true' and get_config('ai_vision_enabled', 'false') == 'true') else 'false' }};
     </script>
     <script src="{{ url_for('static', filename='js/mobile_utils.js') }}?v=20260719"></script>
+    {% if get_config('ai_enabled', 'false') == 'true' and get_config('ai_vision_enabled', 'false') == 'true' %}
+    <script src="{{ url_for('static', filename='js/mobile_ai_vision.js') }}?v=20260726"></script>
+    {% endif %}
     <script>
     // 提前应用深色模式（避免闪屏）
     // 与PC端共用同一个键名 'theme'，支持 'light' / 'dark' / 'auto'
@@ -36,12 +41,17 @@
         if (mode === 'dark') isDark = true;
         else if (mode === 'light') isDark = false;
         else isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (isDark) document.body.classList.add('dark-mode');
+        // head 中 document.body 可能尚未存在，安全应用深色模式
+        function _applyDark(){
+            if (document.body) document.body.classList.toggle('dark-mode', isDark);
+        }
+        _applyDark();
+        if (!document.body) document.addEventListener('DOMContentLoaded', _applyDark);
         // 监听系统主题变化（仅在 auto 模式下）
         if (window.matchMedia) {
             window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e){
                 if ((localStorage.getItem('theme') || 'auto') === 'auto') {
-                    document.body.classList.toggle('dark-mode', e.matches);
+                    if (document.body) document.body.classList.toggle('dark-mode', e.matches);
                     updateThemeIcon();
                 }
             });
@@ -51,11 +61,11 @@
             if (btn) {
                 var mode = localStorage.getItem('theme') || 'auto';
                 if (mode === 'auto') {
-                    var isDark = document.body.classList.contains('dark-mode');
+                    var isDark = document.body && document.body.classList.contains('dark-mode');
                     btn.innerHTML = '<i class="bi bi-circle-half"></i>';
                     btn.setAttribute('title', '跟随系统（当前：' + (isDark ? '深色' : '浅色') + '）');
                 } else {
-                    var isDark = document.body.classList.contains('dark-mode');
+                    var isDark = document.body && document.body.classList.contains('dark-mode');
                     btn.innerHTML = isDark ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
                     btn.setAttribute('title', isDark ? '切换到浅色' : '切换到深色');
                 }
@@ -281,7 +291,7 @@
         if (mode === 'dark') isDark = true;
         else if (mode === 'light') isDark = false;
         else isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.body.classList.toggle('dark-mode', isDark);
+        if (document.body) document.body.classList.toggle('dark-mode', isDark);
         if (window.updateThemeIcon) window.updateThemeIcon();
     }
 

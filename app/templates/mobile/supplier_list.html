@@ -1,0 +1,96 @@
+{% extends "mobile/base.html" %}
+{% block title %}供应商管理{% endblock %}
+{% block nav_title %}供应商管理{% endblock %}
+{% block hide_tab %}true{% endblock %}
+
+{% block nav_right %}
+<a href="{{ url_for('mobile.supplier_create') }}" style="color:#165DFF; font-size:14px; margin-right:8px;">
+    <i class="bi bi-plus-lg"></i> 新增
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- 搜索 -->
+<div class="m-card" style="padding:10px 16px;">
+    <form method="GET" action="{{ url_for('mobile.supplier_list') }}">
+        <div style="display:flex;gap:8px;">
+            <input type="text" name="keyword" value="{{ keyword }}" class="m-form-control"
+                   placeholder="搜索供应商名称/编码" style="flex:1;">
+            <button type="submit" class="m-btn m-btn-primary" style="padding:0 14px;">
+                <i class="bi bi-search"></i>
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- 状态筛选 -->
+<div class="m-card" style="padding:8px 16px;">
+    <div style="display:flex;gap:8px;overflow-x:auto;">
+        <a href="{{ url_for('mobile.supplier_list') }}" class="m-chip {{ 'active' if not status_filter }}">全部</a>
+        <a href="{{ url_for('mobile.supplier_list', status_filter='qualified') }}" class="m-chip {{ 'active' if status_filter == 'qualified' }}">合格</a>
+        <a href="{{ url_for('mobile.supplier_list', status_filter='unqualified') }}" class="m-chip {{ 'active' if status_filter == 'unqualified' }}">不合格</a>
+        <a href="{{ url_for('mobile.supplier_list', status_filter='blacklist') }}" class="m-chip {{ 'active' if status_filter == 'blacklist' }}">黑名单</a>
+    </div>
+</div>
+
+<!-- 供应商列表 -->
+<div id="supplierList">
+    {% if suppliers %}
+    {% for s in suppliers %}
+    <div class="m-card supplier-item" onclick="window.location.href='{{ url_for('mobile.supplier_edit', id=s.id) }}'">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div style="flex:1;">
+                <div style="font-size:15px;font-weight:600;color:#212529;">
+                    {{ s.name }}
+                </div>
+                <div style="font-size:12px;color:#6c757d;margin-top:4px;">
+                    编码：{{ s.code or '-' }}
+                </div>
+                <div style="font-size:12px;color:#6c757d;margin-top:2px;">
+                    信用代码：{{ s.credit_code or '-' }}
+                </div>
+                {% if s.contact_person or s.phone %}
+                <div style="font-size:12px;color:#6c757d;margin-top:2px;">
+                    联系人：{{ s.contact_person or '-' }} {{ s.phone or '' }}
+                </div>
+                {% endif %}
+            </div>
+            {% if s.status == 'qualified' %}
+            <span class="m-badge" style="background:#d1e7dd;color:#0f5132;">合格</span>
+            {% elif s.status == 'unqualified' %}
+            <span class="m-badge" style="background:#fff3cd;color:#664d03;">不合格</span>
+            {% elif s.status == 'blacklist' %}
+            <span class="m-badge" style="background:#f8d7da;color:#842029;">黑名单</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="m-card" style="text-align:center;padding:40px 16px;color:#adb5bd;font-size:13px;">
+        <i class="bi bi-inbox" style="font-size:32px;display:block;margin-bottom:8px;"></i>
+        暂无供应商记录
+    </div>
+    {% endif %}
+</div>
+
+<div style="text-align:center;padding:12px 16px;color:#adb5bd;font-size:12px;">
+    共 {{ total }} 条记录
+</div>
+
+<style>
+.m-chip{
+    display:inline-block;padding:4px 12px;border-radius:14px;
+    font-size:12px;color:#6c757d;background:#f1f3f5;white-space:nowrap;
+    text-decoration:none;
+}
+.m-chip.active{
+    background:#165DFF;color:#fff;
+}
+.supplier-item:active{
+    background:#f1f8ff;
+}
+.m-badge{
+    display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;
+}
+</style>
+{% endblock %}

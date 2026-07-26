@@ -194,7 +194,7 @@
             <div class="sidebar-menu" id="sidebarMenu">
                 {% set menu_groups = get_menu_groups() %}
                 {% set current_ep = request.endpoint or '' %}
-                {% set is_sys_page = current_ep and (current_ep.startswith('admin.') or current_ep.startswith('system.') or current_ep.startswith('approval.flows') or current_ep.startswith('dict_mgr.') or current_ep.startswith('org_sync.') or current_ep.startswith('ai.config') or current_ep.startswith('ai.logs') or current_ep.startswith('batch.category_config') or current_ep.startswith('period_close.')) %}
+                {% set is_sys_page = current_ep and (current_ep.startswith('admin.') or current_ep.startswith('system.') or current_ep.startswith('approval.flows') or current_ep.startswith('dict_mgr.') or current_ep.startswith('org_sync.') or current_ep.startswith('ai.config') or current_ep.startswith('ai.logs') or current_ep.startswith('ai.scene') or current_ep.startswith('ai.statistics') or current_ep.startswith('batch.category_config') or current_ep.startswith('period_close.')) %}
                 {% for group in menu_groups %}
                     {% set group_state = namespace(active=false) %}
                     {% for item in group['items'] %}

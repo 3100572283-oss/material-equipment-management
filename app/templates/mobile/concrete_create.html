@@ -14,6 +14,30 @@
 {% endblock %}
 
 {% block content %}
+{% if ai_vision_enabled %}
+<!-- AI 拍照识别入口 -->
+<div class="m-card" style="padding:12px 16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+            <div style="font-size:14px;font-weight:600;color:#212529;">
+                <i class="bi bi-camera-fill" style="color:#0dcaf0;"></i> AI拍照识别商砼小票
+            </div>
+            <div style="font-size:12px;color:#6c757d;margin-top:2px;">
+                拍摄小票自动填充表单，识别后可手动修正
+            </div>
+        </div>
+        <div style="display:flex;gap:6px;">
+            <button type="button" class="m-btn m-btn-outline-info" style="font-size:13px;padding:8px 12px;" onclick="aiRecognizeConcrete('camera')">
+                <i class="bi bi-camera"></i> 拍照
+            </button>
+            <button type="button" class="m-btn m-btn-outline-info" style="font-size:13px;padding:8px 12px;" onclick="aiRecognizeConcrete('album')">
+                <i class="bi bi-image"></i> 相册
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- 连续登记模式开关 -->
 <div class="m-card" style="padding:10px 16px; display:flex; align-items:center; justify-content:space-between;">
     <div>
@@ -165,6 +189,83 @@
 var photos = [];
 var continueMode = false;
 var FORM_KEY = 'concrete_create';
+
+// ========== AI 拍照识别商砼小票 ==========
+{% if ai_vision_enabled %}
+function aiRecognizeConcrete(source){
+    if (!window.MobileAIVision) {
+        M.toast('AI识别组件未加载', 'danger');
+        return;
+    }
+    MobileAIVision.recognize('concrete', {
+        source: source,
+        needConfirm: true,
+        title: '确认商砼小票图片',
+        onResult: function(data){
+            if (!data) return;
+            var f = document.getElementById('concreteForm');
+            // 填充小票号
+            if (data.ticket_no) f.ticket_no.value = data.ticket_no;
+            // 填充供应单位（按名称匹配 select）
+            if (data.supplier) {
+                var sel = document.getElementById('supplierId');
+                var matched = false;
+                for (var i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].text.indexOf(data.supplier) >= 0
+                        || data.supplier.indexOf(sel.options[i].text) >= 0) {
+                        sel.selectedIndex = i;
+                        matched = true;
+                        break;
+                    }
+                }
+                if (matched) {
+                    syncSupplierName();
+                } else {
+                    // 未匹配到供应商时填到备注
+                    f.remark.value = (f.remark.value ? f.remark.value + '\n' : '') + '识别供应单位：' + data.supplier;
+                    M.toast('未匹配到供应单位「' + data.supplier + '」，请手动选择', 'warning');
+                }
+            }
+            // 填充砼标号（按 strength_grade 匹配 select）
+            if (data.strength_grade) {
+                document.getElementById('strengthGrade').value = data.strength_grade;
+                // 尝试匹配物资下拉中包含该标号的项
+                var matSel = document.getElementById('materialId');
+                var gradeUpper = data.strength_grade.toUpperCase();
+                for (var j = 0; j < matSel.options.length; j++) {
+                    if ((matSel.options[j].text || '').toUpperCase().indexOf(gradeUpper) >= 0) {
+                        matSel.selectedIndex = j;
+                        break;
+                    }
+                }
+            }
+            // 填充浇筑部位
+            if (data.pour_part) f.pour_part.value = data.pour_part;
+            // 填充车号
+            if (data.vehicle_no) f.vehicle_no.value = data.vehicle_no;
+            // 填充司机
+            if (data.driver_name) f.driver_name.value = data.driver_name;
+            // 填充方量
+            if (data.volume) f.volume.value = data.volume;
+            // 填充车次
+            if (data.vehicle_count) f.vehicle_count.value = data.vehicle_count;
+            // 填充坍落度
+            if (data.slump) f.slump.value = data.slump;
+            // 填充进场时间（支持 YYYY-MM-DD HH:MM 转 datetime-local 格式 YYYY-MM-DDTHH:MM）
+            if (data.arrival_time) {
+                var dt = String(data.arrival_time).replace(' ', 'T').slice(0, 16);
+                f.arrival_time.value = dt;
+            }
+            // 备注
+            if (data.remark) {
+                f.remark.value = (f.remark.value ? f.remark.value + '\n' : '') + data.remark;
+            }
+            saveDraft();
+            M.toast('已自动填充，请核对后提交', 'success');
+        }
+    });
+}
+{% endif %}
 
 // ========== 连续登记模式 ==========
 function toggleContinueMode(){

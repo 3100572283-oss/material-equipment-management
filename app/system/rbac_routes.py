@@ -132,6 +132,13 @@ def get_sys_menu_data():
                         endpoint = f'{bp_name}.index'
                 if not endpoint:
                     continue
+                from flask import current_app
+                try:
+                    current_app.url_map.iter_rules()
+                    if endpoint not in current_app.view_functions:
+                        continue
+                except Exception:
+                    pass
                 if menu.permission and menu.permission.startswith('module_'):
                     item_module = menu.permission
                     if item_module in project_module_config:
@@ -192,6 +199,14 @@ def get_sys_menu_data():
                         ep = item.get('endpoint')
                         if ep and allowed_endpoints and ep not in allowed_endpoints:
                             continue
+                    ep = item.get('endpoint', '')
+                    if ep:
+                        from flask import current_app as _ca
+                        try:
+                            if ep not in _ca.view_functions:
+                                continue
+                        except Exception:
+                            pass
                     group_name = section_map.get(item.get('title', ''), '业务配置')
                     if group_name in sys_group_map:
                         sys_group_map[group_name].append({

@@ -1,83 +1,207 @@
-"""AI服务 - 豆包大模型接入"""
+"""AI服务 - 豆包大模型接入（统一中台版本）
+
+所有业务模块只能通过 get_ai_service() 获取实例，禁止直接调用 API。
+调用规范：
+- 文本场景：ai_service.chat_with_scene(scene_code, user_message, extra_context=None)
+- 视觉场景：ai_service.recognize_with_scene(scene_code, image_base64, extra_prompt=None)
+- 语音场景：ai_service.speech_to_text(audio_data, scene_code='speech:to_text')
+- 结构化生成：ai_service.generate_structured(doc_type, data, template=None)
+"""
 import requests
 import json
 import time
 import random
 import logging
+import re
+from flask import request
 from flask_login import current_user
 from app import db
-from app.models import AICallLog
+from app.models import AICallLog, AIScenePrompt
 from app.utils import get_config
 
 logger = logging.getLogger(__name__)
 
 
 class AIService:
-    """AI助手服务类"""
-    
+    """AI统一中台服务类
+
+    所有AI能力收敛到本类，业务模块只能通过场景编码调用，禁止直接拼接Prompt。
+    """
+
+    # 场景Prompt缓存（key: scene_code, value: AIScenePrompt对象）
+    _scene_cache = {}
+    _scene_cache_time = 0
+    _scene_cache_ttl = 60  # 缓存60秒
+
+    # 成本单价（元/千token，默认值，可在配置中覆盖）
+    DEFAULT_TEXT_PRICE = 0.003     # 文本模型每千token约 0.003元
+    DEFAULT_VISION_PRICE = 0.01    # 视觉模型每千token约 0.01元
+
     def __init__(self):
         self.enabled = False
         self.api_key = ''
-        self.model = 'doubao-pro-32k'
+        self.model = 'doubao-1.5-pro-32k'
         self.base_url = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
         self.max_tokens = 2000
         self.vision_enabled = False
-        self.vision_model = 'doubao-vision-pro-32k'
+        self.vision_model = 'doubao-1.5-vision-pro'
         self.vision_base_url = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
         self.vision_max_tokens = 2000
+        self.speech_enabled = False
+        self.speech_model = 'doubao-tts'
+        self.speech_base_url = 'https://ark.cn-beijing.volces.com/api/v3/audio/transcriptions'
+        self.text_price_per_ktoken = self.DEFAULT_TEXT_PRICE
+        self.vision_price_per_ktoken = self.DEFAULT_VISION_PRICE
         self._load_config()
-    
+
     def _load_config(self):
         """加载配置"""
         try:
             self.enabled = str(get_config('ai_enabled', 'false')).lower() == 'true'
             self.api_key = get_config('ai_api_key', '')
-            self.model = get_config('ai_model', 'doubao-pro-32k')
+            self.model = get_config('ai_model', 'doubao-1.5-pro-32k')
             self.base_url = get_config('ai_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
             try:
                 self.max_tokens = int(get_config('ai_max_tokens', '2000'))
             except (ValueError, TypeError):
                 logger.warning("ai_max_tokens 配置无效,使用默认值 2000")
                 self.max_tokens = 2000
-            
+
             # 视觉模型配置
             self.vision_enabled = str(get_config('ai_vision_enabled', 'false')).lower() == 'true'
-            self.vision_model = get_config('ai_vision_model', 'doubao-vision-pro-32k')
+            self.vision_model = get_config('ai_vision_model', 'doubao-1.5-vision-pro')
             self.vision_base_url = get_config('ai_vision_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
             try:
                 self.vision_max_tokens = int(get_config('ai_vision_max_tokens', '2000'))
             except (ValueError, TypeError):
                 self.vision_max_tokens = 2000
+
+            # 语音配置
+            self.speech_enabled = str(get_config('ai_speech_enabled', 'false')).lower() == 'true'
+            self.speech_model = get_config('ai_speech_model', 'doubao-speech')
+            self.speech_base_url = get_config('ai_speech_base_url', 'https://ark.cn-beijing.volces.com/api/v3/audio/transcriptions')
+
+            # 成本单价
+            try:
+                self.text_price_per_ktoken = float(get_config('ai_text_price', str(self.DEFAULT_TEXT_PRICE)))
+            except (ValueError, TypeError):
+                pass
+            try:
+                self.vision_price_per_ktoken = float(get_config('ai_vision_price', str(self.DEFAULT_VISION_PRICE)))
+            except (ValueError, TypeError):
+                pass
         except Exception as e:
             logger.warning(f"AI 配置加载失败,已禁用 AI 服务: {e}")
             self.enabled = False
-    
+
+    # ================= 状态判断 =================
+
     def is_enabled(self):
         return self.enabled
-    
+
     def is_vision_enabled(self):
         return self.enabled and self.vision_enabled
-    
-    def call(self, messages, module='chat'):
-        """调用豆包API"""
+
+    def is_speech_enabled(self):
+        return self.enabled and self.speech_enabled
+
+    def is_scene_enabled(self, scene_code):
+        """判断场景是否启用"""
+        scene = self._get_scene(scene_code)
+        return scene is not None and scene.is_enabled
+
+    # ================= 场景Prompt管理 =================
+
+    def _get_scene(self, scene_code):
+        """获取场景配置（带缓存）"""
+        now = time.time()
+        if (now - self._scene_cache_time) > self._scene_cache_ttl or scene_code not in self._scene_cache:
+            self._refresh_scene_cache()
+        return self._scene_cache.get(scene_code)
+
+    def _refresh_scene_cache(self):
+        """刷新场景缓存"""
+        try:
+            scenes = AIScenePrompt.query.all()
+            self._scene_cache = {s.scene_code: s for s in scenes}
+            self._scene_cache_time = time.time()
+        except Exception as e:
+            logger.warning(f"刷新AI场景Prompt缓存失败: {e}")
+
+    def invalidate_scene_cache(self):
+        """手动失效场景缓存（后台修改配置后调用）"""
+        self._scene_cache.clear()
+        self._scene_cache_time = 0
+
+    def get_all_scenes(self):
+        """获取所有场景配置列表"""
+        self._refresh_scene_cache()
+        return list(self._scene_cache.values())
+
+    # ================= 核心：统一文本调用 =================
+
+    def call_with_scene(self, scene_code, user_message, extra_context=None, parse_json=False):
+        """统一文本场景调用入口
+
+        Args:
+            scene_code: 场景编码（对应 ai_scene_prompt.scene_code）
+            user_message: 用户输入消息
+            extra_context: 额外上下文数据（dict或str），会拼接到消息中
+            parse_json: 是否自动解析JSON结果
+
+        Returns:
+            (result_data, error_msg): parse_json=True时result_data为dict，否则为str
+        """
+        scene = self._get_scene(scene_code)
+        if not scene:
+            return None, f'场景不存在: {scene_code}'
+        if not scene.is_enabled:
+            return None, f'场景已禁用: {scene.scene_name}'
+
         if not self.enabled:
             return None, 'AI助手未启用'
-        if not self.api_key:
+
+        messages = []
+        messages.append({'role': 'system', 'content': scene.system_prompt})
+        if scene.output_format:
+            messages.append({'role': 'system', 'content': f'输出格式要求：{scene.output_format}'})
+
+        if extra_context:
+            if isinstance(extra_context, dict):
+                ctx_str = json.dumps(extra_context, ensure_ascii=False, default=str)
+            else:
+                ctx_str = str(extra_context)
+            messages.append({'role': 'user', 'content': f'参考数据：{ctx_str[:3000]}'})
+
+        messages.append({'role': 'user', 'content': user_message})
+
+        response_text, error = self._call_text_api(messages, scene_code)
+
+        if error or not response_text:
+            return None, error
+
+        if parse_json:
+            return self._parse_json_result(response_text), None
+
+        return response_text, None
+
+    def _call_text_api(self, messages, scene_code):
+        """调用文本模型API（内部方法，带重试和日志）"""
+        if not self.enabled or not self.api_key:
             return None, '请先配置API Key'
-        
+
         start = time.time()
         success = True
         error_msg = None
         response_text = None
         input_tokens = 0
         output_tokens = 0
-        
+
         try:
             headers = {
                 'Content-Type': 'application/json',
                 'Authorization': f'Bearer {self.api_key}'
             }
-            
             payload = {
                 'model': self.model,
                 'messages': messages,
@@ -85,8 +209,6 @@ class AIService:
                 'temperature': 0.7,
                 'stream': False
             }
-            
-            # 总超时上限60秒,单次请求15秒,最多重试3次,指数退避
             total_deadline = time.time() + 60
             max_attempts = 3
             for attempt in range(max_attempts):
@@ -94,15 +216,12 @@ class AIService:
                     remaining = max(5, int(total_deadline - time.time()))
                     timeout = min(15, remaining)
                     resp = requests.post(self.base_url, headers=headers, json=payload, timeout=timeout)
-                    # 4xx 不可恢复错误,直接返回
                     if 400 <= resp.status_code < 500:
                         error_msg = f'AI请求参数错误(HTTP {resp.status_code}): {resp.text[:200]}'
                         success = False
-                        logger.warning(f'AI 4xx 不可重试: {error_msg}')
                         break
                     resp.raise_for_status()
                     result = resp.json()
-
                     if 'choices' in result and result['choices']:
                         response_text = result['choices'][0]['message']['content']
                     if 'usage' in result:
@@ -111,7 +230,6 @@ class AIService:
                     break
                 except requests.exceptions.Timeout:
                     if attempt < max_attempts - 1 and time.time() < total_deadline:
-                        # 指数退避 + 抖动
                         backoff = min(2 ** attempt + random.random(), 5)
                         logger.warning(f'AI 请求超时,{backoff:.1f}s 后重试(第{attempt+1}次)')
                         time.sleep(backoff)
@@ -134,225 +252,94 @@ class AIService:
                         continue
                     error_msg = str(e)
                     success = False
-            
         except Exception as e:
             success = False
             error_msg = str(e)
-        
+
         cost_time = int((time.time() - start) * 1000)
-        
-        self._log(module, messages, response_text, input_tokens, output_tokens, 
-                  cost_time, success, error_msg)
-        
+        self._log_call(
+            scene_code=scene_code,
+            module='text',
+            prompt=messages,
+            response=response_text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_time=cost_time,
+            success=success,
+            error_msg=error_msg,
+            price_per_ktoken=self.text_price_per_ktoken,
+        )
         return response_text, error_msg
-    
-    def _log(self, module, prompt, response, input_tokens, output_tokens, 
-             cost_time, success, error_msg):
-        """记录调用日志"""
-        try:
-            prompt_str = json.dumps(prompt, ensure_ascii=False) if isinstance(prompt, list) else str(prompt)
-            log = AICallLog(
-                user_id=current_user.id if current_user.is_authenticated else None,
-                username=current_user.username if current_user.is_authenticated else None,
-                module=module,
-                prompt=prompt_str[:5000],
-                response=response[:5000] if response else None,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_time=cost_time,
-                success=success,
-                error_msg=error_msg[:200] if error_msg else None
-            )
-            db.session.add(log)
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-    
-    def chat(self, user_message, context=None):
-        """智能问答"""
-        messages = []
-        
-        if context:
-            messages.extend(context[-5:])
-        
-        system_prompt = """你是物资设备管理系统的智能助手。请根据提供的数据回答用户问题。
-        
-规则：
-1. 如果没有相关数据，明确告知用户没有找到相关信息
-2. 回答要简洁明了，使用中文
-3. 金额数据使用千分位格式
-4. 只回答当前项目的数据
-5. 如果用户问题不明确，礼貌地询问补充信息
 
-可用数据字段：
-- 库存：物资名称、规格、数量、单位、分类
-- 供应商：名称、评级、供货金额、交货率
-- 入库：日期、供应商、金额、物资明细
-- 出库：日期、领料单位、金额、物资明细
-- 合同：金额、入库进度、付款进度、供应商
-- 采购申请：状态、审批进度
-- 盘点：盘盈盘亏数量、差异金额
-- 调拨：调出/调入项目、物资明细
-- 周转材：在租数量、租赁费
-- 设备：状态、维保到期时间、维修中数量"""
-        
-        messages.insert(0, {'role': 'system', 'content': system_prompt})
-        messages.append({'role': 'user', 'content': user_message})
-        
-        return self.call(messages, 'chat')
-    
-    def analyze_report(self, data, report_type):
-        """报表智能分析"""
-        system_prompt = f"""你是物资设备管理系统的报表分析助手。请分析{report_type}数据并生成专业分析报告。
-        
-分析内容包括：
-1. 本期核心数据摘要（总金额、总数量）
-2. 排名Top3的物资及占比
-3. 异常波动提醒（激增或骤减的物资）
-4. 管理建议
+    # ================= 核心：统一视觉调用 =================
 
-数据格式：
-{json.dumps(data, ensure_ascii=False, default=str)[:3000]}"""
-        
-        messages = [
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': f'请分析这份{report_type}数据，生成分析报告'}
-        ]
-        
-        return self.call(messages, 'analysis')
-    
-    def parse_input(self, user_input):
-        """智能录入解析"""
-        system_prompt = """你是物资设备管理系统的智能录入助手。请解析用户输入的自然语言，提取关键信息并按指定格式输出。
+    def recognize_with_scene(self, scene_code, image_base64, extra_prompt=None, parse_json=True):
+        """统一视觉识别场景调用入口
 
-用户可能输入的场景：
-1. 入库："今天从钢铁供应商A进了10吨HRB400带肋钢筋，单价4200"
-2. 出库："木工班组领了200张模板"
-3. 采购申请："申请采购水泥50吨，下周三要"
-
-输出格式（JSON）：
-{
-    "type": "stock_in/stock_out/purchase_requisition",
-    "supplier": "供应商名称",
-    "usage_unit": "领料单位名称",
-    "items": [
-        {"material": "物资名称", "specification": "规格", "quantity": 数量, "unit_price": 单价}
-    ],
-    "date": "日期（YYYY-MM-DD）",
-    "demand_date": "需求日期（采购申请用）"
-}
-
-注意：
-- 数量和单价必须是数字
-- 无法识别的字段留空或null
-- 如果类型不明确，type设为null"""
-        
-        messages = [
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': f'解析：{user_input}'}
-        ]
-        
-        result, error = self.call(messages, 'input')
-        if result:
-            try:
-                return json.loads(result), None
-            except json.JSONDecodeError:
-                return None, '解析结果格式错误'
-        return None, error
-    
-    def summarize_document(self, doc_type, data):
-        """单据智能摘要"""
-        system_prompt = f"""你是物资设备管理系统的单据摘要助手。请根据{doc_type}数据生成一句话核心摘要。
-
-数据：
-{json.dumps(data, ensure_ascii=False, default=str)[:2000]}
-
-要求：
-1. 生成一句话摘要，不超过50字
-2. 包含关键信息：金额、状态、进度等
-3. 语言简洁明了"""
-        
-        messages = [
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': f'生成{doc_type}摘要'}
-        ]
-        
-        return self.call(messages, 'summary')
-    
-    def generate_opinion(self, doc_type, data, action='approve'):
-        """审批意见辅助生成"""
-        system_prompt = f"""你是物资设备管理系统的审批助手。请根据{doc_type}数据生成审批意见。
-
-数据：
-{json.dumps(data, ensure_ascii=False, default=str)[:2000]}
-
-要求：
-1. 如果action是approve，生成同意意见
-2. 如果action是reject，生成驳回意见（需说明原因）
-3. 意见简洁专业，不超过30字"""
-        
-        messages = [
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': f'生成{"同意" if action == "approve" else "驳回"}意见'}
-        ]
-        
-        return self.call(messages, 'approval')
-    
-    def vision_analyze(self, image_base64, prompt_template, module='vision'):
-        """视觉识别 - 图片分析
-        
         Args:
-            image_base64: 图片的base64编码字符串
-            prompt_template: 提示词模板
-            module: 调用模块标识
-            
+            scene_code: 场景编码
+            image_base64: 图片base64（不含data:前缀）
+            extra_prompt: 额外提示词
+            parse_json: 是否自动解析JSON结果
+
         Returns:
-            (result_text, error_msg)
+            (result_data, error_msg)
         """
+        scene = self._get_scene(scene_code)
+        if not scene:
+            return None, f'场景不存在: {scene_code}'
+        if not scene.is_enabled:
+            return None, f'场景已禁用: {scene.scene_name}'
+
         if not self.is_vision_enabled():
             return None, '视觉识别未启用'
-        if not self.api_key:
+
+        # 拼接prompt
+        prompt = scene.system_prompt
+        if scene.output_format:
+            prompt += f'\n\n输出格式要求：{scene.output_format}'
+        if extra_prompt:
+            prompt += f'\n\n{extra_prompt}'
+
+        response_text, error = self._call_vision_api(image_base64, prompt, scene_code)
+        if error or not response_text:
+            return None, error
+
+        if parse_json:
+            return self._parse_json_result(response_text), None
+        return response_text, None
+
+    def _call_vision_api(self, image_base64, prompt, scene_code):
+        """调用视觉模型API（内部方法）"""
+        if not self.is_vision_enabled() or not self.api_key:
             return None, '请先配置API Key'
-        
+
         start = time.time()
         success = True
         error_msg = None
         response_text = None
         input_tokens = 0
         output_tokens = 0
-        
+
         try:
             headers = {
                 'Content-Type': 'application/json',
                 'Authorization': f'Bearer {self.api_key}'
             }
-            
-            # 构建多模态消息
             messages = [
                 {
                     'role': 'user',
                     'content': [
-                        {
-                            'type': 'text',
-                            'text': prompt_template
-                        },
-                        {
-                            'type': 'image_url',
-                            'image_url': {
-                                'url': f'data:image/jpeg;base64,{image_base64}'
-                            }
-                        }
+                        {'type': 'text', 'text': prompt},
+                        {'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{image_base64}'}}
                     ]
                 }
             ]
-            
             payload = {
                 'model': self.vision_model,
                 'messages': messages,
                 'max_tokens': self.vision_max_tokens
             }
-            
-            # 调用视觉模型API
             total_deadline = time.time() + 60
             max_attempts = 3
             for attempt in range(max_attempts):
@@ -366,7 +353,6 @@ class AIService:
                         break
                     resp.raise_for_status()
                     result = resp.json()
-                    
                     if 'choices' in result and result['choices']:
                         response_text = result['choices'][0]['message']['content']
                     if 'usage' in result:
@@ -387,136 +373,252 @@ class AIService:
                         continue
                     error_msg = f'视觉识别服务连接失败: {e}'
                     success = False
-            
         except Exception as e:
             success = False
             error_msg = str(e)
-        
+
         cost_time = int((time.time() - start) * 1000)
-        
-        self._log(module, f'[image:{len(image_base64)//1000}KB]', response_text, 
-                  input_tokens, output_tokens, cost_time, success, error_msg)
-        
+        self._log_call(
+            scene_code=scene_code,
+            module='vision',
+            prompt=f'[image:{len(image_base64)//1000}KB] {prompt[:200]}',
+            response=response_text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_time=cost_time,
+            success=success,
+            error_msg=error_msg,
+            price_per_ktoken=self.vision_price_per_ktoken,
+        )
         return response_text, error_msg
-    
+
+    # ================= 核心：语音转文字 =================
+
+    def speech_to_text(self, audio_data, scene_code='speech:to_text', audio_format='webm'):
+        """语音转文字
+
+        Args:
+            audio_data: 音频文件二进制数据
+            scene_code: 场景编码
+            audio_format: 音频格式 webm/mp3/wav/m4a
+
+        Returns:
+            (text, error_msg)
+        """
+        scene = self._get_scene(scene_code)
+        if not scene:
+            return None, f'场景不存在: {scene_code}'
+        if not scene.is_enabled:
+            return None, f'场景已禁用: {scene.scene_name}'
+
+        if not self.is_speech_enabled():
+            return None, '语音识别未启用'
+        if not self.api_key:
+            return None, '请先配置API Key'
+
+        start = time.time()
+        success = True
+        error_msg = None
+        response_text = None
+        input_tokens = 0
+        output_tokens = 0
+
+        try:
+            headers = {
+                'Authorization': f'Bearer {self.api_key}'
+            }
+            files = {
+                'file': (f'audio.{audio_format}', audio_data, f'audio/{audio_format}')
+            }
+            data = {
+                'model': self.speech_model,
+                'language': 'zh',
+            }
+            resp = requests.post(
+                self.speech_base_url,
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=60
+            )
+            if resp.status_code == 200:
+                result = resp.json()
+                response_text = result.get('text', '') or result.get('transcript', '')
+                # 估算token（按字符数，中文约1字符=1token）
+                output_tokens = len(response_text) if response_text else 0
+            else:
+                error_msg = f'语音识别失败(HTTP {resp.status_code}): {resp.text[:200]}'
+                success = False
+        except Exception as e:
+            success = False
+            error_msg = f'语音识别服务异常: {e}'
+
+        cost_time = int((time.time() - start) * 1000)
+        self._log_call(
+            scene_code=scene_code,
+            module='speech',
+            prompt=f'[audio:{len(audio_data)//1024}KB, format:{audio_format}]',
+            response=response_text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_time=cost_time,
+            success=success,
+            error_msg=error_msg,
+            price_per_ktoken=self.text_price_per_ktoken,
+        )
+        return response_text, error_msg
+
+    # ================= 核心：结构化生成 =================
+
+    def generate_structured(self, doc_type, data, template=None):
+        """结构化文档生成
+
+        Args:
+            doc_type: 文档类型（验收单/维保计划/分析报告/整改通知等）
+            data: 业务数据 dict
+            template: 可选的模板内容
+
+        Returns:
+            (content_dict, error_msg): 结构化内容字典
+        """
+        user_msg = f'请生成{doc_type}'
+        if template:
+            user_msg += f'，模板要求：{template}'
+
+        result, error = self.call_with_scene(
+            'structured:generate',
+            user_msg,
+            extra_context=data,
+            parse_json=True,
+        )
+        return result, error
+
+    # ================= 便捷方法（兼容旧代码） =================
+
+    def chat(self, user_message, context=None):
+        """智能对话（兼容旧代码，使用 text:chat 场景）"""
+        messages = []
+        if context:
+            messages.extend(context[-5:])
+        messages.append({'role': 'user', 'content': user_message})
+        # 使用系统级调用方式（不走场景方法，保留上下文能力）
+        response_text, error = self._call_text_api(messages, 'text:chat')
+        return response_text, error
+
+    def analyze_report(self, data, report_type):
+        """报表智能分析"""
+        return self.call_with_scene('text:report_analysis', f'请分析这份{report_type}数据', extra_context=data)
+
+    def parse_input(self, user_input):
+        """智能录入解析"""
+        return self.call_with_scene('text:parse_input', f'解析：{user_input}', parse_json=True)
+
+    def summarize_document(self, doc_type, data):
+        """单据智能摘要"""
+        return self.call_with_scene('text:doc_summary', f'生成{doc_type}摘要', extra_context=data)
+
+    def generate_opinion(self, doc_type, data, action='approve'):
+        """审批意见辅助生成"""
+        return self.call_with_scene(
+            'text:approval_opinion',
+            f'生成{"同意" if action == "approve" else "驳回"}意见，action={action}',
+            extra_context=data,
+        )
+
     def recognize_business_license(self, image_base64):
         """识别营业执照"""
-        prompt = """请识别这张营业执照图片，提取以下信息并以JSON格式输出：
-{
-    "company_name": "企业名称",
-    "credit_code": "统一社会信用代码",
-    "legal_representative": "法定代表人",
-    "registered_capital": "注册资本",
-    "establish_date": "成立日期（YYYY-MM-DD格式）",
-    "business_scope": "经营范围",
-    "address": "住所",
-    "business_term": "营业期限"
-}
+        return self.recognize_with_scene('vision:license', image_base64, parse_json=True)
 
-注意：
-1. 只输出JSON，不要其他说明文字
-2. 无法识别的字段填null
-3. 日期统一使用YYYY-MM-DD格式"""
-        
-        result, error = self.vision_analyze(image_base64, prompt, 'license')
-        if result:
-            try:
-                # 尝试提取JSON部分
-                import re
-                json_match = re.search(r'\{[\s\S]*\}', result)
-                if json_match:
-                    return json.loads(json_match.group()), None
-                return json.loads(result), None
-            except json.JSONDecodeError:
-                return None, '识别结果格式错误'
-        return None, error
-    
     def recognize_invoice(self, image_base64):
         """识别发票"""
-        prompt = """请识别这张发票图片，提取以下信息并以JSON格式输出：
-{
-    "invoice_type": "发票类型（增值税专用发票/增值税普通发票/电子发票）",
-    "invoice_code": "发票代码",
-    "invoice_number": "发票号码",
-    "invoice_date": "开票日期（YYYY-MM-DD格式）",
-    "buyer_name": "购买方名称",
-    "buyer_tax_id": "购买方税号",
-    "seller_name": "销售方名称",
-    "seller_tax_id": "销售方税号",
-    "amount": "金额（不含税，数字）",
-    "tax_amount": "税额（数字）",
-    "total_amount": "价税合计（数字）",
-    "tax_rate": "税率（百分比数字）",
-    "remarks": "备注"
-}
+        return self.recognize_with_scene('vision:invoice', image_base64, parse_json=True)
 
-注意：
-1. 只输出JSON，不要其他说明文字
-2. 金额只输出数字，不带符号
-3. 无法识别的字段填null"""
-        
-        result, error = self.vision_analyze(image_base64, prompt, 'invoice')
-        if result:
-            try:
-                import re
-                json_match = re.search(r'\{[\s\S]*\}', result)
-                if json_match:
-                    return json.loads(json_match.group()), None
-                return json.loads(result), None
-            except json.JSONDecodeError:
-                return None, '识别结果格式错误'
-        return None, error
-    
     def recognize_receipt(self, image_base64):
         """识别收料小票/送货单"""
-        prompt = """请识别这张收料小票/送货单图片，提取物资明细信息并以JSON格式输出：
-{
-    "supplier": "供应商名称",
-    "receipt_date": "收料日期（YYYY-MM-DD格式）",
-    "items": [
-        {
-            "material_name": "物资名称",
-            "specification": "规格型号",
-            "quantity": "数量（数字）",
-            "unit": "单位",
-            "unit_price": "单价（数字）",
-            "amount": "金额（数字）"
-        }
-    ],
-    "total_amount": "合计金额",
-    "remarks": "备注"
-}
+        return self.recognize_with_scene('vision:receipt', image_base64, parse_json=True)
 
-注意：
-1. 只输出JSON，不要其他说明文字
-2. 数量和金额只输出数字
-3. 如果有多行物资明细，全部识别
-4. 无法识别的字段填null"""
-        
-        result, error = self.vision_analyze(image_base64, prompt, 'receipt')
-        if result:
-            try:
-                import re
-                json_match = re.search(r'\{[\s\S]*\}', result)
-                if json_match:
-                    return json.loads(json_match.group()), None
-                return json.loads(result), None
-            except json.JSONDecodeError:
-                return None, '识别结果格式错误'
-        return None, error
-    
+    def recognize_concrete_ticket(self, image_base64):
+        """识别商砼小票"""
+        return self.recognize_with_scene('vision:concrete', image_base64, parse_json=True)
+
     def extract_text(self, image_base64):
         """通用图片文字提取"""
-        prompt = """请提取这张图片中的所有文字内容，按原文格式输出。如果是表格，请保持表格结构。只输出识别的文字内容，不要其他说明。"""
-        
-        return self.vision_analyze(image_base64, prompt, 'ocr')
+        return self.recognize_with_scene('vision:ocr', image_base64, parse_json=False)
+
+    # ================= 工具方法 =================
+
+    @staticmethod
+    def _parse_json_result(text):
+        """从AI返回文本中提取JSON"""
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            json_match = re.search(r'\{[\s\S]*\}', text)
+            if json_match:
+                try:
+                    return json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    pass
+        return None
+
+    def _log_call(self, scene_code, module, prompt, response,
+                  input_tokens, output_tokens, cost_time, success, error_msg,
+                  price_per_ktoken=0.003):
+        """统一日志记录
+
+        记录字段：用户、部门、场景、token、成本、耗时、成功状态、IP
+        """
+        try:
+            from app.models import User
+            total_tokens = input_tokens + output_tokens
+            cost_amount = round(total_tokens * price_per_ktoken / 1000, 6) if total_tokens > 0 else 0
+
+            prompt_str = json.dumps(prompt, ensure_ascii=False) if isinstance(prompt, (list, dict)) else str(prompt)
+            resp_str = response if isinstance(response, str) else json.dumps(response, ensure_ascii=False, default=str)
+
+            dept_id = None
+            if current_user.is_authenticated:
+                user = User.query.get(current_user.id)
+                if user and hasattr(user, 'dept_id'):
+                    dept_id = user.dept_id
+
+            ip = None
+            try:
+                ip = request.remote_addr
+            except Exception:
+                pass
+
+            log = AICallLog(
+                user_id=current_user.id if current_user.is_authenticated else None,
+                username=current_user.username if current_user.is_authenticated else None,
+                dept_id=dept_id,
+                module=module,
+                scene_code=scene_code,
+                prompt=prompt_str[:5000],
+                response=resp_str[:5000] if resp_str else None,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                cost_amount=cost_amount,
+                cost_time=cost_time,
+                success=success,
+                error_msg=error_msg[:500] if error_msg else None,
+                ip_address=ip,
+            )
+            db.session.add(log)
+            db.session.commit()
+        except Exception as e:
+            logger.warning(f"记录AI调用日志失败: {e}")
+            db.session.rollback()
 
 
 ai_service = None
 
 
 def get_ai_service():
-    """获取 AI 服务实例(懒加载,避免在应用上下文外初始化)"""
+    """获取 AI 服务实例(懒加载，每次调用刷新配置和场景缓存)"""
     global ai_service
     if ai_service is None:
         ai_service = AIService()
@@ -530,40 +632,55 @@ def get_ai_config():
     return {
         'enabled': get_config('ai_enabled', 'false') == 'true',
         'api_key': get_config('ai_api_key', ''),
-        'model': get_config('ai_model', 'doubao-pro-32k'),
+        'model': get_config('ai_model', 'doubao-1.5-pro-32k'),
         'base_url': get_config('ai_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'),
         'max_tokens': int(get_config('ai_max_tokens', '2000')),
         'vision_enabled': get_config('ai_vision_enabled', 'false') == 'true',
-        'vision_model': get_config('ai_vision_model', 'doubao-vision-pro-32k'),
+        'vision_model': get_config('ai_vision_model', 'doubao-1.5-vision-pro'),
         'vision_base_url': get_config('ai_vision_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'),
-        'vision_max_tokens': int(get_config('ai_vision_max_tokens', '2000'))
+        'vision_max_tokens': int(get_config('ai_vision_max_tokens', '2000')),
+        'speech_enabled': get_config('ai_speech_enabled', 'false') == 'true',
+        'speech_model': get_config('ai_speech_model', 'doubao-speech'),
+        'speech_base_url': get_config('ai_speech_base_url', 'https://ark.cn-beijing.volces.com/api/v3/audio/transcriptions'),
+        'text_price': float(get_config('ai_text_price', '0.003')),
+        'vision_price': float(get_config('ai_vision_price', '0.01')),
     }
 
 
 def save_ai_config(config):
     """保存AI配置"""
     from app.models import SystemConfig
-    
+
     configs = [
         ('ai_enabled', config.get('enabled', 'false')),
         ('ai_api_key', config.get('api_key', '')),
-        ('ai_model', config.get('model', 'doubao-pro-32k')),
+        ('ai_model', config.get('model', 'doubao-1.5-pro-32k')),
         ('ai_base_url', config.get('base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')),
         ('ai_max_tokens', str(config.get('max_tokens', 2000))),
         ('ai_vision_enabled', config.get('vision_enabled', 'false')),
-        ('ai_vision_model', config.get('vision_model', 'doubao-vision-pro-32k')),
+        ('ai_vision_model', config.get('vision_model', 'doubao-1.5-vision-pro')),
         ('ai_vision_base_url', config.get('vision_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')),
-        ('ai_vision_max_tokens', str(config.get('vision_max_tokens', 2000)))
+        ('ai_vision_max_tokens', str(config.get('vision_max_tokens', 2000))),
+        ('ai_speech_enabled', config.get('speech_enabled', 'false')),
+        ('ai_speech_model', config.get('speech_model', 'doubao-speech')),
+        ('ai_speech_base_url', config.get('speech_base_url', 'https://ark.cn-beijing.volces.com/api/v3/audio/transcriptions')),
+        ('ai_text_price', str(config.get('text_price', 0.003))),
+        ('ai_vision_price', str(config.get('vision_price', 0.01))),
     ]
-    
+
     for key, value in configs:
         c = SystemConfig.query.filter_by(config_key=key).first()
         if c:
             c.config_value = value
         else:
             db.session.add(SystemConfig(config_key=key, config_value=value))
-    
+
     db.session.commit()
-    
+
     from app.utils import ConfigCache
     ConfigCache.clear()
+
+    # 失效AI服务缓存
+    global ai_service
+    if ai_service:
+        ai_service.invalidate_scene_cache()

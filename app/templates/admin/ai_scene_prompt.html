@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}AI场景Prompt配置 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-lightbulb me-2"></i>AI场景Prompt配置</h5>
+        <button class="btn btn-primary btn-sm" onclick="openSceneModal()">
+            <i class="bi bi-plus-lg me-1"></i>新增场景
+        </button>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-4">
+            <div class="col-md-3">
+                <select class="form-select" name="scene_type">
+                    <option value="">全部类型</option>
+                    <option value="text" {% if scene_type == 'text' %}selected{% endif %}>文本场景</option>
+                    <option value="vision" {% if scene_type == 'vision' %}selected{% endif %}>视觉识别</option>
+                    <option value="speech" {% if scene_type == 'speech' %}selected{% endif %}>语音识别</option>
+                    <option value="structured" {% if scene_type == 'structured' %}selected{% endif %}>结构化生成</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <input type="text" class="form-control" name="keyword" value="{{ keyword }}" placeholder="搜索场景名称或编码">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">
+                    <i class="bi bi-search me-1"></i>筛选
+                </button>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:60px;">序号</th>
+                        <th>场景名称</th>
+                        <th>场景编码</th>
+                        <th>类型</th>
+                        <th>权限标识</th>
+                        <th>状态</th>
+                        <th>排序</th>
+                        <th>更新时间</th>
+                        <th style="width:160px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for scene in pagination.items %}
+                    <tr>
+                        <td>{{ loop.index + (pagination.page - 1) * pagination.per_page }}</td>
+                        <td>
+                            <strong>{{ scene.scene_name }}</strong>
+                            {% if scene.remark %}
+                            <div class="text-muted small">{{ scene.remark }}</div>
+                            {% endif %}
+                        </td>
+                        <td><code class="text-primary">{{ scene.scene_code }}</code></td>
+                        <td>
+                            {% set type_map = {'text':'文本', 'vision':'视觉', 'speech':'语音', 'structured':'结构化'} %}
+                            {% set type_class = {'text':'bg-info text-dark', 'vision':'bg-warning text-dark', 'speech':'bg-success', 'structured':'bg-primary'} %}
+                            <span class="badge {{ type_class.get(scene.scene_type, 'bg-secondary') }}">
+                                {{ type_map.get(scene.scene_type, scene.scene_type) }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if scene.permission_code %}
+                            <code class="text-muted small">{{ scene.permission_code }}</code>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if scene.is_enabled %}
+                            <span class="badge bg-success">启用</span>
+                            {% else %}
+                            <span class="badge bg-secondary">禁用</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ scene.sort_order }}</td>
+                        <td class="text-muted small">{{ scene.updated_at.strftime('%Y-%m-%d %H:%M') if scene.updated_at else '-' }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="editScene({{ scene.id }})">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteScene({{ scene.id }}, '{{ scene.scene_name }}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">暂无数据</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <nav class="mt-3">
+            <ul class="pagination justify-content-center mb-0">
+                {% for p in range(1, pagination.pages + 1) %}
+                <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                    <a class="page-link" href="?page={{ p }}&scene_type={{ scene_type }}&keyword={{ keyword }}">{{ p }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+
+        <div class="alert alert-info mt-3 small">
+            <i class="bi bi-info-circle me-1"></i>
+            <strong>说明：</strong>
+            <ul class="mb-0 mt-1">
+                <li>所有AI识别/生成场景的Prompt统一在此配置，业务代码通过场景编码调用，禁止硬编码Prompt</li>
+                <li>修改保存后立即生效（60秒缓存自动刷新），无需重启服务</li>
+                <li>权限标识用于按钮级权限控制，配置后可在角色权限中单独开关每个AI功能</li>
+                <li>内置场景请勿随意删除，可通过"禁用"状态关闭对应功能</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- 新增/编辑场景Modal -->
+<div class="modal fade" id="sceneModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sceneModalTitle">新增场景</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="sceneForm" onsubmit="saveScene(event)">
+                <input type="hidden" name="id" id="scene_id">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">场景编码 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="scene_code" id="scene_code" required placeholder="如 vision:invoice">
+                            <div class="text-muted small">格式建议：类型:功能，如 text:chat、vision:invoice</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">场景名称 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="scene_name" id="scene_name" required placeholder="如 发票识别">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">场景类型</label>
+                            <select class="form-select" name="scene_type" id="scene_type">
+                                <option value="text">文本场景</option>
+                                <option value="vision">视觉识别</option>
+                                <option value="speech">语音识别</option>
+                                <option value="structured">结构化生成</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">状态</label>
+                            <select class="form-select" name="is_enabled" id="scene_enabled">
+                                <option value="1">启用</option>
+                                <option value="0">禁用</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">排序</label>
+                            <input type="number" class="form-control" name="sort_order" id="scene_sort" value="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">权限标识</label>
+                            <input type="text" class="form-control" name="permission_code" id="scene_permission" placeholder="如 ai:invoice:recognize">
+                            <div class="text-muted small">留空则不做权限控制，所有用户均可使用</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">备注</label>
+                            <input type="text" class="form-control" name="remark" id="scene_remark" placeholder="场景用途说明">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">系统Prompt（角色定义 + 规则）</label>
+                            <textarea class="form-control" name="system_prompt" id="scene_prompt" rows="6" placeholder="请输入系统角色定义和规则说明..."></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">输出格式要求</label>
+                            <textarea class="form-control" name="output_format" id="scene_output" rows="4" placeholder="JSON结构说明、返回格式要求等..."></textarea>
+                            <div class="text-muted small">视觉识别类场景建议在此明确JSON结构，确保自动填充准确率</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save me-1"></i>保存
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openSceneModal() {
+    document.getElementById('sceneForm').reset();
+    document.getElementById('scene_id').value = '';
+    document.getElementById('sceneModalTitle').textContent = '新增场景';
+    new bootstrap.Modal(document.getElementById('sceneModal')).show();
+}
+
+function editScene(id) {
+    fetch(`/ai/scene/detail/${id}`)
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                const d = res.data;
+                document.getElementById('scene_id').value = d.id;
+                document.getElementById('scene_code').value = d.scene_code;
+                document.getElementById('scene_name').value = d.scene_name;
+                document.getElementById('scene_type').value = d.scene_type;
+                document.getElementById('scene_enabled').value = d.is_enabled ? '1' : '0';
+                document.getElementById('scene_sort').value = d.sort_order;
+                document.getElementById('scene_permission').value = d.permission_code || '';
+                document.getElementById('scene_remark').value = d.remark || '';
+                document.getElementById('scene_prompt').value = d.system_prompt || '';
+                document.getElementById('scene_output').value = d.output_format || '';
+                document.getElementById('sceneModalTitle').textContent = '编辑场景 - ' + d.scene_name;
+                new bootstrap.Modal(document.getElementById('sceneModal')).show();
+            }
+        });
+}
+
+function saveScene(e) {
+    e.preventDefault();
+    const form = new FormData(document.getElementById('sceneForm'));
+    fetch('/ai/scene/save', { method: 'POST', body: form })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                location.reload();
+            } else {
+                alert(res.message || '保存失败');
+            }
+        });
+}
+
+function deleteScene(id, name) {
+    if (!confirm(`确定删除场景「${name}」吗？删除后无法恢复。`)) return;
+    const form = new FormData();
+    form.append('id', id);
+    fetch('/ai/scene/delete', { method: 'POST', body: form })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                location.reload();
+            } else {
+                alert(res.message || '删除失败');
+            }
+        });
+}
+</script>
+{% endblock %}

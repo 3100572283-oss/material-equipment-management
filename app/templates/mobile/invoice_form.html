@@ -1,0 +1,212 @@
+{% extends "mobile/base.html" %}
+{% block title %}{{ '编辑' if invoice else '新增' }}发票{% endblock %}
+{% block nav_title %}{{ '编辑' if invoice else '新增' }}发票{% endblock %}
+{% block hide_tab %}true{% endblock %}
+
+{% block content %}
+<form method="POST" id="invoiceForm" enctype="multipart/form-data"
+      action="{{ url_for('mobile.invoice_edit', id=invoice.id) if invoice else url_for('mobile.invoice_create') }}">
+    {% if ai_vision_enabled %}
+    <!-- AI 发票识别入口 -->
+    <div class="m-card" style="padding:12px 16px;background:linear-gradient(135deg,#e7f5ff,#f0f9ff);border:1px solid #b3d7ff;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="font-size:14px;font-weight:600;color:#165DFF;">
+                    <i class="bi bi-camera-fill"></i> 拍照识别发票
+                </div>
+                <div style="font-size:12px;color:#6c757d;margin-top:2px;">
+                    支持专票/普票，自动填充发票号码、金额等
+                </div>
+            </div>
+            <button type="button" class="m-btn m-btn-outline-info" style="font-size:13px;padding:8px 12px;" onclick="aiRecognizeInvoice()">
+                <i class="bi bi-camera"></i> 识别
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 基本信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-receipt"></i>发票信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">关联合同<span class="req">*</span></label>
+            <select name="contract_id" id="contractSelect" class="m-form-select" required onchange="loadContractSupplier()">
+                <option value="">-- 请选择合同 --</option>
+                {% for c in contracts %}
+                <option value="{{ c.id }}" data-supplier="{{ c.supplier_id or '' }}" data-supplier-name="{{ c.supplier.name if c.supplier else '' }}"
+                    {% if (invoice and invoice.contract_id == c.id) or (pre_contract_id == c.id) %}selected{% endif %}>
+                    {{ c.code }} - {{ c.name|truncate(15, true, '..') }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">供应商</label>
+            <input type="text" class="m-form-control" id="supplierName" readonly
+                   value="{{ invoice.contract.supplier.name if invoice and invoice.contract and invoice.contract.supplier else '' }}"
+                   placeholder="选择合同后自动带出">
+            <input type="hidden" name="supplier_id" id="supplierId" value="{{ invoice.contract.supplier_id if invoice and invoice.contract else '' }}">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">发票代码</label>
+            <input type="text" name="invoice_code" id="invoice_code" class="m-form-control"
+                   value="{{ invoice.invoice_code if invoice else '' }}" placeholder="发票代码">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">发票号码</label>
+            <input type="text" name="invoice_number" id="invoice_number" class="m-form-control"
+                   value="{{ invoice.invoice_number if invoice else '' }}" placeholder="发票号码">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">开票日期</label>
+            <input type="date" name="invoice_date" id="invoice_date" class="m-form-control"
+                   value="{{ invoice.invoice_date.strftime('%Y-%m-%d') if invoice and invoice.invoice_date else '' }}">
+        </div>
+    </div>
+
+    <!-- 金额信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-currency-yen"></i>金额信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">含税金额<span class="req">*</span></label>
+            <input type="number" step="0.01" min="0" name="amount_with_tax" id="amount_with_tax" class="m-form-control"
+                   value="{{ invoice.amount_with_tax if invoice else '0' }}" required placeholder="含税金额">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">税率(%)</label>
+            <select name="tax_rate" id="tax_rate" class="m-form-select">
+                {% for label, value in get_dict_items('tax_rate') %}
+                <option value="{{ value }}" {% if (invoice and invoice.tax_rate|string == value|string) or (not invoice and value == '13') %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="m-form-group" style="margin-bottom:0;">
+            <label class="m-form-label">不含税金额（自动）</label>
+            <input type="text" class="m-form-control" id="amount_without_tax" readonly
+                   value="{{ '%.2f'|format(invoice.amount_without_tax or 0) if invoice else '0.00' }}"
+                   style="font-weight:600;color:#165DFF;">
+        </div>
+    </div>
+
+    <!-- 发票文件 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-paperclip"></i>发票文件</div>
+        <div class="m-form-group" style="margin-bottom:0;">
+            <input type="file" class="m-form-control" name="file" accept="image/*,.pdf">
+            {% if invoice and invoice.file_path %}
+            <div style="margin-top:8px;">
+                <a href="{{ url_for('static', filename=invoice.file_path) }}" target="_blank" class="m-btn m-btn-outline-info" style="font-size:12px;padding:6px 12px;">
+                    <i class="bi bi-eye"></i> 查看当前文件
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 备注 -->
+    <div class="m-card">
+        <div class="m-form-group" style="margin-bottom:0;">
+            <label class="m-form-label">备注</label>
+            <textarea name="remark" id="remark" class="m-form-control" rows="2" placeholder="备注...">{{ invoice.remark if invoice else '' }}</textarea>
+        </div>
+    </div>
+</form>
+
+<!-- 提交栏 -->
+<div class="m-submit-bar">
+    <a href="{{ url_for('mobile.invoice_list') }}" class="m-btn m-btn-secondary" style="flex:0 0 90px;">
+        <i class="bi bi-arrow-left"></i> 返回
+    </a>
+    <button type="button" class="m-btn m-btn-primary" style="flex:1;" onclick="submitInvoiceForm()">
+        <i class="bi bi-check-lg" style="margin-right:6px;"></i>保存
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ========== 金额计算 ==========
+function calcAmount(){
+    var awt = parseFloat(document.getElementById('amount_with_tax').value) || 0;
+    var rate = parseFloat(document.getElementById('tax_rate').value) || 0;
+    var withoutTax = rate > 0 ? (awt / (1 + rate / 100)) : awt;
+    document.getElementById('amount_without_tax').value = withoutTax.toFixed(2);
+}
+document.getElementById('amount_with_tax').addEventListener('input', calcAmount);
+document.getElementById('tax_rate').addEventListener('change', calcAmount);
+
+// ========== 合同联动供应商 ==========
+function loadContractSupplier(){
+    var sel = document.getElementById('contractSelect');
+    var opt = sel.options[sel.selectedIndex];
+    if (opt) {
+        document.getElementById('supplierName').value = opt.getAttribute('data-supplier-name') || '';
+        document.getElementById('supplierId').value = opt.getAttribute('data-supplier') || '';
+    }
+}
+document.addEventListener('DOMContentLoaded', loadContractSupplier);
+
+{% if ai_vision_enabled %}
+// ========== AI 发票识别 ==========
+function aiRecognizeInvoice(){
+    if (!window.MobileAIVision) {
+        M.toast('AI识别组件未加载', 'danger');
+        return;
+    }
+    MobileAIVision.recognize('invoice', {
+        source: 'both',
+        needConfirm: true,
+        title: '确认发票图片',
+        onResult: function(data){
+            if (!data) return;
+            if (data.invoice_code) document.getElementById('invoice_code').value = data.invoice_code;
+            if (data.invoice_number) document.getElementById('invoice_number').value = data.invoice_number;
+            if (data.invoice_date) {
+                // 兼容 YYYY-MM-DD 与 YYYY/MM/DD
+                var d = String(data.invoice_date).replace(/\//g, '-').slice(0, 10);
+                document.getElementById('invoice_date').value = d;
+            }
+            if (data.total_amount) {
+                document.getElementById('amount_with_tax').value = data.total_amount;
+                calcAmount();
+            }
+            if (data.tax_rate) {
+                var rateSel = document.getElementById('tax_rate');
+                var targetRate = String(data.tax_rate).replace('%', '').trim();
+                for (var i = 0; i < rateSel.options.length; i++) {
+                    if (rateSel.options[i].value == targetRate) {
+                        rateSel.selectedIndex = i;
+                        break;
+                    }
+                }
+                calcAmount();
+            }
+            if (data.seller_name) {
+                var remark = document.getElementById('remark');
+                remark.value = '销售方：' + data.seller_name + (remark.value ? '\n' + remark.value : '');
+            }
+            M.toast('已自动填充，请核对后保存', 'success');
+        }
+    });
+}
+{% endif %}
+
+// ========== 提交 ==========
+function submitInvoiceForm(){
+    var f = document.getElementById('invoiceForm');
+    if (!f.contract_id.value) {
+        M.toast('请选择关联合同', 'danger');
+        return;
+    }
+    if (!f.amount_with_tax.value || parseFloat(f.amount_with_tax.value) <= 0) {
+        M.toast('请填写含税金额', 'danger');
+        return;
+    }
+    M.loading(true);
+    var btn = event.target;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 保存中...';
+    btn.disabled = true;
+    f.submit();
+}
+</script>
+{% endblock %}

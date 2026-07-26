@@ -1,0 +1,166 @@
+{% extends "mobile/base.html" %}
+{% block title %}{{ '编辑' if supplier else '新增' }}供应商{% endblock %}
+{% block nav_title %}{{ '编辑' if supplier else '新增' }}供应商{% endblock %}
+{% block hide_tab %}true{% endblock %}
+
+{% block content %}
+<form method="POST" id="supplierForm" action="{{ url_for('mobile.supplier_edit', id=supplier.id) if supplier else url_for('mobile.supplier_create') }}">
+    {% if ai_vision_enabled %}
+    <!-- AI 营业执照识别入口 -->
+    <div class="m-card" style="padding:12px 16px;background:linear-gradient(135deg,#e7f5ff,#f0f9ff);border:1px solid #b3d7ff;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+                <div style="font-size:14px;font-weight:600;color:#165DFF;">
+                    <i class="bi bi-camera-fill"></i> 拍照识别营业执照
+                </div>
+                <div style="font-size:12px;color:#6c757d;margin-top:2px;">
+                    自动填充企业名称、信用代码、法人、地址
+                </div>
+            </div>
+            <button type="button" class="m-btn m-btn-outline-info" style="font-size:13px;padding:8px 12px;" onclick="aiRecognizeLicense()">
+                <i class="bi bi-camera"></i> 识别
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 基本信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-building"></i>基本信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">供应商名称<span class="req">*</span></label>
+            <input type="text" name="name" id="name" class="m-form-control"
+                   value="{{ supplier.name if supplier else '' }}" required placeholder="请输入供应商名称">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">编码</label>
+            <input type="text" name="code" class="m-form-control"
+                   value="{{ supplier.code if supplier else '' }}"
+                   {% if not supplier %}readonly placeholder="保存时自动生成"{% endif %}>
+            {% if not supplier %}
+            <small class="text-muted" style="font-size:12px;">公司级供应商编码由系统自动生成（GYS+6位流水号）</small>
+            {% endif %}
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">社会信用代码</label>
+            <input type="text" name="credit_code" id="credit_code" class="m-form-control"
+                   value="{{ supplier.credit_code if supplier else '' }}" placeholder="统一社会信用代码">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">法定代表人</label>
+            <input type="text" name="legal_person" id="legal_person" class="m-form-control"
+                   value="{{ supplier.legal_person if supplier else '' }}" placeholder="法定代表人">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">地址</label>
+            <input type="text" name="address" id="address" class="m-form-control"
+                   value="{{ supplier.address if supplier else '' }}" placeholder="注册地址">
+        </div>
+    </div>
+
+    <!-- 联系信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-person-rolodex"></i>联系信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">联系人</label>
+            <input type="text" name="contact_person" class="m-form-control"
+                   value="{{ supplier.contact_person if supplier else '' }}" placeholder="联系人">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">电话</label>
+            <input type="text" name="phone" class="m-form-control"
+                   value="{{ supplier.phone if supplier else '' }}" placeholder="联系电话">
+        </div>
+    </div>
+
+    <!-- 银行信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-bank"></i>银行信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">开户行</label>
+            <input type="text" name="bank_name" class="m-form-control"
+                   value="{{ supplier.bank_name if supplier else '' }}" placeholder="开户行">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">银行账号</label>
+            <input type="text" name="bank_account" class="m-form-control"
+                   value="{{ supplier.bank_account if supplier else '' }}" placeholder="银行账号">
+        </div>
+    </div>
+
+    {% if supplier %}
+    <!-- 状态变更（仅编辑时） -->
+    <div class="m-card">
+        <div class="m-form-group" style="margin-bottom:0;">
+            <label class="m-form-label">状态</label>
+            <select name="status" class="m-form-select">
+                <option value="qualified" {% if supplier.status == 'qualified' %}selected{% endif %}>合格</option>
+                <option value="unqualified" {% if supplier.status == 'unqualified' %}selected{% endif %}>不合格</option>
+                <option value="blacklist" {% if supplier.status == 'blacklist' %}selected{% endif %}>黑名单</option>
+            </select>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 备注 -->
+    <div class="m-card">
+        <div class="m-form-group" style="margin-bottom:0;">
+            <label class="m-form-label">备注</label>
+            <textarea name="remark" id="remark" class="m-form-control" rows="2" placeholder="备注...">{{ supplier.remark if supplier and supplier.remark else '' }}</textarea>
+        </div>
+    </div>
+</form>
+
+<!-- 提交栏 -->
+<div class="m-submit-bar">
+    <a href="{{ url_for('mobile.supplier_list') }}" class="m-btn m-btn-secondary" style="flex:0 0 90px;">
+        <i class="bi bi-arrow-left"></i> 返回
+    </a>
+    <button type="button" class="m-btn m-btn-primary" style="flex:1;" onclick="submitSupplierForm()">
+        <i class="bi bi-check-lg" style="margin-right:6px;"></i>保存
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+{% if ai_vision_enabled %}
+// ========== AI 营业执照识别 ==========
+function aiRecognizeLicense(){
+    if (!window.MobileAIVision) {
+        M.toast('AI识别组件未加载', 'danger');
+        return;
+    }
+    MobileAIVision.recognize('license', {
+        source: 'both',
+        needConfirm: true,
+        title: '确认营业执照图片',
+        onResult: function(data){
+            if (!data) return;
+            if (data.company_name) document.getElementById('name').value = data.company_name;
+            if (data.credit_code) document.getElementById('credit_code').value = data.credit_code;
+            if (data.legal_representative) document.getElementById('legal_person').value = data.legal_representative;
+            if (data.address) document.getElementById('address').value = data.address;
+            M.toast('已自动填充，请核对后保存', 'success');
+        }
+    });
+}
+{% endif %}
+
+// ========== 提交 ==========
+function submitSupplierForm(){
+    var f = document.getElementById('supplierForm');
+    if (!f.name.value.trim()) {
+        M.toast('请输入供应商名称', 'danger');
+        return;
+    }
+    M.loading(true);
+    var btn = event.target;
+    var originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 保存中...';
+    btn.disabled = true;
+
+    f.submit();
+}
+</script>
+{% endblock %}

@@ -1000,20 +1000,62 @@ class SysDictItem(db.Model):
 
 # ========== AI助手 ==========
 
+class AIScenePrompt(db.Model):
+    """AI场景Prompt配置表
+
+    所有AI识别/生成场景的Prompt统一在此配置，支持后台修改，保存后立即生效。
+    业务代码通过 scene_code 获取对应Prompt，禁止硬编码。
+    """
+    __tablename__ = 'ai_scene_prompt'
+    id = db.Column(db.Integer, primary_key=True)
+    scene_code = db.Column(db.String(64), unique=True, nullable=False, index=True)  # 场景编码：invoice_recognize, license_recognize, concrete_ticket, ocr_extract, input_parse, approval_opinion, report_analysis, doc_summary, speech_to_text, structured_generate
+    scene_name = db.Column(db.String(128), nullable=False)  # 场景名称
+    scene_type = db.Column(db.String(16), default='text')  # text / vision / speech / structured
+    system_prompt = db.Column(db.Text, nullable=False)  # 系统Prompt（角色定义+规则）
+    output_format = db.Column(db.Text, nullable=True)  # 输出格式说明（JSON结构/返回格式）
+    permission_code = db.Column(db.String(128), nullable=True)  # 对应权限标识（如 ai:invoice:recognize）
+    is_enabled = db.Column(db.Boolean, default=True)  # 是否启用
+    sort_order = db.Column(db.Integer, default=0)
+    remark = db.Column(db.String(256), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'scene_code': self.scene_code,
+            'scene_name': self.scene_name,
+            'scene_type': self.scene_type,
+            'system_prompt': self.system_prompt,
+            'output_format': self.output_format,
+            'permission_code': self.permission_code,
+            'is_enabled': self.is_enabled,
+            'sort_order': self.sort_order,
+            'remark': self.remark,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else '',
+            'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else '',
+        }
+
+
 class AICallLog(db.Model):
     """AI调用日志表"""
     __tablename__ = 'ai_call_log'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, nullable=True)
     username = db.Column(db.String(64), nullable=True)
-    module = db.Column(db.String(64), nullable=True)  # chat/analysis/input/summary/approval
+    dept_id = db.Column(db.Integer, nullable=True)  # 部门ID（用于统计）
+    module = db.Column(db.String(64), nullable=True)  # 兼容旧字段：chat/analysis/input/summary/approval
+    scene_code = db.Column(db.String(64), nullable=True, index=True)  # 场景编码（对应ai_scene_prompt）
     prompt = db.Column(db.Text, nullable=True)
     response = db.Column(db.Text, nullable=True)
     input_tokens = db.Column(db.Integer, default=0)
     output_tokens = db.Column(db.Integer, default=0)
+    total_tokens = db.Column(db.Integer, default=0)  # 总token数
+    cost_amount = db.Column(db.Numeric(12, 6), default=0)  # 估算调用成本（元）
     cost_time = db.Column(db.Integer, default=0)
     success = db.Column(db.Boolean, default=True)
     error_msg = db.Column(db.Text, nullable=True)
+    ip_address = db.Column(db.String(64), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
 

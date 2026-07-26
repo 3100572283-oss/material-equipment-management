@@ -40,12 +40,13 @@
 
             <div class="col-md-6">
                 <label class="form-label">模型名称</label>
-                <select class="form-select" name="ai_model">
-                    <option value="doubao-pro-32k" {% if config.model == 'doubao-pro-32k' %}selected{% endif %}>doubao-pro-32k（推荐）</option>
-                    <option value="doubao-pro-128k" {% if config.model == 'doubao-pro-128k' %}selected{% endif %}>doubao-pro-128k（长文本）</option>
-                    <option value="doubao-lite-4k" {% if config.model == 'doubao-lite-4k' %}selected{% endif %}>doubao-lite-4k（轻量）</option>
-                </select>
-                <div class="text-muted small mt-2">选择使用的豆包文本模型</div>
+                <input type="text" class="form-control" name="ai_model" id="ai_model_input" value="{{ config.model }}" list="ai_model_list" placeholder="选择或输入模型ID">
+                <datalist id="ai_model_list">
+                    <option value="doubao-1.5-pro-32k">doubao-1.5-pro-32k（推荐）</option>
+                    <option value="doubao-1.5-pro-128k">doubao-1.5-pro-128k（长文本）</option>
+                    <option value="doubao-1.5-lite-4k">doubao-1.5-lite-4k（轻量）</option>
+                </datalist>
+                <div class="text-muted small mt-2">可从下拉列表选择，或直接输入自定义模型ID</div>
             </div>
 
             <div class="col-md-6">
@@ -82,11 +83,11 @@
 
             <div class="col-md-6">
                 <label class="form-label">视觉模型名称</label>
-                <select class="form-select" name="ai_vision_model">
-                    <option value="doubao-vision-pro-32k" {% if config.vision_model == 'doubao-vision-pro-32k' %}selected{% endif %}>doubao-vision-pro-32k（推荐）</option>
-                    <option value="doubao-vision-lite-32k" {% if config.vision_model == 'doubao-vision-lite-32k' %}selected{% endif %}>doubao-vision-lite-32k（轻量）</option>
-                </select>
-                <div class="text-muted small mt-2">选择使用的豆包视觉模型</div>
+                <input type="text" class="form-control" name="ai_vision_model" id="ai_vision_model_input" value="{{ config.vision_model }}" list="ai_vision_model_list" placeholder="选择或输入模型ID">
+                <datalist id="ai_vision_model_list">
+                    <option value="doubao-1.5-vision-pro">doubao-1.5-vision-pro（推荐）</option>
+                </datalist>
+                <div class="text-muted small mt-2">可从下拉列表选择，或直接输入自定义模型ID</div>
             </div>
 
             <div class="col-md-6">
@@ -99,6 +100,70 @@
                 <label class="form-label">视觉识别最大Token数</label>
                 <input type="number" class="form-control" name="ai_vision_max_tokens" value="{{ config.vision_max_tokens }}" min="500" max="8192">
                 <div class="text-muted small mt-2">控制视觉识别输出长度，默认2000</div>
+            </div>
+
+            <!-- 语音配置 -->
+            <div class="col-12 mt-4">
+                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-mic me-2"></i>语音识别配置</h6>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">是否启用语音识别</label>
+                <div class="d-flex gap-3">
+                    <div class="form-check">
+                        <input type="radio" class="form-check-input" name="ai_speech_enabled" id="ai_speech_enabled_yes" value="true" {% if config.speech_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="ai_speech_enabled_yes">是</label>
+                    </div>
+                    <div class="form-check">
+                        <input type="radio" class="form-check-input" name="ai_speech_enabled" id="ai_speech_enabled_no" value="false" {% if not config.speech_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="ai_speech_enabled_no">否</label>
+                    </div>
+                </div>
+                <div class="text-muted small mt-2">开启后支持移动端语音输入、语音助手</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">语音模型名称</label>
+                <input type="text" class="form-control" name="ai_speech_model" value="{{ config.speech_model }}" placeholder="语音识别模型ID">
+                <div class="text-muted small mt-2">火山引擎语音识别模型ID</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">语音API接口地址</label>
+                <input type="text" class="form-control" name="ai_speech_base_url" value="{{ config.speech_base_url }}" placeholder="https://...">
+                <div class="text-muted small mt-2">语音转文字API地址</div>
+            </div>
+
+            <!-- 成本配置 -->
+            <div class="col-12 mt-4">
+                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-cash-coin me-2"></i>成本统计配置</h6>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">文本模型单价（元/千Token）</label>
+                <input type="number" step="0.0001" class="form-control" name="ai_text_price" value="{{ config.text_price }}">
+                <div class="text-muted small mt-2">用于估算调用成本，仅供参考</div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">视觉模型单价（元/千Token）</label>
+                <input type="number" step="0.0001" class="form-control" name="ai_vision_price" value="{{ config.vision_price }}">
+                <div class="text-muted small mt-2">用于估算视觉识别调用成本</div>
+            </div>
+
+            <!-- 快捷入口 -->
+            <div class="col-12 mt-3">
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ url_for('ai.scene_list') }}" class="btn btn-outline-info btn-sm">
+                        <i class="bi bi-lightbulb me-1"></i>场景Prompt管理
+                    </a>
+                    <a href="{{ url_for('ai.statistics') }}" class="btn btn-outline-success btn-sm">
+                        <i class="bi bi-bar-chart me-1"></i>调用统计
+                    </a>
+                    <a href="{{ url_for('ai.logs') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-clock-history me-1"></i>调用日志
+                    </a>
+                </div>
             </div>
 
             <!-- 说明 -->

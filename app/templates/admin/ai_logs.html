@@ -4,28 +4,42 @@
 <div class="card shadow-sm">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>AI调用日志</h5>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('ai.config') }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-gear me-1"></i>配置
+            </a>
+            <a href="{{ url_for('ai.statistics') }}" class="btn btn-outline-success btn-sm">
+                <i class="bi bi-bar-chart me-1"></i>统计
+            </a>
+        </div>
     </div>
     <div class="card-body">
         <form class="row g-2 mb-4">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <select class="form-select" name="module">
-                    <option value="">全部模块</option>
-                    <option value="chat" {% if request.args.get('module') == 'chat' %}selected{% endif %}>智能问答</option>
-                    <option value="analysis" {% if request.args.get('module') == 'analysis' %}selected{% endif %}>报表分析</option>
-                    <option value="input" {% if request.args.get('module') == 'input' %}selected{% endif %}>智能录入</option>
-                    <option value="summary" {% if request.args.get('module') == 'summary' %}selected{% endif %}>单据摘要</option>
-                    <option value="approval" {% if request.args.get('module') == 'approval' %}selected{% endif %}>审批意见</option>
+                    <option value="">全部类型</option>
+                    <option value="text" {% if request.args.get('module') == 'text' %}selected{% endif %}>文本</option>
+                    <option value="vision" {% if request.args.get('module') == 'vision' %}selected{% endif %}>视觉</option>
+                    <option value="speech" {% if request.args.get('module') == 'speech' %}selected{% endif %}>语音</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <select class="form-select" name="success">
                     <option value="">全部状态</option>
                     <option value="true" {% if request.args.get('success') == 'true' %}selected{% endif %}>成功</option>
                     <option value="false" {% if request.args.get('success') == 'false' %}selected{% endif %}>失败</option>
                 </select>
             </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control" name="username" value="{{ request.args.get('username', '') }}" placeholder="搜索用户名">
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control" name="scene_code" value="{{ request.args.get('scene_code', '') }}" placeholder="搜索场景编码">
+            </div>
             <div class="col-md-2">
-                <button type="submit" class="btn btn-outline-primary w-100">筛选</button>
+                <button type="submit" class="btn btn-outline-primary w-100">
+                    <i class="bi bi-search me-1"></i>筛选
+                </button>
             </div>
         </form>
 
@@ -35,12 +49,13 @@
                     <tr>
                         <th>时间</th>
                         <th>用户</th>
-                        <th>模块</th>
-                        <th>输入Token</th>
-                        <th>输出Token</th>
-                        <th>耗时(ms)</th>
+                        <th>场景</th>
+                        <th>类型</th>
+                        <th class="text-end">总Token</th>
+                        <th class="text-end">成本(元)</th>
+                        <th class="text-end">耗时(ms)</th>
                         <th>状态</th>
-                        <th>操作</th>
+                        <th class="text-end">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -49,12 +64,19 @@
                         <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '-' }}</td>
                         <td>{{ log.username or '-' }}</td>
                         <td>
-                            {% set module_names = {'chat':'智能问答', 'analysis':'报表分析', 'input':'智能录入', 'summary':'单据摘要', 'approval':'审批意见'} %}
-                            <span class="badge bg-info text-dark">{{ module_names.get(log.module, log.module or '-') }}</span>
+                            {% if log.scene_code %}
+                            <span class="badge bg-info text-dark">{{ log.scene_code }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ log.module or '-' }}</span>
+                            {% endif %}
                         </td>
-                        <td>{{ log.input_tokens }}</td>
-                        <td>{{ log.output_tokens }}</td>
-                        <td>{{ log.cost_time }}</td>
+                        <td>
+                            {% set type_map = {'text':'文本', 'vision':'视觉', 'speech':'语音', 'chat':'对话', 'analysis':'分析', 'input':'录入', 'summary':'摘要', 'approval':'审批'} %}
+                            <span class="badge bg-light text-dark">{{ type_map.get(log.module, log.module or '-') }}</span>
+                        </td>
+                        <td class="text-end">{{ log.total_tokens or (log.input_tokens + log.output_tokens) }}</td>
+                        <td class="text-end text-danger small">{{ '%.4f'|format(log.cost_amount or 0) }}</td>
+                        <td class="text-end">{{ log.cost_time }}</td>
                         <td>
                             {% if log.success %}
                             <span class="badge bg-success">成功</span>
@@ -75,31 +97,65 @@
                                 </div>
                                 <div class="modal-body">
                                     <div class="row mb-3">
-                                        <div class="col-md-4">
+                                        <div class="col-md-3">
                                             <div class="text-muted small">用户</div>
                                             <div>{{ log.username or '-' }}</div>
                                         </div>
-                                        <div class="col-md-4">
-                                            <div class="text-muted small">模块</div>
-                                            <div>{{ module_names.get(log.module, log.module or '-') }}</div>
+                                        <div class="col-md-3">
+                                            <div class="text-muted small">场景</div>
+                                            <div>{{ log.scene_code or log.module or '-' }}</div>
                                         </div>
-                                        <div class="col-md-4">
+                                        <div class="col-md-3">
+                                            <div class="text-muted small">时间</div>
+                                            <div>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '-' }}</div>
+                                        </div>
+                                        <div class="col-md-3">
                                             <div class="text-muted small">状态</div>
-                                            <div>{% if log.success %}<span class="badge bg-success">成功</span>{% else %}<span class="badge bg-danger">失败</span>{% endif %}</div>
+                                            <div>
+                                                {% if log.success %}
+                                                <span class="badge bg-success">成功</span>
+                                                {% else %}
+                                                <span class="badge bg-danger">失败</span>
+                                                {% endif %}
+                                            </div>
                                         </div>
                                     </div>
+                                    <div class="row mb-3">
+                                        <div class="col-md-3">
+                                            <div class="text-muted small">输入Token</div>
+                                            <div>{{ log.input_tokens }}</div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="text-muted small">输出Token</div>
+                                            <div>{{ log.output_tokens }}</div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="text-muted small">总Token</div>
+                                            <div>{{ log.total_tokens or (log.input_tokens + log.output_tokens) }}</div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="text-muted small">估算成本</div>
+                                            <div class="text-danger">¥{{ '%.4f'|format(log.cost_amount or 0) }}</div>
+                                        </div>
+                                    </div>
+                                    {% if log.ip_address %}
                                     <div class="mb-3">
-                                        <div class="text-muted small">输入内容</div>
-                                        <div class="border rounded p-3 bg-light" style="max-height:150px;overflow-y:auto;">{{ log.prompt or '-' }}</div>
+                                        <div class="text-muted small">IP地址</div>
+                                        <div>{{ log.ip_address }}</div>
+                                    </div>
+                                    {% endif %}
+                                    <div class="mb-3">
+                                        <div class="text-muted small">请求内容</div>
+                                        <div class="bg-light p-2 rounded small" style="max-height:150px;overflow:auto;white-space:pre-wrap;">{{ log.prompt or '-' }}</div>
                                     </div>
                                     <div class="mb-3">
-                                        <div class="text-muted small">输出内容</div>
-                                        <div class="border rounded p-3 bg-light" style="max-height:150px;overflow-y:auto;">{{ log.response or '-' }}</div>
+                                        <div class="text-muted small">返回结果</div>
+                                        <div class="bg-light p-2 rounded small" style="max-height:200px;overflow:auto;white-space:pre-wrap;">{{ log.response or '-' }}</div>
                                     </div>
-                                    {% if log.error_msg %}
-                                    <div class="alert alert-danger">
+                                    {% if not log.success and log.error_msg %}
+                                    <div>
                                         <div class="text-muted small">错误信息</div>
-                                        <div>{{ log.error_msg }}</div>
+                                        <div class="bg-danger bg-opacity-10 text-danger p-2 rounded small">{{ log.error_msg }}</div>
                                     </div>
                                     {% endif %}
                                 </div>
@@ -110,36 +166,24 @@
                         </div>
                     </div>
                     {% else %}
-                    <tr><td colspan="8" class="text-center text-muted py-4">暂无调用日志</td></tr>
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">暂无日志数据</td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
 
         {% if pagination.pages > 1 %}
-        <div class="d-flex justify-content-center mt-4">
-            <nav>
-                <ul class="pagination">
-                    {% if pagination.has_prev %}
-                    <li class="page-item"><a class="page-link" href="{{ url_for('ai.logs', page=pagination.prev_num, module=request.args.get('module'), success=request.args.get('success')) }}">上一页</a></li>
-                    {% else %}
-                    <li class="page-item disabled"><a class="page-link" href="#">上一页</a></li>
-                    {% endif %}
-                    {% for page in pagination.iter_pages() %}
-                    {% if page %}
-                    <li class="page-item {% if page == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('ai.logs', page=page, module=request.args.get('module'), success=request.args.get('success')) }}">{{ page }}</a></li>
-                    {% else %}
-                    <li class="page-item disabled"><a class="page-link" href="#">...</a></li>
-                    {% endif %}
-                    {% endfor %}
-                    {% if pagination.has_next %}
-                    <li class="page-item"><a class="page-link" href="{{ url_for('ai.logs', page=pagination.next_num, module=request.args.get('module'), success=request.args.get('success')) }}">下一页</a></li>
-                    {% else %}
-                    <li class="page-item disabled"><a class="page-link" href="#">下一页</a></li>
-                    {% endif %}
-                </ul>
-            </nav>
-        </div>
+        <nav class="mt-3">
+            <ul class="pagination justify-content-center mb-0">
+                {% for p in range(1, pagination.pages + 1) %}
+                <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                    <a class="page-link" href="?page={{ p }}&module={{ request.args.get('module', '') }}&success={{ request.args.get('success', '') }}&username={{ request.args.get('username', '') }}&scene_code={{ request.args.get('scene_code', '') }}">{{ p }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
         {% endif %}
     </div>
 </div>

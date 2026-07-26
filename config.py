@@ -33,7 +33,7 @@ class Config:
 
     # AI 配置（可选，不设置则禁用 AI 功能）
     AI_API_KEY = os.environ.get('AI_API_KEY', '')
-    AI_MODEL = os.environ.get('AI_MODEL', 'doubao-pro-32k')
+    AI_MODEL = os.environ.get('AI_MODEL', 'doubao-1.5-pro-32k')
 
     # 管理员初始密码（首次初始化时创建 admin 账号使用）
     # 生产环境部署后请立即修改 admin 密码

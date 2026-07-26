@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}AI调用统计 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card shadow-sm bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small opacity-75">总调用次数</div>
+                        <h3 class="mb-0 mt-1">{{ total_count }}</h3>
+                    </div>
+                    <i class="bi bi-bar-chart-line fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small opacity-75">成功率</div>
+                        <h3 class="mb-0 mt-1">{{ success_rate }}%</h3>
+                    </div>
+                    <i class="bi bi-check-circle fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm bg-warning text-dark">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small opacity-75">消耗Token</div>
+                        <h3 class="mb-0 mt-1">{{ '{:,}'.format(total_tokens) }}</h3>
+                    </div>
+                    <i class="bi bi-token fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm bg-danger text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small opacity-75">估算成本</div>
+                        <h3 class="mb-0 mt-1">¥{{ '%.3f'|format(total_cost) }}</h3>
+                    </div>
+                    <i class="bi bi-currency-yen fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>调用趋势</h5>
+        <div>
+            <select class="form-select form-select-sm d-inline-block" style="width:auto;" onchange="changeDays(this.value)">
+                <option value="7" {% if days == 7 %}selected{% endif %}>最近7天</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>最近30天</option>
+                <option value="90" {% if days == 90 %}selected{% endif %}>最近90天</option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body">
+        <canvas id="trendChart" height="100"></canvas>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-pie-chart me-2"></i>场景分布 TOP10</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>场景</th>
+                                <th class="text-end">调用次数</th>
+                                <th class="text-end">占比</th>
+                                <th class="text-end">成本(¥)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set total_scene = scene_stats | sum(attribute='count') %}
+                            {% for row in scene_stats %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-info text-dark">{{ row.scene_code or '未分类' }}</span>
+                                </td>
+                                <td class="text-end">{{ row.count }}</td>
+                                <td class="text-end">
+                                    {% if total_scene > 0 %}
+                                    {{ '%.1f'|format(row.count / total_scene * 100) }}%
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td class="text-end text-danger">{{ '%.4f'|format(row.cost or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-3">暂无数据</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="bi bi-people me-2"></i>用户排行 TOP10</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">排名</th>
+                                <th>用户</th>
+                                <th class="text-end">调用次数</th>
+                                <th class="text-end">Token</th>
+                                <th class="text-end">成本(¥)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in user_stats %}
+                            <tr>
+                                <td>
+                                    {% if loop.index <= 3 %}
+                                    <span class="badge bg-warning text-dark">{{ loop.index }}</span>
+                                    {% else %}
+                                    <span class="text-muted">{{ loop.index }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ row.username or '匿名' }}</td>
+                                <td class="text-end">{{ row.count }}</td>
+                                <td class="text-end">{{ '{:,}'.format(row.tokens or 0) }}</td>
+                                <td class="text-end text-danger">{{ '%.4f'|format(row.cost or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-3">暂无数据</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function changeDays(d) {
+    location.href = '?days=' + d;
+}
+
+// 趋势图
+(function() {
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const labels = [];
+    const counts = [];
+    const costs = [];
+    const dailyData = {{ daily_stats | tojson | safe }};
+
+    dailyData.forEach(row => {
+        labels.push(row.date ? row.date.toString() : '');
+        counts.push(row.count || 0);
+        costs.push(parseFloat(row.cost || 0));
+    });
+
+    if (typeof Chart !== 'undefined') {
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '调用次数',
+                        data: counts,
+                        borderColor: '#0d6efd',
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: '成本(元)',
+                        data: costs,
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220, 53, 69, 0.05)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y1',
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        title: { display: true, text: '调用次数' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        title: { display: true, text: '成本(元)' },
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

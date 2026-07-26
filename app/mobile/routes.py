@@ -28,7 +28,7 @@ from app.models import (Material, Category, UsageUnit, StockIn, StockInItem,
                         EquipmentInspectionRecord,
                         PurchaseRequisition, PurchaseRequisitionItem,
                         MaterialScrap, MaterialScrapItem,
-                        ConcreteTicket)
+                        ConcreteTicket, Invoice)
 from app.utils import (to_decimal, _gen_code_with_seq, get_dict_items,
                        apply_data_scope, get_project_materials, get_project_suppliers,
                        log_operation, upload_attachment, get_config)
@@ -771,6 +771,34 @@ def entry_center():
         ]
     }
     entry_groups.append(requisition_group)
+
+    # 基础数据类（仅管理员可见，含AI营业执照识别入口）
+    if current_user.is_admin():
+        base_group = {
+            'name': '基础数据',
+            'icon': 'bi-database',
+            'items': [
+                {
+                    'key': 'supplier',
+                    'name': '供应商管理',
+                    'desc': '维护供应商主库（支持拍照识别营业执照）',
+                    'icon': 'bi-truck',
+                    'color': 'purple',
+                    'url': 'mobile.supplier_list',
+                    'has_perm': True
+                },
+                {
+                    'key': 'invoice',
+                    'name': '发票登记',
+                    'desc': '新增发票（支持拍照识别发票）',
+                    'icon': 'bi-receipt',
+                    'color': 'cyan',
+                    'url': 'mobile.invoice_list',
+                    'has_perm': True
+                },
+            ]
+        }
+        entry_groups.append(base_group)
 
     # 过滤权限：只保留有权限的卡片，且过滤掉空分组
     visible_groups = []
@@ -1643,6 +1671,19 @@ def _m_require_project():
     if not project:
         return None
     return project
+
+
+def _m_ai_vision_enabled():
+    """判断AI视觉识别是否启用（与PC端共用同一套配置）
+
+    条件：系统启用AI + 启用视觉识别
+    返回 bool。前端按钮根据该返回值决定是否显示。
+    """
+    try:
+        return (get_config('ai_enabled', 'false') == 'true'
+                and get_config('ai_vision_enabled', 'false') == 'true')
+    except Exception:
+        return False
 
 
 def _m_parse_date(value, fmt='%Y-%m-%d'):
@@ -2711,11 +2752,13 @@ def concrete_create():
     suppliers = Supplier.query.filter_by(project_id=project.id).order_by(Supplier.name).all()
     work_numbers = WorkNumber.query.filter_by(project_id=project.id).order_by(WorkNumber.code).all()
     default_ticket_no = _m_gen_concrete_ticket_no(project.id)
+    ai_vision_enabled = _m_ai_vision_enabled()
     return render_template('mobile/concrete_create.html', project=project,
                            suppliers=suppliers, work_numbers=work_numbers,
                            strength_grades=_CONCRETE_STRENGTH_GRADES,
                            default_ticket_no=default_ticket_no,
-                           now=datetime.now().strftime('%Y-%m-%dT%H:%M'))
+                           now=datetime.now().strftime('%Y-%m-%dT%H:%M'),
+                           ai_vision_enabled=ai_vision_enabled)
 
 
 @bp.route('/api/concrete/sync', methods=['POST'])
@@ -2900,8 +2943,313 @@ def api_concrete_history_pour_part():
 
 
 # ============================================================
-# 物资报废申请（移动端）
+# 供应商管理（移动端） - 与PC端共用同一主库，支持AI营业执照识别
 # ============================================================
+
+@bp.route('/suppliers')
+@login_required
+def supplier_list():
+    """供应商列表（公司级主库）"""
+    keyword = (request.args.get('keyword', '') or '').strip()
+    status_filter = (request.args.get('status_filter', '') or '').strip()
+
+    query = Supplier.query.filter_by(source='company')
+    if keyword:
+        query = query.filter(
+            or_(Supplier.name.contains(keyword), Supplier.code.contains(keyword))
+        )
+    if status_filter in ('qualified', 'unqualified', 'blacklist'):
+        query = query.filter_by(status=status_filter)
+
+    page = request.args.get('page', 1, type=int)
+    pagination = query.order_by(Supplier.created_at.desc()).paginate(
+        page=page, per_page=20, error_out=False
+    )
+    suppliers = pagination.items
+    return render_template('mobile/supplier_list.html',
+                           suppliers=suppliers,
+                           keyword=keyword,
+                           status_filter=status_filter,
+                           total=pagination.total)
+
+
+def _m_gen_supplier_code():
+    """生成公司级供应商编码：GYS + 6位流水号"""
+    from sqlalchemy import func
+    from app.utils import _code_gen_lock
+    with _code_gen_lock:
+        max_code = db.session.query(func.max(Supplier.code)).filter(
+            Supplier.code.like('GYS%'),
+            Supplier.source == 'company'
+        ).scalar()
+        if max_code:
+            try:
+                seq = int(max_code[3:]) + 1
+            except ValueError:
+                seq = 1
+        else:
+            seq = 1
+        candidate = f'GYS{seq:06d}'
+        # 冲突重试（最多10次）
+        for _ in range(10):
+            exists = Supplier.query.filter_by(code=candidate, source='company').first()
+            if not exists:
+                return candidate
+            seq += 1
+            candidate = f'GYS{seq:06d}'
+        return candidate
+
+
+@bp.route('/suppliers/create', methods=['GET', 'POST'])
+@login_required
+@log_audit(module='mobile_supplier', operation='新增')
+def supplier_create():
+    """新增供应商（移动端）"""
+    if not current_user.is_admin():
+        flash('无权限，仅管理员可新增供应商', 'danger')
+        return redirect(url_for('mobile.supplier_list'))
+
+    if request.method == 'POST':
+        name = (request.form.get('name', '') or '').strip()
+        if not name:
+            flash('供应商名称不能为空', 'danger')
+            return redirect(url_for('mobile.supplier_create'))
+
+        # 公司级主库使用第一个项目的 ID 满足 NOT NULL 约束
+        first_project = Project.query.first()
+        if not first_project:
+            flash('系统未找到任何项目，无法创建供应商', 'danger')
+            return redirect(url_for('mobile.supplier_create'))
+
+        code = _m_gen_supplier_code()
+        supplier = Supplier(
+            project_id=first_project.id,
+            name=name,
+            code=code,
+            credit_code=(request.form.get('credit_code', '') or '').strip(),
+            contact_person=(request.form.get('contact_person', '') or '').strip(),
+            phone=(request.form.get('phone', '') or '').strip(),
+            legal_person=(request.form.get('legal_person', '') or '').strip(),
+            address=(request.form.get('address', '') or '').strip(),
+            bank_name=(request.form.get('bank_name', '') or '').strip(),
+            bank_account=(request.form.get('bank_account', '') or '').strip(),
+            source='company',
+            status='qualified',
+            create_dept=current_user.dept_id,
+        )
+        db.session.add(supplier)
+        db.session.commit()
+        flash(f'供应商创建成功，编码：{code}', 'success')
+        return redirect(url_for('mobile.supplier_list'))
+
+    ai_vision_enabled = _m_ai_vision_enabled()
+    return render_template('mobile/supplier_form.html',
+                           supplier=None,
+                           ai_vision_enabled=ai_vision_enabled)
+
+
+@bp.route('/suppliers/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@log_audit(module='mobile_supplier', operation='编辑')
+def supplier_edit(id):
+    """编辑供应商（移动端）"""
+    if not current_user.is_admin():
+        flash('无权限，仅管理员可编辑供应商', 'danger')
+        return redirect(url_for('mobile.supplier_list'))
+
+    supplier = Supplier.query.get_or_404(id)
+    if supplier.source != 'company':
+        flash('该供应商不在公司主库，无法通过此入口编辑', 'danger')
+        return redirect(url_for('mobile.supplier_list'))
+
+    if request.method == 'POST':
+        name = (request.form.get('name', '') or '').strip()
+        if not name:
+            flash('供应商名称不能为空', 'danger')
+            return redirect(url_for('mobile.supplier_edit', id=id))
+
+        supplier.name = name
+        supplier.credit_code = (request.form.get('credit_code', '') or '').strip()
+        supplier.contact_person = (request.form.get('contact_person', '') or '').strip()
+        supplier.phone = (request.form.get('phone', '') or '').strip()
+        supplier.legal_person = (request.form.get('legal_person', '') or '').strip()
+        supplier.address = (request.form.get('address', '') or '').strip()
+        supplier.bank_name = (request.form.get('bank_name', '') or '').strip()
+        supplier.bank_account = (request.form.get('bank_account', '') or '').strip()
+        new_status = (request.form.get('status', '') or '').strip()
+        if new_status in ('qualified', 'unqualified', 'blacklist'):
+            supplier.status = new_status
+        db.session.commit()
+        flash('供应商更新成功', 'success')
+        return redirect(url_for('mobile.supplier_list'))
+
+    ai_vision_enabled = _m_ai_vision_enabled()
+    return render_template('mobile/supplier_form.html',
+                           supplier=supplier,
+                           ai_vision_enabled=ai_vision_enabled)
+
+
+# ============== 发票台账 ==============
+
+def _m_parse_date(date_str):
+    """移动端日期解析"""
+    if not date_str:
+        return None
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d').date()
+    except Exception:
+        return None
+
+
+def _m_invoice_save_file(file_storage):
+    """保存发票文件（图片或PDF）"""
+    from werkzeug.utils import secure_filename
+    from flask import current_app
+    import os as _os
+
+    if not file_storage or not file_storage.filename:
+        return None
+    allowed = {'pdf', 'png', 'jpg', 'jpeg', 'gif'}
+    ext = file_storage.filename.rsplit('.', 1)[-1].lower() if '.' in file_storage.filename else ''
+    if ext not in allowed:
+        return None
+    filename = secure_filename(file_storage.filename) or f"invoice_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}"
+    upload_dir = _os.path.join(current_app.config['UPLOAD_FOLDER'], 'invoices')
+    _os.makedirs(upload_dir, exist_ok=True)
+    file_storage.save(_os.path.join(upload_dir, filename))
+    return _os.path.join('uploads', 'invoices', filename)
+
+
+@bp.route('/invoices')
+@login_required
+def invoice_list():
+    """发票台账列表（移动端）"""
+    project = _get_current_project()
+    if not project:
+        flash('请先选择项目', 'warning')
+        return redirect(url_for('mobile.profile'))
+
+    keyword = (request.args.get('keyword', '') or '').strip()
+    query = Invoice.query.filter_by(project_id=project.id)
+    if keyword:
+        query = query.filter(
+            or_(Invoice.invoice_number.contains(keyword),
+                Invoice.invoice_code.contains(keyword),
+                Invoice.remark.contains(keyword))
+        )
+
+    page = request.args.get('page', 1, type=int)
+    pagination = query.order_by(Invoice.invoice_date.desc().nullslast()).paginate(
+        page=page, per_page=20, error_out=False
+    )
+    invoices = pagination.items
+    return render_template('mobile/invoice_list.html',
+                           invoices=invoices,
+                           keyword=keyword,
+                           total=pagination.total)
+
+
+@bp.route('/invoices/create', methods=['GET', 'POST'])
+@login_required
+@log_audit(module='mobile_invoice', operation='新增')
+def invoice_create():
+    """新增发票（移动端，支持AI识别）"""
+    if not current_user.is_admin():
+        flash('无权限，仅管理员可新增发票', 'danger')
+        return redirect(url_for('mobile.invoice_list'))
+
+    project = _get_current_project()
+    if not project:
+        flash('请先选择项目', 'warning')
+        return redirect(url_for('mobile.profile'))
+
+    if request.method == 'POST':
+        contract_id = request.form.get('contract_id', type=int)
+        if not contract_id:
+            flash('请选择关联合同', 'danger')
+            return redirect(url_for('mobile.invoice_create'))
+        contract = Contract.query.get_or_404(contract_id)
+
+        amount_with_tax = to_decimal(request.form.get('amount_with_tax'))
+        tax_rate = to_decimal(request.form.get('tax_rate'), 13)
+        from app.utils import calc_without_tax
+        amount_without_tax = calc_without_tax(amount_with_tax, tax_rate)
+        file_path = _m_invoice_save_file(request.files.get('file'))
+
+        invoice = Invoice(
+            project_id=project.id,
+            contract_id=contract.id,
+            supplier_id=contract.supplier_id,
+            invoice_code=(request.form.get('invoice_code', '') or '').strip(),
+            invoice_number=(request.form.get('invoice_number', '') or '').strip(),
+            invoice_date=_m_parse_date(request.form.get('invoice_date')),
+            amount_with_tax=amount_with_tax,
+            tax_rate=tax_rate,
+            amount_without_tax=amount_without_tax,
+            file_path=file_path,
+            remark=(request.form.get('remark', '') or '').strip()
+        )
+        db.session.add(invoice)
+        db.session.commit()
+        flash('发票创建成功', 'success')
+        return redirect(url_for('mobile.invoice_list'))
+
+    contracts = Contract.query.filter_by(project_id=project.id, is_deleted=False) \
+        .order_by(Contract.code).all()
+    pre_contract_id = request.args.get('contract_id', type=int)
+    ai_vision_enabled = _m_ai_vision_enabled()
+    return render_template('mobile/invoice_form.html',
+                           invoice=None,
+                           contracts=contracts,
+                           pre_contract_id=pre_contract_id,
+                           ai_vision_enabled=ai_vision_enabled)
+
+
+@bp.route('/invoices/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@log_audit(module='mobile_invoice', operation='编辑')
+def invoice_edit(id):
+    """编辑发票（移动端）"""
+    if not current_user.is_admin():
+        flash('无权限，仅管理员可编辑发票', 'danger')
+        return redirect(url_for('mobile.invoice_list'))
+
+    invoice = Invoice.query.get_or_404(id)
+
+    if request.method == 'POST':
+        contract_id = request.form.get('contract_id', type=int)
+        if not contract_id:
+            flash('请选择关联合同', 'danger')
+            return redirect(url_for('mobile.invoice_edit', id=id))
+        contract = Contract.query.get_or_404(contract_id)
+
+        file_path = _m_invoice_save_file(request.files.get('file'))
+        if file_path:
+            invoice.file_path = file_path
+
+        invoice.contract_id = contract.id
+        invoice.supplier_id = contract.supplier_id
+        invoice.invoice_code = (request.form.get('invoice_code', '') or '').strip()
+        invoice.invoice_number = (request.form.get('invoice_number', '') or '').strip()
+        invoice.invoice_date = _m_parse_date(request.form.get('invoice_date'))
+        invoice.amount_with_tax = to_decimal(request.form.get('amount_with_tax'))
+        invoice.tax_rate = to_decimal(request.form.get('tax_rate'), 13)
+        from app.utils import calc_without_tax
+        invoice.amount_without_tax = calc_without_tax(invoice.amount_with_tax, invoice.tax_rate)
+        invoice.remark = (request.form.get('remark', '') or '').strip()
+        db.session.commit()
+        flash('发票更新成功', 'success')
+        return redirect(url_for('mobile.invoice_list'))
+
+    contracts = Contract.query.filter_by(project_id=invoice.project_id, is_deleted=False) \
+        .order_by(Contract.code).all()
+    ai_vision_enabled = _m_ai_vision_enabled()
+    return render_template('mobile/invoice_form.html',
+                           invoice=invoice,
+                           contracts=contracts,
+                           pre_contract_id=None,
+                           ai_vision_enabled=ai_vision_enabled)
+
 
 # ============== 报废申请 ==============
 

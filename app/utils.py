@@ -737,8 +737,8 @@ def init_system_config():
         # AI助手配置
         ('ai_enabled', 'false', '是否启用AI助手（true/false）'),
         ('ai_api_key', '', 'AI助手API Key（加密存储）'),
-        ('ai_model', 'doubao-pro-32k', 'AI助手模型名称'),
-        ('ai_vision_model', 'doubao-vision-pro-32k', 'AI视觉识别模型名称'),
+        ('ai_model', 'doubao-1.5-pro-32k', 'AI助手模型名称'),
+        ('ai_vision_model', 'doubao-1.5-vision-pro', 'AI视觉识别模型名称'),
         ('ai_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions', 'AI助手API地址'),
         ('ai_max_tokens', '2000', 'AI助手最大输出token数'),
         # 期初库存

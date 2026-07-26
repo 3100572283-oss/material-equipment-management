@@ -349,6 +349,9 @@ def init_db_schema():
     # 统一数据权限配置表迁移
     _migrate_role_data_scope_table()
 
+    # AI中台增强：日志表新增字段 + 场景Prompt初始化
+    _migrate_ai_scene_prompt()
+
     print("Database tables created/updated")
 
 
@@ -408,6 +411,170 @@ def _migrate_role_data_scope_table():
         db.session.commit()
     except Exception as e:
         print(f"Error migrating sys_role_data_scope: {e}")
+        db.session.rollback()
+
+
+def _migrate_ai_scene_prompt():
+    """AI中台增强迁移
+    1. ai_call_log 表新增字段（dept_id/scene_code/total_tokens/cost_amount/ip_address）
+    2. 初始化 ai_scene_prompt 场景配置默认数据
+    """
+    from app.models import AIScenePrompt
+
+    # ---- 字段迁移（SQLite兼容性）
+    _add_column_if_missing('ai_call_log', 'dept_id', 'INTEGER')
+    _add_column_if_missing('ai_call_log', 'scene_code', 'VARCHAR(64)')
+    _add_column_if_missing('ai_call_log', 'total_tokens', 'INTEGER DEFAULT 0')
+    _add_column_if_missing('ai_call_log', 'cost_amount', 'NUMERIC(12,6) DEFAULT 0')
+    _add_column_if_missing('ai_call_log', 'ip_address', 'VARCHAR(64)')
+
+    # ---- 初始化默认场景Prompt
+    default_scenes = [
+        {
+            'scene_code': 'text:chat',
+            'scene_name': '智能对话',
+            'scene_type': 'text',
+            'system_prompt': '你是物资设备管理系统的智能助手，熟悉建筑物资全流程业务。请根据提供的数据回答用户问题。规则：1.没有相关数据时明确告知；2.回答简洁明了，使用中文；3.金额使用千分位格式；4.只回答当前项目的数据；5.问题不明确时礼貌询问补充。',
+            'output_format': '自然语言回答',
+            'permission_code': 'ai:chat:use',
+            'sort_order': 1,
+            'remark': '全局AI助手对话能力',
+        },
+        {
+            'scene_code': 'vision:invoice',
+            'scene_name': '发票识别',
+            'scene_type': 'vision',
+            'system_prompt': '请识别这张发票图片，提取发票信息。',
+            'output_format': '{"invoice_type":"发票类型","invoice_code":"发票代码","invoice_number":"发票号码","invoice_date":"开票日期(YYYY-MM-DD)","buyer_name":"购买方名称","buyer_tax_id":"购买方税号","seller_name":"销售方名称","seller_tax_id":"销售方税号","amount": 金额(不含税,数字)","tax_amount":"税额(数字)","total_amount":"价税合计(数字)","tax_rate":"税率(百分比数字)","remarks":"备注"}。注意：只输出JSON，不要其他说明文字；金额只输出数字；无法识别的字段填null。',
+            'permission_code': 'ai:invoice:recognize',
+            'sort_order': 10,
+            'remark': '采购合同-发票台账-新增发票识别',
+        },
+        {
+            'scene_code': 'vision:license',
+            'scene_name': '营业执照识别',
+            'scene_type': 'vision',
+            'system_prompt': '请识别这张营业执照图片，提取企业注册信息。',
+            'output_format': '{"company_name":"企业名称","credit_code":"统一社会信用代码","legal_representative":"法定代表人","registered_capital":"注册资本","establish_date":"成立日期(YYYY-MM-DD)","business_scope":"经营范围","address":"住所","business_term":"营业期限"}。注意：只输出JSON，不要其他说明文字；日期统一YYYY-MM-DD格式；无法识别的字段填null。',
+            'permission_code': 'ai:supplier:recognize_license',
+            'sort_order': 20,
+            'remark': '供应商管理-新增供应商营业执照识别',
+        },
+        {
+            'scene_code': 'vision:concrete',
+            'scene_name': '商砼小票识别',
+            'scene_type': 'vision',
+            'system_prompt': '请识别这张商砼（混凝土）送货小票图片，提取小票信息。',
+            'output_format': '{"ticket_no":"小票号/流水号","supplier":"供应单位名称（搅拌站）","strength_grade":"砼标号/强度等级(如C30、C40)","pour_part":"浇筑部位","vehicle_no":"运输车号（车牌号）","driver_name":"司机姓名","volume":"方量/发货数量（数字，单位m³）","vehicle_count":"车次（数字，默认1）","slump":"坍落度（如180±20）","arrival_time":"到场时间（YYYY-MM-DD HH:MM格式）","remark":"备注"}。注意：只输出JSON，不要其他说明文字；方量和车次只输出数字；砼标号只输出如C30/C35/C40标识；无法识别的字段填null。',
+            'permission_code': 'ai:concrete:recognize',
+            'sort_order': 30,
+            'remark': '行业工具-商砼小票-新增小票识别',
+        },
+        {
+            'scene_code': 'vision:ocr',
+            'scene_name': '通用文字提取',
+            'scene_type': 'vision',
+            'system_prompt': '请提取这张图片中的所有文字内容，按原文格式输出。如果是表格，请保持表格结构。',
+            'output_format': '纯文本，按原文排版',
+            'permission_code': 'ai:ocr:extract',
+            'sort_order': 40,
+            'remark': '所有多行输入框的拍照提取文字功能',
+        },
+        {
+            'scene_code': 'vision:receipt',
+            'scene_name': '送货单/收料小票识别',
+            'scene_type': 'vision',
+            'system_prompt': '请识别这张收料小票/送货单图片，提取物资明细信息。',
+            'output_format': '{"supplier":"供应商名称","receipt_date":"收料日期(YYYY-MM-DD)","items":[{"material_name":"物资名称","specification":"规格型号","quantity":数量(数字),"unit":"单位","unit_price":"单价（数字）","amount": 金额（数字）}],"total_amount":"合计金额","remarks":"备注"}。注意：只输出JSON，不要其他说明文字；数量和金额只输出数字；有多行明细全部识别；无法识别的字段填null。',
+            'permission_code': 'ai:receipt:recognize',
+            'sort_order': 50,
+            'remark': '入库单/送货单批量识别',
+        },
+        {
+            'scene_code': 'text:parse_input',
+            'scene_name': '智能录入解析',
+            'scene_type': 'text',
+            'system_prompt': '你是物资设备管理系统的智能录入助手。请解析用户输入的自然语言，提取关键信息。',
+            'output_format': '{"type":"stock_in/stock_out/purchase_requisition","supplier":"供应商名称","usage_unit":"领料单位名称","items":[{"material":"物资名称","specification":"规格","quantity":数量(数字),"unit_price":单价(数字)}],"date":"日期(YYYY-MM-DD)","demand_date":"需求日期(采购申请用)"}。注意：数量和单价必须是数字；无法识别的字段留空或null；类型不明确则type为null。',
+            'permission_code': 'ai:input:parse',
+            'sort_order': 60,
+            'remark': '语音/文字快速制单',
+        },
+        {
+            'scene_code': 'text:report_analysis',
+            'scene_name': '报表智能分析',
+            'scene_type': 'text',
+            'system_prompt': '你是物资设备管理系统的报表分析助手。请分析给定的数据并生成专业分析报告。',
+            'output_format': '分析内容包括：1.本期核心数据摘要（总金额、总数量）；2.排名Top3的物资及占比；3.异常波动提醒（激增或骤减的物资）；4.管理建议。语言简洁专业，使用中文。',
+            'permission_code': 'ai:report:analyze',
+            'sort_order': 70,
+            'remark': '各类统计报表的AI分析',
+        },
+        {
+            'scene_code': 'text:approval_opinion',
+            'scene_name': '审批意见生成',
+            'scene_type': 'text',
+            'system_prompt': '你是物资设备管理系统的审批助手。请根据单据数据生成审批意见。',
+            'output_format': '如果action是approve，生成同意意见；如果action是reject，生成驳回意见（需说明原因）。意见简洁专业，不超过30字。',
+            'permission_code': 'ai:approval:opinion',
+            'sort_order': 80,
+            'remark': '审批单据时的AI意见辅助',
+        },
+        {
+            'scene_code': 'text:doc_summary',
+            'scene_name': '单据智能摘要',
+            'scene_type': 'text',
+            'system_prompt': '你是物资设备管理系统的单据摘要助手。请根据单据数据生成一句话核心摘要。',
+            'output_format': '生成一句话摘要，不超过50字；包含关键信息：金额、状态、进度等；语言简洁明了。',
+            'permission_code': 'ai:summary:generate',
+            'sort_order': 90,
+            'remark': '各类业务单据摘要生成',
+        },
+        {
+            'scene_code': 'speech:to_text',
+            'scene_name': '语音转文字',
+            'scene_type': 'speech',
+            'system_prompt': '将语音音频转写为文字。',
+            'output_format': '纯文本转写结果，自动加标点符号，识别口语中的数字自动转为规范书面语。',
+            'permission_code': 'ai:speech:to_text',
+            'sort_order': 100,
+            'remark': '移动端语音输入、语音助手',
+        },
+        {
+            'scene_code': 'structured:generate',
+            'scene_name': '结构化文档生成',
+            'scene_type': 'structured',
+            'system_prompt': '你是物资设备管理系统的文档生成助手。请根据业务数据生成结构化文档。',
+            'output_format': '根据指定文档类型（验收单/维保计划/分析报告等）生成规范的结构化内容，使用中文，格式清晰。',
+            'permission_code': 'ai:structured:generate',
+            'sort_order': 110,
+            'remark': '验收单、维保计划、分析报告等结构化生成',
+        },
+    ]
+
+    try:
+        existing_codes = {sp.scene_code for sp in AIScenePrompt.query.all()}
+        added = 0
+        for scene in default_scenes:
+            if scene['scene_code'] not in existing_codes:
+                sp = AIScenePrompt(
+                    scene_code=scene['scene_code'],
+                    scene_name=scene['scene_name'],
+                    scene_type=scene['scene_type'],
+                    system_prompt=scene['system_prompt'],
+                    output_format=scene['output_format'],
+                    permission_code=scene['permission_code'],
+                    is_enabled=True,
+                    sort_order=scene['sort_order'],
+                    remark=scene['remark'],
+                )
+                db.session.add(sp)
+                added += 1
+        if added > 0:
+            db.session.commit()
+            print(f"Initialized {added} AI scene prompts")
+    except Exception as e:
+        print(f"Error initializing AI scene prompts: {e}")
         db.session.rollback()
 
 
@@ -1258,7 +1425,7 @@ def create_app(config_class=Config):
         ep = request.endpoint or ''
         sys_prefixes = [
             'admin.', 'system.', 'dict_mgr.', 'org_sync.',
-            'ai.config', 'ai.logs', 'approval.flows',
+            'ai.config', 'ai.logs', 'ai.scene', 'ai.statistics', 'approval.flows',
             'batch.category_config', 'period_close.'
         ]
         for prefix in sys_prefixes:
@@ -1373,7 +1540,7 @@ def create_app(config_class=Config):
             return
         # 静态资源、认证等不过滤
         if endpoint.startswith(('static', 'auth.', 'main.set_project', 'main.index', 'main.wizard',
-                                'profile.', 'admin.', 'system.', 'dict_mgr.', 'help.')):
+                                'profile.', 'admin.', 'system.', 'dict_mgr.', 'help.', 'ai.')):
             return
         try:
             # 检查菜单是否禁用
