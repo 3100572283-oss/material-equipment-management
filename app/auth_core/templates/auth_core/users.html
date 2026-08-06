@@ -1,0 +1,371 @@
+{% extends "auth_core/_layout.html" %}
+{% set page_title = '用户管理' %}
+
+{% block ac_content %}
+<div class="ac-card">
+  <div class="ac-card-head">
+    <h6><i class="bi bi-people me-2 text-primary"></i>用户管理</h6>
+    {% if 'system:user:create' in perms %}
+    <button class="btn btn-primary btn-sm" onclick="User.openForm()">
+      <i class="bi bi-person-plus me-1"></i>新增用户
+    </button>
+    {% endif %}
+  </div>
+  <div class="ac-card-body">
+    <div class="ac-hint">
+      <i class="bi bi-lightning-charge me-1"></i>
+      新增人员只需<strong>选组织 + 选岗位</strong>，系统按岗位自动挂载角色模板与数据范围，无需逐项勾权限。
+      点「<i class="bi bi-eye"></i> 权限预览」可核对某人实际能看到哪些数据。
+    </div>
+
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input class="form-control" id="q_kw" placeholder="搜索登录名 / 姓名 / 手机号"
+                 onkeydown="if(event.key==='Enter')User.load(1)">
+        </div>
+      </div>
+      <div class="col-md-4">
+        <select class="form-select form-select-sm" id="q_org" onchange="User.load(1)">
+          <option value="">全部组织（含下级）</option>
+        </select>
+      </div>
+      <div class="col-md-4 d-flex gap-2">
+        <button class="btn btn-outline-primary btn-sm" onclick="User.load(1)">
+          <i class="bi bi-funnel me-1"></i>筛选
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="User.reset()">重置</button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:120px">登录名</th>
+            <th style="width:90px">姓名</th>
+            <th style="width:150px">所属组织</th>
+            <th style="width:110px">岗位</th>
+            <th>角色</th>
+            <th style="width:110px">最近登录</th>
+            <th style="width:70px">状态</th>
+            <th style="width:180px" class="text-end">操作</th>
+          </tr>
+        </thead>
+        <tbody id="userTbody">
+          <tr><td colspan="8" class="ac-empty"><i class="bi bi-hourglass-split"></i>加载中…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <div class="text-muted small" id="pageInfo"></div>
+      <nav><ul class="pagination pagination-sm mb-0" id="pager"></ul></nav>
+    </div>
+  </div>
+</div>
+
+<!-- 用户表单 -->
+<div class="modal fade" id="userModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title" id="userModalTitle">新增用户</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="u_id">
+        <div class="row g-3">
+          <div class="col-6">
+            <label class="form-label small fw-semibold">登录名 <span class="text-danger">*</span></label>
+            <input class="form-control form-control-sm" id="u_username">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">姓名</label>
+            <input class="form-control form-control-sm" id="u_name">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">所属组织 <span class="text-danger">*</span></label>
+            <select class="form-select form-select-sm" id="u_org"></select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">岗位</label>
+            <select class="form-select form-select-sm" id="u_post" onchange="User.onPostChange()">
+              <option value="">（不设岗位，手动指定角色）</option>
+              {% for p in post_options %}
+              <option value="{{ p.code }}">{{ p.name }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text" style="font-size:11px" id="postHint">
+              选择岗位后将自动挂载同名角色模板
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">角色（可多选，留空则按岗位自动带）</label>
+            <div id="u_roles" class="border rounded p-2" style="max-height:130px;overflow-y:auto"></div>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">手机号</label>
+            <input class="form-control form-control-sm" id="u_phone">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">邮箱</label>
+            <input class="form-control form-control-sm" id="u_email">
+          </div>
+          <div class="col-12" id="pwdRow">
+            <label class="form-label small fw-semibold">初始密码</label>
+            <input class="form-control form-control-sm" id="u_password" placeholder="留空使用系统默认密码">
+            <div class="form-text" style="font-size:11px">用户首次登录须强制修改密码</div>
+          </div>
+          <div class="col-12">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="u_status" checked>
+              <label class="form-check-label small" for="u_status">启用账号</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light btn-sm" data-bs-dismiss="modal">取消</button>
+        <button class="btn btn-primary btn-sm" onclick="User.save()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 有效权限预览 -->
+<div class="modal fade" id="effModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-eye me-2"></i>有效权限预览</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="effBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-light btn-sm" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block ac_script %}
+<script>
+const CAN = {
+  create:  {{ 'true' if 'system:user:create'    in perms else 'false' }},
+  edit:    {{ 'true' if 'system:user:edit'      in perms else 'false' }},
+  del:     {{ 'true' if 'system:user:delete'    in perms else 'false' }},
+  resetPwd:{{ 'true' if 'system:user:reset_pwd' in perms else 'false' }}
+};
+
+const User = {
+  page: 1, size: 20, total: 0,
+
+  async init() {
+    const meta = await AC.loadMeta();
+    document.getElementById('q_org').innerHTML =
+      '<option value="">全部组织（含下级）</option>' +
+      meta.orgs.map(o => `<option value="${o.id}">${AC.esc(o.indent_name)}</option>`).join('');
+    User.load(1);
+  },
+
+  async load(page) {
+    User.page = page || User.page;
+    const kw = document.getElementById('q_kw').value.trim();
+    const org = document.getElementById('q_org').value;
+    const url = `{{ url_for("auth_core.api_user_list") }}?page=${User.page}&size=${User.size}`
+              + `&kw=${encodeURIComponent(kw)}&org_id=${org}`;
+    const j = await AC.req(url);
+    if (!j) return;
+    User.total = j.total;
+    User.render(j.data);
+    User.pager();
+  },
+
+  reset() {
+    document.getElementById('q_kw').value = '';
+    document.getElementById('q_org').value = '';
+    User.load(1);
+  },
+
+  render(rows) {
+    const tb = document.getElementById('userTbody');
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="ac-empty"><i class="bi bi-inbox"></i>没有匹配的用户</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(u => {
+      const roleTags = u.role_names.length
+        ? u.role_names.map(n => `<span class="badge badge-soft me-1">${AC.esc(n)}</span>`).join('')
+        : '<span class="text-muted small">未分配</span>';
+      const pwdTag = u.must_change_password
+        ? '<i class="bi bi-exclamation-triangle text-warning ms-1" title="待首次修改密码"></i>' : '';
+      const srcTag = u.source === 'etl'
+        ? '<span class="badge bg-info-subtle text-info-emphasis ms-1" title="由旧系统迁移">迁移</span>' : '';
+
+      let ops = `<button class="btn btn-outline-info" title="权限预览" onclick="User.preview(${u.id})"><i class="bi bi-eye"></i></button>`;
+      if (CAN.edit)     ops += `<button class="btn btn-outline-secondary" title="编辑" onclick='User.openForm(${JSON.stringify(u)})'><i class="bi bi-pencil"></i></button>`;
+      if (CAN.resetPwd) ops += `<button class="btn btn-outline-warning" title="重置密码" onclick="User.resetPwd(${u.id},'${AC.esc(u.username)}')"><i class="bi bi-key"></i></button>`;
+      if (CAN.edit)     ops += `<button class="btn btn-outline-${u.status ? 'secondary' : 'success'}" title="${u.status ? '停用' : '启用'}" onclick="User.toggle(${u.id})"><i class="bi bi-power"></i></button>`;
+      if (CAN.del)      ops += `<button class="btn btn-outline-danger" title="删除" onclick="User.del(${u.id},'${AC.esc(u.username)}')"><i class="bi bi-trash"></i></button>`;
+
+      return `<tr>
+        <td><code class="small">${AC.esc(u.username)}</code>${pwdTag}${srcTag}</td>
+        <td>${AC.esc(u.name) || '—'}</td>
+        <td class="small">${AC.esc(u.org_name)}</td>
+        <td class="small">${AC.esc(u.post_name)}</td>
+        <td>${roleTags}</td>
+        <td class="small text-muted">${AC.esc(u.last_login_at) || '从未'}</td>
+        <td>${u.status ? '<span class="badge bg-success">正常</span>' : '<span class="badge bg-secondary">停用</span>'}</td>
+        <td class="text-end"><div class="btn-group btn-group-sm">${ops}</div></td>
+      </tr>`;
+    }).join('');
+  },
+
+  pager() {
+    const pages = Math.max(1, Math.ceil(User.total / User.size));
+    document.getElementById('pageInfo').textContent =
+      `共 ${User.total} 个用户 · 第 ${User.page}/${pages} 页`;
+    const el = document.getElementById('pager');
+    if (pages <= 1) { el.innerHTML = ''; return; }
+    let h = `<li class="page-item ${User.page <= 1 ? 'disabled' : ''}">
+      <a class="page-link" href="javascript:;" onclick="User.load(${User.page - 1})">上一页</a></li>`;
+    const from = Math.max(1, User.page - 2), to = Math.min(pages, from + 4);
+    for (let i = from; i <= to; i++) {
+      h += `<li class="page-item ${i === User.page ? 'active' : ''}">
+        <a class="page-link" href="javascript:;" onclick="User.load(${i})">${i}</a></li>`;
+    }
+    h += `<li class="page-item ${User.page >= pages ? 'disabled' : ''}">
+      <a class="page-link" href="javascript:;" onclick="User.load(${User.page + 1})">下一页</a></li>`;
+    el.innerHTML = h;
+  },
+
+  async openForm(u = null) {
+    const meta = await AC.loadMeta();
+    document.getElementById('u_org').innerHTML =
+      '<option value="">（未分配）</option>' +
+      meta.orgs.map(o => `<option value="${o.id}">${AC.esc(o.indent_name)}</option>`).join('');
+    document.getElementById('u_roles').innerHTML = meta.roles.map(r => `
+      <div class="form-check">
+        <input class="form-check-input role-cb" type="checkbox" value="${r.id}" id="ur_${r.id}">
+        <label class="form-check-label small" for="ur_${r.id}">${AC.esc(r.name)}
+          <code class="text-muted" style="font-size:11px">${AC.esc(r.code)}</code></label>
+      </div>`).join('');
+
+    document.getElementById('userModalTitle').textContent = u ? '编辑用户' : '新增用户';
+    document.getElementById('u_id').value = u ? u.id : '';
+    document.getElementById('u_username').value = u ? u.username : '';
+    document.getElementById('u_username').disabled = !!u;
+    document.getElementById('u_name').value  = u ? u.name : '';
+    document.getElementById('u_org').value   = u && u.org_id ? String(u.org_id) : '';
+    document.getElementById('u_post').value  = u ? (u.post || '') : '';
+    document.getElementById('u_phone').value = u ? u.phone : '';
+    document.getElementById('u_email').value = u ? u.email : '';
+    document.getElementById('u_password').value = '';
+    document.getElementById('u_status').checked = u ? !!u.status : true;
+    document.getElementById('pwdRow').style.display = u ? 'none' : '';
+
+    if (u) (u.role_ids || []).forEach(id => {
+      const cb = document.getElementById('ur_' + id); if (cb) cb.checked = true;
+    });
+    else User.onPostChange();
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('userModal')).show();
+  },
+
+  // 选岗位 → 自动勾上同 code 的角色模板（可再手工调整）
+  onPostChange() {
+    const post = document.getElementById('u_post').value;
+    const hint = document.getElementById('postHint');
+    document.querySelectorAll('.role-cb').forEach(cb => cb.checked = false);
+    if (!post) { hint.textContent = '选择岗位后将自动挂载同名角色模板'; return; }
+    const meta = AC.meta || { roles: [] };
+    const role = meta.roles.find(r => r.code === post);
+    if (role) {
+      const cb = document.getElementById('ur_' + role.id);
+      if (cb) cb.checked = true;
+      hint.innerHTML = `已自动挂载角色：<strong class="text-primary">${AC.esc(role.name)}</strong>`;
+    } else {
+      hint.textContent = '未找到同名角色模板，请手动勾选角色';
+    }
+  },
+
+  async save() {
+    const id = document.getElementById('u_id').value;
+    const roleIds = Array.from(document.querySelectorAll('.role-cb:checked')).map(c => parseInt(c.value));
+    const body = {
+      username: document.getElementById('u_username').value.trim(),
+      name:     document.getElementById('u_name').value.trim(),
+      org_id:   parseInt(document.getElementById('u_org').value || '0') || null,
+      post:     document.getElementById('u_post').value,
+      phone:    document.getElementById('u_phone').value.trim(),
+      email:    document.getElementById('u_email').value.trim(),
+      status:   document.getElementById('u_status').checked,
+      role_ids: roleIds
+    };
+    if (!id) {
+      if (!body.username) { AC.toast('登录名必填', false); return; }
+      const pwd = document.getElementById('u_password').value.trim();
+      if (pwd) body.password = pwd;
+    }
+    const j = id
+      ? await AC.req('/auth_core/api/user/' + id, 'PUT', body)
+      : await AC.req('{{ url_for("auth_core.api_user_create") }}', 'POST', body);
+    if (!j) return;
+    bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
+    AC.toast(j.msg);
+    User.load();
+  },
+
+  async resetPwd(id, username) {
+    const pwd = prompt('为「' + username + '」设置新密码（留空则使用系统默认密码）：', '');
+    if (pwd === null) return;
+    const j = await AC.req('/auth_core/api/user/' + id + '/reset_password', 'POST',
+                           pwd.trim() ? { password: pwd.trim() } : {});
+    if (j) { AC.toast(j.msg); User.load(); }
+  },
+
+  async toggle(id) {
+    const j = await AC.req('/auth_core/api/user/' + id + '/toggle_status', 'POST', {});
+    if (j) { AC.toast(j.msg); User.load(); }
+  },
+
+  async del(id, username) {
+    if (!confirm('确认删除用户「' + username + '」？该操作不可恢复。')) return;
+    const j = await AC.req('/auth_core/api/user/' + id, 'DELETE');
+    if (j) { AC.toast(j.msg); User.load(); }
+  },
+
+  async preview(id) {
+    const box = document.getElementById('effBody');
+    box.innerHTML = '<div class="ac-empty"><i class="bi bi-hourglass-split"></i>加载中…</div>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('effModal')).show();
+    const j = await AC.req('/auth_core/api/user/' + id + '/effective');
+    if (!j) return;
+    const d = j.data;
+    box.innerHTML = `
+      <table class="table table-sm mb-3">
+        <tr><th style="width:100px" class="text-muted fw-normal">用户</th>
+            <td>${AC.esc(d.name)} <code class="small">${AC.esc(d.username)}</code></td></tr>
+        <tr><th class="text-muted fw-normal">所属组织</th><td>${AC.esc(d.org_name)}</td></tr>
+        <tr><th class="text-muted fw-normal">角色</th>
+            <td>${d.roles.length ? d.roles.map(r => `<span class="badge badge-soft me-1">${AC.esc(r)}</span>`).join('') : '<span class="text-muted">未分配</span>'}</td></tr>
+        <tr><th class="text-muted fw-normal">数据范围</th>
+            <td><span class="badge bg-primary-subtle text-primary-emphasis">${AC.esc(d.scope_name)}</span></td></tr>
+        <tr><th class="text-muted fw-normal">可见组织</th>
+            <td class="small">${d.visible_orgs.length ? d.visible_orgs.map(AC.esc).join('、') : '<span class="text-muted">按范围动态解析</span>'}</td></tr>
+      </table>
+      <div class="fw-semibold small mb-2">功能权限（${d.permissions.length} 项）</div>
+      <div style="max-height:220px;overflow-y:auto">
+        ${d.permissions.length
+          ? d.permissions.map(p => `<code class="d-inline-block me-2 mb-1 small">${AC.esc(p)}</code>`).join('')
+          : '<div class="text-muted small">无任何功能权限</div>'}
+      </div>`;
+  }
+};
+
+User.init();
+</script>
+{% endblock %}

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{#
+  auth_core 独立布局：自带导航，不依赖旧 rbac_routes 的 get_sys_menu_groups()。
+  这样权限中台整包可迁出独立运行（可插拔），且旧菜单逻辑不污染新模块。
+#}
+{% block title %}{{ page_title }} - 权限中台{% endblock %}
+
+{% block content %}
+<style>
+  .ac-wrap { display: flex; gap: 16px; align-items: flex-start; }
+  .ac-nav {
+    width: 208px; flex-shrink: 0; background: var(--bs-body-bg, #fff);
+    border: 1px solid var(--bs-border-color, #e5e6eb); border-radius: 10px;
+    padding: 10px; position: sticky; top: 72px;
+  }
+  .ac-nav-title {
+    font-size: 12px; color: #8a9099; letter-spacing: .5px;
+    padding: 6px 10px 8px; text-transform: uppercase; font-weight: 600;
+  }
+  .ac-nav a {
+    display: flex; align-items: center; gap: 9px; padding: 9px 11px;
+    border-radius: 7px; color: var(--bs-body-color, #333); text-decoration: none;
+    font-size: 14px; margin-bottom: 2px;
+    transition: background .16s ease, color .16s ease, transform .16s ease;
+  }
+  .ac-nav a:hover { background: rgba(13,110,253,.07); transform: translateX(2px); }
+  .ac-nav a.active { background: #0d6efd; color: #fff; font-weight: 500; }
+  .ac-nav a.active i { color: #fff; }
+  .ac-nav a i { font-size: 15px; color: #6c757d; width: 17px; text-align: center; }
+  .ac-body { flex: 1; min-width: 0; }
+
+  .ac-card {
+    background: var(--bs-body-bg, #fff); border: 1px solid var(--bs-border-color, #e5e6eb);
+    border-radius: 10px; overflow: hidden;
+  }
+  .ac-card-head {
+    padding: 13px 16px; border-bottom: 1px solid var(--bs-border-color, #eef0f3);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  .ac-card-head h6 { margin: 0; font-size: 15px; font-weight: 600; }
+  .ac-card-body { padding: 16px; }
+
+  .ac-hint {
+    background: rgba(13,110,253,.06); border-left: 3px solid #0d6efd;
+    padding: 9px 13px; border-radius: 6px; font-size: 13px; color: #4a5560; margin-bottom: 14px;
+  }
+  [data-theme="dark"] .ac-hint { color: #adb5bd; background: rgba(13,110,253,.12); }
+  .ac-empty { text-align: center; padding: 40px 20px; color: #9aa0a6; }
+  .ac-empty i { font-size: 34px; display: block; margin-bottom: 10px; opacity: .5; }
+  .badge-soft { background: rgba(108,117,125,.13); color: #5a6169; font-weight: 500; }
+  [data-theme="dark"] .badge-soft { color: #adb5bd; }
+  .table-sm td, .table-sm th { vertical-align: middle; }
+  @media (max-width: 991.98px) {
+    .ac-wrap { flex-direction: column; }
+    .ac-nav { width: 100%; position: static; display: flex; gap: 6px; overflow-x: auto; }
+    .ac-nav-title { display: none; }
+    .ac-nav a { white-space: nowrap; margin-bottom: 0; }
+  }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+    <li class="breadcrumb-item">权限中台</li>
+    <li class="breadcrumb-item active">{{ page_title }}</li>
+  </ol>
+</nav>
+
+<div class="ac-wrap">
+  <aside class="ac-nav">
+    <div class="ac-nav-title">权限中台 M0</div>
+    <a href="{{ url_for('auth_core.page_orgs') }}" class="{% if active_nav == 'orgs' %}active{% endif %}">
+      <i class="bi bi-diagram-3"></i><span>组织架构</span>
+    </a>
+    <a href="{{ url_for('auth_core.page_roles') }}" class="{% if active_nav == 'roles' %}active{% endif %}">
+      <i class="bi bi-shield-lock"></i><span>角色权限</span>
+    </a>
+    <a href="{{ url_for('auth_core.page_users') }}" class="{% if active_nav == 'users' %}active{% endif %}">
+      <i class="bi bi-people"></i><span>用户管理</span>
+    </a>
+  </aside>
+  <div class="ac-body">
+    {% block ac_content %}{% endblock %}
+  </div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:1090">
+  <div id="acToast" class="toast align-items-center border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="acToastMsg"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+// —— auth_core 前端公共工具（独立命名空间，不与旧脚本冲突）——
+const AC = {
+  toast(msg, ok = true) {
+    const el = document.getElementById('acToast');
+    el.className = 'toast align-items-center border-0 text-white ' + (ok ? 'bg-success' : 'bg-danger');
+    document.getElementById('acToastMsg').textContent = msg;
+    bootstrap.Toast.getOrCreateInstance(el, { delay: 2600 }).show();
+  },
+  async req(url, method = 'GET', body = null) {
+    const opt = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opt.body = JSON.stringify(body);
+    try {
+      const r = await fetch(url, opt);
+      const j = await r.json();
+      if (j.code !== 0) { AC.toast(j.msg || '操作失败', false); return null; }
+      return j;
+    } catch (e) { AC.toast('网络异常：' + e.message, false); return null; }
+  },
+  esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g,
+      c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  },
+  meta: null,
+  async loadMeta(force = false) {
+    if (AC.meta && !force) return AC.meta;
+    const j = await AC.req('{{ url_for("auth_core.api_meta") }}');
+    AC.meta = j ? j.data : { orgs: [], posts: [], scopes: [], roles: [] };
+    return AC.meta;
+  }
+};
+</script>
+{% block ac_script %}{% endblock %}
+{% endblock %}

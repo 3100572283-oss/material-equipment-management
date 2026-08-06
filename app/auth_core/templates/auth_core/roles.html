@@ -1,0 +1,331 @@
+{% extends "auth_core/_layout.html" %}
+{% set page_title = '角色权限' %}
+
+{% block ac_content %}
+<div class="ac-card">
+  <div class="ac-card-head">
+    <h6><i class="bi bi-shield-lock me-2 text-primary"></i>角色权限</h6>
+    {% if 'system:role:create' in perms %}
+    <button class="btn btn-primary btn-sm" onclick="Role.openForm()">
+      <i class="bi bi-plus-lg me-1"></i>新增角色
+    </button>
+    {% endif %}
+  </div>
+  <div class="ac-card-body">
+    <div class="ac-hint">
+      <i class="bi bi-info-circle me-1"></i>
+      角色 = <strong>功能权限</strong>（能操作什么）+ <strong>数据范围</strong>（能看到谁的数据）双维度。
+      内置角色已按铁建岗位预设，新增人员时<strong>选组织 + 选岗位即自动带权</strong>，无需逐项配置。
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th style="width:150px">角色名称</th>
+            <th style="width:130px">编码</th>
+            <th style="width:150px">数据范围</th>
+            <th style="width:80px" class="text-center">权限点</th>
+            <th style="width:70px" class="text-center">用户</th>
+            <th style="width:70px">状态</th>
+            <th>备注</th>
+            <th style="width:160px" class="text-end">操作</th>
+          </tr>
+        </thead>
+        <tbody id="roleTbody">
+          <tr><td colspan="8" class="ac-empty"><i class="bi bi-hourglass-split"></i>加载中…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 角色表单 -->
+<div class="modal fade" id="roleModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title" id="roleModalTitle">新增角色</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="r_id">
+        <div class="row g-3">
+          <div class="col-6">
+            <label class="form-label small fw-semibold">角色编码 <span class="text-danger">*</span></label>
+            <input class="form-control form-control-sm" id="r_code" placeholder="如 quality_manager">
+            <div class="form-text" style="font-size:11px">创建后不可修改，建议用英文小写下划线</div>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">角色名称 <span class="text-danger">*</span></label>
+            <input class="form-control form-control-sm" id="r_name" placeholder="如 质量总监">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">数据范围</label>
+            <select class="form-select form-select-sm" id="r_scope">
+              {% for s in scope_options %}
+              <option value="{{ s.code }}">{{ s.name }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text" style="font-size:11px">
+              决定该角色能看到哪一层的数据，「本法人及下属单位」以组织树上勾选了法人的节点为界
+            </div>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">排序</label>
+            <input type="number" class="form-control form-control-sm" id="r_sort" value="99">
+          </div>
+          <div class="col-6 d-flex align-items-end">
+            <div class="form-check form-switch mb-1">
+              <input class="form-check-input" type="checkbox" id="r_status" checked>
+              <label class="form-check-label small" for="r_status">启用</label>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">备注</label>
+            <input class="form-control form-control-sm" id="r_remark">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light btn-sm" data-bs-dismiss="modal">取消</button>
+        <button class="btn btn-primary btn-sm" onclick="Role.save()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 权限授权矩阵 -->
+<div class="modal fade" id="permModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-key me-2"></i>权限授权 · <span id="permRoleName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="small text-muted">
+            已选 <strong id="permCount" class="text-primary">0</strong> 项
+          </div>
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" onclick="Role.checkAll(true)">全选</button>
+            <button class="btn btn-outline-secondary" onclick="Role.checkAll(false)">清空</button>
+          </div>
+        </div>
+        <div id="permBox"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light btn-sm" data-bs-dismiss="modal">取消</button>
+        <button class="btn btn-primary btn-sm" id="permSaveBtn" onclick="Role.saveGrant()">保存授权</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block ac_script %}
+<script>
+const CAN = {
+  create: {{ 'true' if 'system:role:create' in perms else 'false' }},
+  edit:   {{ 'true' if 'system:role:edit'   in perms else 'false' }},
+  del:    {{ 'true' if 'system:role:delete' in perms else 'false' }},
+  grant:  {{ 'true' if 'system:role:grant'  in perms else 'false' }}
+};
+const MODULE_NAMES = {
+  material: '物资管理', equipment: '设备管理', cost: '成本核算',
+  subcontract: '分包商管理', system: '系统与权限'
+};
+const ACTION_NAMES = {
+  view: '查看', create: '新增', edit: '编辑', delete: '删除',
+  export: '导出', approve: '审批', review: '审查', grant: '授权', reset_pwd: '重置密码'
+};
+
+const Role = {
+  list: [],
+  curRoleId: null,
+
+  async load() {
+    const j = await AC.req('{{ url_for("auth_core.api_role_list") }}');
+    Role.list = j ? j.data : [];
+    Role.render();
+  },
+
+  render() {
+    const tb = document.getElementById('roleTbody');
+    if (!Role.list.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="ac-empty"><i class="bi bi-inbox"></i>暂无角色</td></tr>';
+      return;
+    }
+    tb.innerHTML = Role.list.map(r => {
+      const sysTag = r.is_system
+        ? '<span class="badge badge-soft ms-1" title="内置角色不可删除">内置</span>' : '';
+      let ops = '';
+      if (CAN.grant) ops += `<button class="btn btn-outline-primary" onclick="Role.openPerm(${r.id},'${AC.esc(r.role_name)}')"><i class="bi bi-key me-1"></i>授权</button>`;
+      if (CAN.edit)  ops += `<button class="btn btn-outline-secondary" onclick='Role.openForm(${JSON.stringify(r)})'><i class="bi bi-pencil"></i></button>`;
+      if (CAN.del && !r.is_system) ops += `<button class="btn btn-outline-danger" onclick="Role.del(${r.id},'${AC.esc(r.role_name)}')"><i class="bi bi-trash"></i></button>`;
+      return `<tr>
+        <td class="fw-semibold">${AC.esc(r.role_name)}${sysTag}</td>
+        <td><code class="small">${AC.esc(r.role_code)}</code></td>
+        <td><span class="badge bg-primary-subtle text-primary-emphasis">${AC.esc(r.scope_name)}</span></td>
+        <td class="text-center">${r.perm_count}</td>
+        <td class="text-center">${r.user_count}</td>
+        <td>${r.status ? '<span class="badge bg-success">启用</span>' : '<span class="badge bg-secondary">禁用</span>'}</td>
+        <td class="text-muted small">${AC.esc(r.remark)}</td>
+        <td class="text-end"><div class="btn-group btn-group-sm">${ops}</div></td>
+      </tr>`;
+    }).join('');
+  },
+
+  openForm(r = null) {
+    document.getElementById('roleModalTitle').textContent = r ? '编辑角色' : '新增角色';
+    document.getElementById('r_id').value     = r ? r.id : '';
+    document.getElementById('r_code').value   = r ? r.role_code : '';
+    document.getElementById('r_code').disabled = !!r;
+    document.getElementById('r_name').value   = r ? r.role_name : '';
+    document.getElementById('r_scope').value  = r ? r.scope_type : 'project';
+    document.getElementById('r_sort').value   = r ? r.sort : 99;
+    document.getElementById('r_remark').value = r ? r.remark : '';
+    document.getElementById('r_status').checked = r ? !!r.status : true;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('roleModal')).show();
+  },
+
+  async save() {
+    const id = document.getElementById('r_id').value;
+    const body = {
+      role_code:  document.getElementById('r_code').value.trim(),
+      role_name:  document.getElementById('r_name').value.trim(),
+      scope_type: document.getElementById('r_scope').value,
+      sort:       parseInt(document.getElementById('r_sort').value || '99'),
+      remark:     document.getElementById('r_remark').value.trim(),
+      status:     document.getElementById('r_status').checked
+    };
+    if (!body.role_code || !body.role_name) { AC.toast('角色编码与名称必填', false); return; }
+
+    const j = id
+      ? await AC.req('/auth_core/api/role/' + id, 'PUT', body)
+      : await AC.req('{{ url_for("auth_core.api_role_create") }}', 'POST', body);
+    if (!j) return;
+    bootstrap.Modal.getInstance(document.getElementById('roleModal')).hide();
+    AC.toast(j.msg);
+    Role.load();
+  },
+
+  async del(id, name) {
+    if (!confirm('确认删除角色「' + name + '」？')) return;
+    const j = await AC.req('/auth_core/api/role/' + id, 'DELETE');
+    if (!j) return;
+    AC.toast(j.msg);
+    Role.load();
+  },
+
+  // ——— 权限矩阵 ———
+  async openPerm(roleId, roleName) {
+    Role.curRoleId = roleId;
+    document.getElementById('permRoleName').textContent = roleName;
+    const box = document.getElementById('permBox');
+    box.innerHTML = '<div class="ac-empty"><i class="bi bi-hourglass-split"></i>加载中…</div>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('permModal')).show();
+
+    const j = await AC.req('/auth_core/api/role/' + roleId + '/permissions');
+    if (!j) return;
+
+    const saveBtn = document.getElementById('permSaveBtn');
+    if (j.is_super) {
+      box.innerHTML = `<div class="alert alert-warning mb-3 py-2 small">
+        <i class="bi bi-shield-fill-exclamation me-1"></i>
+        <strong>超级管理员</strong>默认拥有全部权限（含后续新增的权限点），无需也不建议单独配置。</div>` + Role.matrix(j.data);
+      saveBtn.disabled = true;
+    } else {
+      box.innerHTML = Role.matrix(j.data);
+      saveBtn.disabled = false;
+    }
+    Role.countPerm();
+  },
+
+  matrix(groups) {
+    if (!groups.length) return '<div class="ac-empty"><i class="bi bi-inbox"></i>暂无权限点</div>';
+    return groups.map(g => `
+      <div class="perm-group">
+        <div class="perm-group-head">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="mod_${g.module}"
+                   onchange="Role.checkModule('${g.module}', this.checked)">
+            <label class="form-check-label fw-semibold" for="mod_${g.module}">
+              ${AC.esc(MODULE_NAMES[g.module] || g.module)}
+            </label>
+          </div>
+        </div>
+        <div class="perm-group-body">
+          ${g.resources.map(r => `
+            <div class="perm-res" data-module="${g.module}">
+              <div class="perm-res-name">${AC.esc(r.resource)}</div>
+              <div class="perm-actions">
+                ${r.actions.map(a => `
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input perm-cb" type="checkbox"
+                           data-module="${g.module}" value="${a.id}"
+                           id="p_${a.id}" ${a.granted ? 'checked' : ''}
+                           onchange="Role.countPerm()">
+                    <label class="form-check-label small" for="p_${a.id}" title="${AC.esc(a.perm_key)}">
+                      ${AC.esc(ACTION_NAMES[a.action] || a.action)}
+                    </label>
+                  </div>`).join('')}
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+  },
+
+  checkModule(mod, checked) {
+    document.querySelectorAll(`.perm-cb[data-module="${mod}"]`).forEach(cb => cb.checked = checked);
+    Role.countPerm();
+  },
+
+  checkAll(checked) {
+    document.querySelectorAll('.perm-cb').forEach(cb => cb.checked = checked);
+    document.querySelectorAll('[id^="mod_"]').forEach(cb => cb.checked = checked);
+    Role.countPerm();
+  },
+
+  countPerm() {
+    const all = Array.from(document.querySelectorAll('.perm-cb'));
+    document.getElementById('permCount').textContent = all.filter(c => c.checked).length;
+    // 模块级复选框态同步（全选/半选）
+    const mods = new Set(all.map(c => c.dataset.module));
+    mods.forEach(m => {
+      const items = all.filter(c => c.dataset.module === m);
+      const on = items.filter(c => c.checked).length;
+      const head = document.getElementById('mod_' + m);
+      if (head) {
+        head.checked = on === items.length && on > 0;
+        head.indeterminate = on > 0 && on < items.length;
+      }
+    });
+  },
+
+  async saveGrant() {
+    const ids = Array.from(document.querySelectorAll('.perm-cb:checked')).map(c => parseInt(c.value));
+    const j = await AC.req('/auth_core/api/role/' + Role.curRoleId + '/permissions', 'POST', { permission_ids: ids });
+    if (!j) return;
+    bootstrap.Modal.getInstance(document.getElementById('permModal')).hide();
+    AC.toast(j.msg);
+    Role.load();
+  }
+};
+
+Role.load();
+</script>
+<style>
+  .perm-group { border: 1px solid var(--bs-border-color, #e9ecef); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+  .perm-group-head { background: rgba(13,110,253,.05); padding: 9px 13px; border-bottom: 1px solid var(--bs-border-color, #eef0f3); }
+  .perm-group-body { padding: 4px 13px 10px; }
+  .perm-res { display: flex; align-items: center; gap: 14px; padding: 7px 0; border-bottom: 1px dashed var(--bs-border-color, #f0f2f5); }
+  .perm-res:last-child { border-bottom: none; }
+  .perm-res-name { width: 130px; flex-shrink: 0; font-size: 13px; color: #6c757d; font-family: ui-monospace, monospace; }
+  .perm-actions { flex: 1; }
+  @media (max-width: 575.98px) {
+    .perm-res { flex-direction: column; align-items: flex-start; gap: 4px; }
+    .perm-res-name { width: auto; }
+  }
+</style>
+{% endblock %}

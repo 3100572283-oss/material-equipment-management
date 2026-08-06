@@ -54,10 +54,37 @@ PERM_SEED = [
     ('cost', 'budget', 'edit', 'cost:budget:edit'),
     ('subcontract', 'supplier', 'view', 'subcontract:supplier:view'),
     ('subcontract', 'supplier', 'review', 'subcontract:supplier:review'),
-    ('system', 'user', 'view', 'system:user:view'),
-    ('system', 'user', 'edit', 'system:user:edit'),
-    ('system', 'role', 'view', 'system:role:view'),
+    # —— 权限中台自身管理权限（三页 UI 按钮级控制）——
     ('system', 'org', 'view', 'system:org:view'),
+    ('system', 'org', 'create', 'system:org:create'),
+    ('system', 'org', 'edit', 'system:org:edit'),
+    ('system', 'org', 'delete', 'system:org:delete'),
+    ('system', 'role', 'view', 'system:role:view'),
+    ('system', 'role', 'create', 'system:role:create'),
+    ('system', 'role', 'edit', 'system:role:edit'),
+    ('system', 'role', 'delete', 'system:role:delete'),
+    ('system', 'role', 'grant', 'system:role:grant'),
+    ('system', 'user', 'view', 'system:user:view'),
+    ('system', 'user', 'create', 'system:user:create'),
+    ('system', 'user', 'edit', 'system:user:edit'),
+    ('system', 'user', 'delete', 'system:user:delete'),
+    ('system', 'user', 'reset_pwd', 'system:user:reset_pwd'),
+]
+
+# 岗位选项（新增用户时「选组织+选岗位自动带权」的下拉源）
+# 与 ROLE_SEED 的 role_code 一一对应，保证选岗位即自动挂载对应角色模板
+POST_OPTIONS = [
+    {'code': code, 'name': name}
+    for code, name, _scope, _sort in ROLE_SEED if code != 'super_admin'
+]
+
+# 数据范围类型（角色配置下拉源）
+SCOPE_OPTIONS = [
+    {'code': 'self', 'name': '仅本人数据'},
+    {'code': 'project', 'name': '本项目部数据'},
+    {'code': 'legal_entity', 'name': '本法人及下属单位'},
+    {'code': 'all', 'name': '全部数据'},
+    {'code': 'custom', 'name': '自定义组织集'},
 ]
 
 
