@@ -91,6 +91,16 @@
         <div class="text">钢材换算工具</div>
         <i class="bi bi-chevron-right arrow"></i>
     </a>
+    <a href="{{ url_for('mobile.m_calculator') }}" class="m-list-item">
+        <div class="icon gray"><i class="bi bi-calculator-fill"></i></div>
+        <div class="text">工程计算器</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="javascript:void(0)" onclick="var btn=document.getElementById('mAIFloatBtn'); if(btn) btn.click();" class="m-list-item">
+        <div class="icon" style="background:linear-gradient(135deg,#409eff,#1e6fd9);"><i class="bi bi-robot" style="color:#fff;"></i></div>
+        <div class="text">AI智能助手</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
 </div>
 
 <!-- 项目切换 -->
@@ -142,9 +152,9 @@
 <script>
 // ========== 主题切换（在 profile 页同步显示状态） ==========
 function cycleTheme(){
-    var cur = localStorage.getItem('m_theme_mode') || 'auto';
+    var cur = localStorage.getItem('theme') || 'auto';
     var next = cur === 'auto' ? 'dark' : (cur === 'dark' ? 'light' : 'auto');
-    localStorage.setItem('m_theme_mode', next);
+    localStorage.setItem('theme', next);
     if (window.applyTheme) window.applyTheme(next);
     updateThemeDisplay();
     var label = next === 'auto' ? '跟随系统' : (next === 'dark' ? '深色模式' : '浅色模式');
@@ -152,7 +162,7 @@ function cycleTheme(){
 }
 
 function updateThemeDisplay(){
-    var mode = localStorage.getItem('m_theme_mode') || 'auto';
+    var mode = localStorage.getItem('theme') || 'auto';
     var label = mode === 'auto' ? '跟随系统' : (mode === 'dark' ? '深色' : '浅色');
     var val = document.getElementById('themeValue');
     if (val) val.textContent = label;
@@ -192,7 +202,7 @@ function confirmLogout() {
 }
 
 function showAbout() {
-    M.confirm('物资设备管理系统 v1.0\n\n移动端入口 v2.0（第二期）\n功能：扫码录入 / 离线录入 / 语音录入 / 盘点 / 审批 / 站内消息 / 钢材换算 / 签字\n\n本系统使用 Flask + SQLite 构建，所有数据与PC端实时同步。',
+    M.confirm('物资设备管理系统 V7.0\n\n移动端 V7.0\n功能：扫码录入 / 离线录入 / 语音录入 / 盘点 / 审批 / 站内消息 / 钢材换算 / 工程计算器 / AI智能助手 / 合同管理 / 调拨管理\n\n本系统使用 Flask + MySQL + Redis 构建，所有数据与PC端实时同步。支持AI智能助手、视觉识别、语音转文字等功能。',
         function() {});
 }
 

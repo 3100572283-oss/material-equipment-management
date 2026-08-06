@@ -152,7 +152,7 @@
     document.getElementById('materialForm').addEventListener('submit', function (e) {
         if (!categoryIdInput.value) {
             e.preventDefault();
-            alert('请选择物资分类（必须到三级）。');
+            customAlert('请选择物资分类（必须到三级）。');
         }
     });
 

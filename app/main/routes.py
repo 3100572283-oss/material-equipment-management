@@ -1,7 +1,7 @@
 from flask import render_template, request, redirect, url_for, flash, session, jsonify
 from flask_login import login_required, current_user
 from sqlalchemy import func, extract, text
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from app.main import bp
 from app import db
 from app.decorators import log_audit
@@ -24,6 +24,11 @@ def index():
 def dashboard():
     project_id = session.get('current_project_id')
     is_all_projects_mode = (project_id is None)
+
+    # P2: Dashboard 统计缓存
+    from app.cache import get_dashboard_stats_cache, set_dashboard_stats_cache
+    _cache_key = 'all' if is_all_projects_mode else f'p{project_id}'
+    _cached_stats = get_dashboard_stats_cache(_cache_key)
 
     # 获取当前用户可见项目列表（用于汇总模式）
     if is_all_projects_mode:
@@ -49,21 +54,29 @@ def dashboard():
     if is_all_projects_mode:
         stock_in_total = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
             StockIn.project_id.in_(visible_project_ids),
-            StockIn.status == 'approved'
+            StockIn.status.in_(['approved', 'completed'])
         ).scalar() or 0
         contract_total = db.session.query(func.coalesce(func.sum(Contract.amount_with_tax), 0)).filter(
             Contract.project_id.in_(visible_project_ids)).scalar() or 0
         payment_total = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
             Payment.project_id.in_(visible_project_ids)).scalar() or 0
+        stock_out_total = db.session.query(func.coalesce(func.sum(StockOut.total_amount), 0)).filter(
+            StockOut.project_id.in_(visible_project_ids),
+            StockOut.status.in_(['approved', 'completed'])
+        ).scalar() or 0
     else:
         stock_in_total = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
             StockIn.project_id == project_id,
-            StockIn.status == 'approved'
+            StockIn.status.in_(['approved', 'completed'])
         ).scalar() or 0
         contract_total = db.session.query(func.coalesce(func.sum(Contract.amount_with_tax), 0)).filter(
             Contract.project_id == project_id).scalar() or 0
         payment_total = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
             Payment.project_id == project_id).scalar() or 0
+        stock_out_total = db.session.query(func.coalesce(func.sum(StockOut.total_amount), 0)).filter(
+            StockOut.project_id == project_id,
+            StockOut.status.in_(['approved', 'completed'])
+        ).scalar() or 0
 
     # 履约异常合同
     if is_all_projects_mode:
@@ -187,7 +200,7 @@ def dashboard():
         for p in visible_projects:
             p_stock_in = db.session.query(func.coalesce(func.sum(StockIn.total_amount), 0)).filter(
                 StockIn.project_id == p.id,
-                StockIn.status == 'approved'
+                StockIn.status.in_(['approved', 'completed'])
             ).scalar() or 0
             project_stats.append({
                 'id': p.id,
@@ -203,27 +216,33 @@ def dashboard():
     active_project_count = len([p for p in (visible_projects if is_all_projects_mode else []) if p.status == 'active'])
     total_project_count = len(visible_projects) if is_all_projects_mode else 0
 
-    stats = {
-        'material_count': material_count,
-        'supplier_count': supplier_count,
-        'usage_unit_count': usage_unit_count,
-        'contract_count': contract_count,
-        'stock_in_total': round(float(stock_in_total) / 10000, 2),
-        'contract_total': round(float(contract_total) / 10000, 2),
-        'payment_total': round(float(payment_total) / 10000, 2),
-        'warning_contracts': warning_contracts,
-        'pending_pr_count': pending_pr_count,
-        'pending_quality_count': pending_quality_count,
-        'enable_quality_check': enable_quality_check,
-        'expiring_suppliers': expiring_suppliers,
-        'turnover_count': turnover_count,
-        'equipment_count': equipment_count,
-        'equipment_in_use': equipment_in_use,
-        'equipment_repairing': equipment_repairing,
-        'expiring_maintenance': expiring_maintenance,
-        'in_transfer_count': in_transfer_count,
-        'pending_transfer_count': pending_transfer_count,
-    }
+    if _cached_stats is not None:
+        stats = _cached_stats
+    else:
+        stats = {
+            'material_count': material_count,
+            'supplier_count': supplier_count,
+            'usage_unit_count': usage_unit_count,
+            'contract_count': contract_count,
+            'stock_in_total': round(float(stock_in_total) / 10000, 2),
+            'stock_out_total': round(float(stock_out_total) / 10000, 2),
+            'contract_total': round(float(contract_total) / 10000, 2),
+            'payment_total': round(float(payment_total) / 10000, 2),
+            'warning_contracts': warning_contracts,
+            'pending_pr_count': pending_pr_count,
+            'pending_quality_count': pending_quality_count,
+            'enable_quality_check': enable_quality_check,
+            'expiring_suppliers': expiring_suppliers,
+            'turnover_count': turnover_count,
+            'equipment_count': equipment_count,
+            'equipment_in_use': equipment_in_use,
+            'equipment_repairing': equipment_repairing,
+            'expiring_maintenance': expiring_maintenance,
+            'in_transfer_count': in_transfer_count,
+            'pending_transfer_count': pending_transfer_count,
+        }
+        # P2: 写入 Dashboard 缓存
+        set_dashboard_stats_cache(_cache_key, stats)
 
     return render_template('index.html', stats=stats,
                            is_all_projects_mode=is_all_projects_mode,
@@ -263,7 +282,7 @@ def dashboard_data():
             ).filter(
                 Material.project_id == project_id,
                 Material.category_id.in_(all_ids),
-                StockIn.status == 'approved'
+                StockIn.status.in_(['approved', 'completed'])
             ).scalar()
             
             if amount and float(amount) > 0:
@@ -288,7 +307,7 @@ def dashboard_data():
             ).filter(
                 Material.project_id == project_id,
                 Material.category_id.in_(all_ids),
-                StockIn.status == 'approved'
+                StockIn.status.in_(['approved', 'completed'])
             ).scalar()
             
             if amount and float(amount) > 0:
@@ -312,14 +331,14 @@ def dashboard_data():
         monthly_out[m] = 0
 
     # 入库
-    month_label = func.strftime('%Y-%m', StockIn.stock_in_date).label('month')
+    month_label = func.date_format(StockIn.stock_in_date, '%Y-%m').label('month')
     in_data = db.session.query(
         month_label,
         func.coalesce(func.sum(StockIn.total_amount), 0).label('amount')
     ).filter(
         StockIn.project_id == project_id,
         StockIn.stock_in_date >= now - timedelta(days=180),
-        StockIn.status == 'approved'
+        StockIn.status.in_(['approved', 'completed'])
     ).group_by(month_label).all()
 
     for month_val, amount in in_data:
@@ -327,14 +346,14 @@ def dashboard_data():
             monthly_in[month_val] = round(float(amount or 0) / 10000, 2)
 
     # 出库
-    out_month_label = func.strftime('%Y-%m', StockOut.stock_out_date).label('month')
+    out_month_label = func.date_format(StockOut.stock_out_date, '%Y-%m').label('month')
     out_data = db.session.query(
         out_month_label,
         func.coalesce(func.sum(StockOut.total_amount), 0).label('amount')
     ).filter(
         StockOut.project_id == project_id,
         StockOut.stock_out_date >= now - timedelta(days=180),
-        StockOut.status == 'approved'
+        StockOut.status.in_(['approved', 'completed'])
     ).group_by(out_month_label).all()
 
     for month, amount in out_data:
@@ -357,7 +376,7 @@ def dashboard_data():
         StockOut, StockOut.id == StockOutItem.stock_out_id
     ).filter(
         StockOut.project_id == project_id,
-        StockOut.status == 'approved'
+        StockOut.status.in_(['approved', 'completed'])
     ).group_by(Material.id, Material.name).order_by(
         func.sum(StockOutItem.quantity).desc()
     ).limit(10).all()
@@ -367,10 +386,99 @@ def dashboard_data():
         for name, total_qty in top_consumption
     ]
 
+    # 4. 合同统计（按状态分组）
+    contract_stats = []
+    contract_status_data = db.session.query(
+        Contract.status,
+        func.coalesce(func.sum(Contract.amount_with_tax), 0).label('total_amount'),
+        func.count(Contract.id).label('count')
+    ).filter(
+        Contract.project_id == project_id,
+        Contract.is_deleted == False
+    ).group_by(Contract.status).all()
+
+    for status, total, cnt in contract_status_data:
+        contract_stats.append({
+            'status': status or '未设置',
+            'amount': round(float(total or 0) / 10000, 2),
+            'count': cnt
+        })
+
+    # 5. 付款趋势统计（最近6个月）
+    payment_monthly = {}
+    for m in months:
+        payment_monthly[m] = 0
+
+    pay_month_label = func.date_format(Payment.payment_date, '%Y-%m').label('month')
+    pay_data = db.session.query(
+        pay_month_label,
+        func.coalesce(func.sum(Payment.amount), 0).label('amount')
+    ).filter(
+        Payment.project_id == project_id,
+        Payment.payment_date >= now - timedelta(days=180),
+        Payment.approval_status == 'passed'
+    ).group_by(pay_month_label).all()
+
+    for month, amount in pay_data:
+        if month in payment_monthly:
+            payment_monthly[month] = round(float(amount or 0) / 10000, 2)
+
+    payment_trend = [payment_monthly[m] for m in months]
+
+    # === P2: 趋势对比数据 ===
+    today = date.today()
+    this_month_start = today.replace(day=1)
+    last_month_end = this_month_start - timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1)
+    this_month_in = db.session.query(
+        func.coalesce(func.sum(StockInItem.quantity * StockInItem.unit_price), 0)
+    ).join(StockIn, StockIn.id == StockInItem.stock_in_id).filter(
+        StockIn.project_id == project_id,
+        StockIn.status.in_(['approved', 'completed']),
+        db.func.date(StockIn.stock_in_date) >= this_month_start
+    ).scalar() or 0
+    last_month_in = db.session.query(
+        func.coalesce(func.sum(StockInItem.quantity * StockInItem.unit_price), 0)
+    ).join(StockIn, StockIn.id == StockInItem.stock_in_id).filter(
+        StockIn.project_id == project_id,
+        StockIn.status.in_(['approved', 'completed']),
+        db.func.date(StockIn.stock_in_date) >= last_month_start,
+        db.func.date(StockIn.stock_in_date) <= last_month_end
+    ).scalar() or 0
+    this_month_out = db.session.query(
+        func.coalesce(func.sum(StockOutItem.quantity * StockOutItem.unit_price), 0)
+    ).join(StockOut, StockOut.id == StockOutItem.stock_out_id).filter(
+        StockOut.project_id == project_id,
+        StockOut.status.in_(['approved', 'completed']),
+        db.func.date(StockOut.stock_out_date) >= this_month_start
+    ).scalar() or 0
+    last_month_out = db.session.query(
+        func.coalesce(func.sum(StockOutItem.quantity * StockOutItem.unit_price), 0)
+    ).join(StockOut, StockOut.id == StockOutItem.stock_out_id).filter(
+        StockOut.project_id == project_id,
+        StockOut.status.in_(['approved', 'completed']),
+        db.func.date(StockOut.stock_out_date) >= last_month_start,
+        db.func.date(StockOut.stock_out_date) <= last_month_end
+    ).scalar() or 0
+    trend_comparison = {
+        'this_month_in': float(this_month_in),
+        'last_month_in': float(last_month_in),
+        'in_change_pct': round((float(this_month_in) - float(last_month_in)) / float(last_month_in) * 100, 1) if float(last_month_in) > 0 else 0,
+        'this_month_out': float(this_month_out),
+        'last_month_out': float(last_month_out),
+        'out_change_pct': round((float(this_month_out) - float(last_month_out)) / float(last_month_out) * 100, 1) if float(last_month_out) > 0 else 0,
+    }
+
     return jsonify({
         'category_distribution': category_distribution,
         'monthly_trend': monthly_trend,
-        'top_consumption': top_consumption
+        'top_consumption': top_consumption,
+        'contract_stats': contract_stats,
+        'payment_trend': {
+            'months': months,
+            'data': payment_trend
+        },
+        'trend_comparison': trend_comparison
     })
 
 
@@ -590,6 +698,7 @@ def mark_announcement_read(id):
     if not existing:
         db.session.add(SysAnnouncementRead(announcement_id=id, user_id=current_user.id))
         db.session.commit()
+
     return jsonify({'success': True})
 
 
@@ -791,3 +900,38 @@ def wizard_done():
         return redirect(url_for('auth.login'))
     session.pop('wizard_done', None)
     return render_template('wizard/done.html')
+
+@bp.route('/health')
+def health_check():
+    """P2: 健康检查端点 - 公开访问，无需认证"""
+    from flask import jsonify
+    from datetime import datetime
+    from app import db
+    from sqlalchemy import text
+
+    status = {'status': 'healthy', 'timestamp': datetime.now().isoformat()}
+
+    # 检查数据库连接
+    try:
+        db.session.execute(text('SELECT 1'))
+        status['db'] = 'ok'
+    except Exception as e:
+        status['db'] = 'error'
+        status['status'] = 'degraded'
+        status['db_error'] = str(e)[:200]
+
+    # 检查 Redis 连接
+    try:
+        from app.cache import is_redis_available
+        if is_redis_available():
+            status['redis'] = 'ok'
+        else:
+            status['redis'] = 'unavailable'
+            status['status'] = 'degraded'
+    except Exception as e:
+        status['redis'] = 'error'
+        status['status'] = 'degraded'
+        status['redis_error'] = str(e)[:200]
+
+    http_code = 200 if status['status'] == 'healthy' else 503
+    return jsonify(status), http_code

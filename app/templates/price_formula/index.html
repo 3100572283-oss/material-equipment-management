@@ -92,11 +92,11 @@ function toggleStatus(id, checkbox) {
         if (data.success) {
             location.reload();
         } else {
-            alert('操作失败');
+            customAlert('操作失败');
             checkbox.checked = !checkbox.checked;
         }
     }).catch(() => {
-        alert('操作失败');
+        customAlert('操作失败');
         checkbox.checked = !checkbox.checked;
     });
 }

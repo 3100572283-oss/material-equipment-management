@@ -1,0 +1,363 @@
+{% extends "mobile/base.html" %}
+{% block title %}采购申请{% endblock %}
+{% block nav_title %}采购申请{% endblock %}
+
+{% block content %}
+<!-- 项目信息 -->
+<div class="m-card" style="padding:10px 14px;">
+    <div style="display:flex;align-items:center;">
+        <i class="bi bi-building" style="color:#165DFF;font-size:18px;margin-right:8px;"></i>
+        <span style="font-size:14px;font-weight:600;">{{ project.name }}</span>
+    </div>
+</div>
+
+<!-- 表单 -->
+<form id="prForm" method="POST" action="{{ url_for('mobile.purchase_request') }}">
+    <input type="hidden" name="submit_type" id="submitType" value="save">
+
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-info-circle"></i> 基本信息</div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">申请单号</label>
+            <input type="text" class="m-form-control" value="{{ default_pr_no }}" readonly style="background:#f8f9fa;">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">申请部门</label>
+            <input type="text" class="m-form-control" name="apply_dept" placeholder="请输入申请部门" value="">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">需求日期</label>
+            <input type="date" class="m-form-control" name="demand_date" value="{{ today }}">
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">供应商</label>
+            <select class="m-form-control" name="supplier_id" id="supplierSelect">
+                <option value="">请选择供应商（可选）</option>
+                {% for s in suppliers %}
+                <option value="{{ s.id }}">{{ s.name }}{% if s.contact_person %} - {{ s.contact_person }}{% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="m-form-group">
+            <label class="m-form-label">备注</label>
+            <textarea class="m-form-control" name="remark" rows="2" placeholder="备注信息（可选）"></textarea>
+        </div>
+    </div>
+
+    <div class="m-card">
+        <div class="m-card-title" style="display:flex;justify-content:space-between;align-items:center;">
+            <span><i class="bi bi-list-ul"></i> 采购明细</span>
+            <button type="button" class="m-btn m-btn-outline-primary m-btn-sm" onclick="addRow()">
+                <i class="bi bi-plus-lg"></i> 添加
+            </button>
+        </div>
+
+        <div id="itemList">
+            <!-- 动态添加 -->
+        </div>
+
+        <div id="emptyTip" style="text-align:center;padding:20px;color:#adb5bd;font-size:13px;">
+            <i class="bi bi-inbox" style="font-size:28px;display:block;margin-bottom:6px;"></i>
+            点击"添加"按钮添加采购物资
+        </div>
+    </div>
+
+    <!-- 预计金额汇总 -->
+    <div class="m-card" id="summaryCard" style="display:none;">
+        <div class="m-card-title"><i class="bi bi-cash-coin"></i> 金额汇总</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+            <span style="font-size:14px;color:#6c757d;">预计总金额</span>
+            <span style="font-size:20px;font-weight:700;color:#dc3545;" id="totalAmount">¥0.00</span>
+        </div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div style="padding:12px;display:flex;gap:10px;">
+        <button type="submit" class="m-btn m-btn-outline-primary" style="flex:1;" onclick="document.getElementById('submitType').value='save'">
+            <i class="bi bi-save"></i> 保存草稿
+        </button>
+        <button type="submit" class="m-btn m-btn-primary" style="flex:1;" onclick="document.getElementById('submitType').value='submit'">
+            <i class="bi bi-send"></i> 提交审批
+        </button>
+    </div>
+</form>
+
+<style>
+.m-form-group {
+    margin-bottom: 12px;
+}
+.m-form-label {
+    display: block;
+    font-size: 13px;
+    color: #495057;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+.m-form-control {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+}
+.m-form-control:focus {
+    outline: none;
+    border-color: #165DFF;
+    box-shadow: 0 0 0 2px rgba(22,93,255,0.1);
+}
+.m-item-row {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: #fff;
+    position: relative;
+}
+.m-item-row .item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.m-item-row .item-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #165DFF;
+}
+.m-item-row .item-del {
+    color: #dc3545;
+    font-size: 18px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0 4px;
+}
+.m-item-row .m-form-group {
+    margin-bottom: 8px;
+}
+.m-item-row .m-form-control {
+    padding: 6px 10px;
+    font-size: 13px;
+}
+.m-item-row .item-amount {
+    font-size: 13px;
+    color: #dc3545;
+    font-weight: 600;
+    text-align: right;
+}
+.m-search-dropdown {
+    position: relative;
+}
+.m-search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0 0 6px 6px;
+    z-index: 1000;
+    display: none;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.m-search-result-item {
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f3f5;
+}
+.m-search-result-item:hover, .m-search-result-item.active {
+    background: #f0f5ff;
+}
+.m-search-result-item:last-child {
+    border-bottom: none;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var rowIndex = 0;
+
+function addRow(materialData) {
+    rowIndex++;
+    var item = materialData || {};
+    var row = document.createElement('div');
+    row.className = 'm-item-row';
+    row.id = 'itemRow_' + rowIndex;
+    row.innerHTML = `
+        <div class="item-header">
+            <span class="item-title">物资 #${rowIndex}</span>
+            <button type="button" class="item-del" onclick="removeRow(${rowIndex})"><i class="bi bi-x-circle"></i></button>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">物资名称</label>
+            <div class="m-search-dropdown">
+                <input type="text" class="m-form-control material-search" 
+                       placeholder="输入物资名称搜索" 
+                       value="${item.name || ''}"
+                       data-row="${rowIndex}"
+                       oninput="searchMaterial(this, ${rowIndex})">
+                <input type="hidden" name="material_id[]" value="${item.id || ''}">
+                <div class="m-search-results" id="searchResults_${rowIndex}"></div>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <div class="m-form-group" style="flex:1;">
+                <label class="m-form-label">规格</label>
+                <input type="text" class="m-form-control" value="${item.spec || ''}" readonly style="background:#f8f9fa;font-size:12px;" id="spec_${rowIndex}">
+            </div>
+            <div class="m-form-group" style="width:70px;">
+                <label class="m-form-label">单位</label>
+                <input type="text" class="m-form-control" value="${item.unit || ''}" readonly style="background:#f8f9fa;font-size:12px;" id="unit_${rowIndex}">
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <div class="m-form-group" style="flex:1;">
+                <label class="m-form-label">数量</label>
+                <input type="number" class="m-form-control" name="apply_qty[]" 
+                       placeholder="0" step="0.01" min="0"
+                       data-row="${rowIndex}"
+                       oninput="calcAmount(${rowIndex})" style="font-size:13px;">
+            </div>
+            <div class="m-form-group" style="flex:1;">
+                <label class="m-form-label">预计单价</label>
+                <input type="number" class="m-form-control" name="est_price[]" 
+                       placeholder="0.00" step="0.01" min="0"
+                       data-row="${rowIndex}"
+                       oninput="calcAmount(${rowIndex})" style="font-size:13px;">
+            </div>
+        </div>
+        <div class="item-amount" id="amount_${rowIndex}">小计: ¥0.00</div>
+        <div class="m-form-group" style="margin-top:8px;">
+            <label class="m-form-label">用途说明</label>
+            <input type="text" class="m-form-control" name="purpose[]" placeholder="用途（可选）" style="font-size:13px;">
+        </div>
+    `;
+    document.getElementById('itemList').appendChild(row);
+    document.getElementById('emptyTip').style.display = 'none';
+}
+
+function removeRow(idx) {
+    var row = document.getElementById('itemRow_' + idx);
+    if (row) row.remove();
+    if (document.getElementById('itemList').children.length === 0) {
+        document.getElementById('emptyTip').style.display = 'block';
+    }
+    calcTotal();
+}
+
+function searchMaterial(input, rowIdx) {
+    var keyword = input.value.trim();
+    var resultsDiv = document.getElementById('searchResults_' + rowIdx);
+    if (!keyword || keyword.length < 1) {
+        resultsDiv.style.display = 'none';
+        return;
+    }
+    fetch('{{ url_for("mobile.api_pr_materials") }}?keyword=' + encodeURIComponent(keyword))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            resultsDiv.innerHTML = '';
+            if (data.length === 0) {
+                resultsDiv.innerHTML = '<div class="m-search-result-item" style="color:#adb5bd;">未找到匹配物资</div>';
+                resultsDiv.style.display = 'block';
+                return;
+            }
+            data.forEach(function(m) {
+                var div = document.createElement('div');
+                div.className = 'm-search-result-item';
+                div.innerHTML = '<strong>' + m.name + '</strong><br><small style="color:#6c757d;">' + (m.spec || '') + ' | ' + (m.unit || '') + '</small>';
+                div.onclick = function() {
+                    input.value = m.name;
+                    input.parentElement.querySelector('input[type=hidden]').value = m.id;
+                    document.getElementById('spec_' + rowIdx).value = m.spec || '';
+                    document.getElementById('unit_' + rowIdx).value = m.unit || '';
+                    resultsDiv.style.display = 'none';
+                };
+                resultsDiv.appendChild(div);
+            });
+            resultsDiv.style.display = 'block';
+        })
+        .catch(function() {
+            resultsDiv.style.display = 'none';
+        });
+}
+
+// 点击其他地方关闭搜索结果
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.m-search-dropdown')) {
+        document.querySelectorAll('.m-search-results').forEach(function(d) { d.style.display = 'none'; });
+    }
+});
+
+function calcAmount(rowIdx) {
+    var row = document.getElementById('itemRow_' + rowIdx);
+    if (!row) return;
+    var qty = parseFloat(row.querySelector('input[name="apply_qty[]"]').value) || 0;
+    var price = parseFloat(row.querySelector('input[name="est_price[]"]').value) || 0;
+    var amount = qty * price;
+    document.getElementById('amount_' + rowIdx).textContent = '小计: ¥' + amount.toFixed(2);
+    calcTotal();
+}
+
+function calcTotal() {
+    var total = 0;
+    document.querySelectorAll('.m-item-row').forEach(function(row) {
+        var qty = parseFloat(row.querySelector('input[name="apply_qty[]"]').value) || 0;
+        var price = parseFloat(row.querySelector('input[name="est_price[]"]').value) || 0;
+        total += qty * price;
+    });
+    var card = document.getElementById('summaryCard');
+    var totalEl = document.getElementById('totalAmount');
+    if (total > 0) {
+        card.style.display = 'block';
+        totalEl.textContent = '¥' + total.toFixed(2);
+    } else {
+        card.style.display = 'none';
+    }
+}
+
+// 表单提交验证
+document.getElementById('prForm').addEventListener('submit', function(e) {
+    var items = document.querySelectorAll('.m-item-row');
+    if (items.length === 0) {
+        e.preventDefault();
+        M.toast('请至少添加一条采购明细', 'danger');
+        return;
+    }
+    var hasValid = false;
+    items.forEach(function(row) {
+        var mid = row.querySelector('input[type=hidden]').value;
+        var qty = parseFloat(row.querySelector('input[name="apply_qty[]"]').value) || 0;
+        if (mid && qty > 0) hasValid = true;
+    });
+    if (!hasValid) {
+        e.preventDefault();
+        M.toast('请选择物资并填写数量', 'danger');
+        return;
+    }
+    M.loading(true);
+});
+
+// 初始化一行
+addRow();
+
+// 下拉刷新
+if (window.MobilePullRefresh) {
+    MobilePullRefresh.bindRefresh({
+        onRefresh: function(done) {
+            setTimeout(function() { window.location.reload(); done(); }, 300);
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,129 @@
+{% extends "mobile/base.html" %}
+{% block title %}新建调拨{% endblock %}
+{% block nav_title %}新建调拨{% endblock %}
+{% block content_class %}no-tab{% endblock %}
+{% block mobile_tabbar %}{% endblock %}
+
+{% block content %}
+<form method="post" id="transferForm">
+    <!-- 基本信息 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-info-circle" style="color:#165DFF;"></i> 基本信息</div>
+        <div class="m-form-group">
+            <label class="m-form-label">调出项目</label>
+            <input type="text" class="m-form-control" value="{{ project.name }}" disabled>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">调入项目 <span style="color:#dc3545;">*</span></label>
+            <select name="to_project_id" class="m-form-select" required>
+                <option value="">-- 请选择 --</option>
+                {% for p in projects %}
+                <option value="{{ p.id }}">{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">调拨日期</label>
+            <input type="date" name="transfer_date" value="{{ today }}" class="m-form-control">
+        </div>
+        <div class="m-form-group">
+            <label class="m-form-label">备注</label>
+            <textarea name="remark" class="m-form-control" rows="2" placeholder="可填写调拨说明"></textarea>
+        </div>
+    </div>
+
+    <!-- 物资明细 -->
+    <div class="m-card">
+        <div class="m-card-title"><i class="bi bi-list-ul" style="color:#165DFF;"></i> 物资明细</div>
+        <div id="items-container">
+            <div class="item-row" style="margin-bottom:10px;">
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="text" name="material_search[]" class="m-form-control" placeholder="搜索物资名称" oninput="searchMat(this)" style="flex:1;">
+                    <input type="number" name="transfer_qty[]" class="m-form-control" placeholder="数量" style="max-width:80px;">
+                    <button type="button" class="m-btn m-btn-outline-danger m-btn-sm" onclick="removeRow(this)" style="flex-shrink:0;">
+                        <i class="bi bi-dash"></i>
+                    </button>
+                </div>
+                <input type="hidden" name="material_id[]">
+                <div class="mat-suggestions" style="margin-top:4px;"></div>
+            </div>
+        </div>
+        <button type="button" class="m-btn m-btn-outline-primary m-btn-block" onclick="addRow()" style="margin-top:8px;">
+            <i class="bi bi-plus-lg" style="margin-right:4px;"></i> 添加物资
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function addRow() {
+    var container = document.getElementById('items-container');
+    var row = container.querySelector('.item-row').cloneNode(true);
+    row.querySelector('input[type=text]').value = '';
+    row.querySelector('input[type=hidden]').value = '';
+    row.querySelector('input[type=number]').value = '';
+    row.querySelector('.mat-suggestions').innerHTML = '';
+    container.appendChild(row);
+}
+function removeRow(btn) {
+    var container = document.getElementById('items-container');
+    if (container.children.length > 1) {
+        btn.closest('.item-row').remove();
+    } else {
+        M.toast('至少保留一条物资记录', 'warning');
+    }
+}
+function searchMat(input) {
+    clearTimeout(window._matTimer);
+    window._matTimer = setTimeout(function() {
+        var kw = input.value.trim();
+        if (kw.length < 1) return;
+        fetch('{{ url_for("mobile.api_pr_materials") }}?keyword=' + encodeURIComponent(kw))
+            .then(r => r.json())
+            .then(data => {
+                var div = input.parentElement.parentElement.querySelector('.mat-suggestions');
+                div.innerHTML = '';
+                data.slice(0, 5).forEach(function(m) {
+                    var a = document.createElement('a');
+                    a.href = 'javascript:void(0)';
+                    a.style.cssText = 'display:block; font-size:13px; text-decoration:none; padding:6px 8px; border-bottom:1px solid #f1f3f5; color:#212529;';
+                    a.textContent = m.name + ' ' + (m.spec||'') + ' ' + (m.unit||'');
+                    a.onclick = function() {
+                        input.value = m.name + ' ' + (m.spec||'');
+                        input.parentElement.querySelector('input[type=hidden]').value = m.id;
+                        div.innerHTML = '';
+                    };
+                    div.appendChild(a);
+                });
+            });
+    }, 300);
+}
+</script>
+
+<div class="m-submit-bar">
+    <input type="hidden" name="submit_type" value="save" id="submitType">
+    <button type="button" class="m-btn m-btn-outline" style="flex:1;" onclick="document.getElementById('transferForm').submit()">
+        <i class="bi bi-check-lg" style="margin-right:4px;"></i>保存草稿
+    </button>
+    <button type="button" class="m-btn m-btn-primary" style="flex:1.4;" onclick="submitTransfer()">
+        <i class="bi bi-send" style="margin-right:4px;"></i>保存并提交
+    </button>
+</div>
+
+<script>
+function submitTransfer() {
+    document.getElementById('submitType').value = 'submit';
+    document.getElementById('transferForm').submit();
+}
+</script>
+{% endblock %}
+
+<style>
+.mat-suggestions {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    overflow: hidden;
+}
+</style>

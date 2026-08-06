@@ -1,7 +1,7 @@
 import os
 import json
-from datetime import datetime
-from flask import render_template, request, redirect, url_for, flash, current_app, jsonify, session
+from datetime import datetime, date
+from flask import render_template, request, redirect, url_for, flash, current_app, jsonify, session, send_file
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_, func
@@ -58,8 +58,11 @@ def _allowed_attachment(filename):
 def _save_file(file_storage, sub_dir):
     if not file_storage or not file_storage.filename:
         return None
-    if not _allowed_attachment(file_storage.filename):
-        return None
+    from app.utils import validate_file_extension
+    from flask import abort
+    ok, err = validate_file_extension(file_storage.filename)
+    if not ok:
+        abort(400, err)
     filename = secure_filename(file_storage.filename)
     upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], sub_dir)
     os.makedirs(upload_dir, exist_ok=True)
@@ -420,7 +423,7 @@ def invoices():
         page=page, per_page=10, error_out=False)
 
     suppliers = get_project_suppliers(project_id, common_only=True).all()
-    contracts = Contract.query.filter_by(project_id=project_id).order_by(Contract.code).all()
+    contracts = Contract.query.filter_by(project_id=project_id).filter(Contract.deleted_at.is_(None)).order_by(Contract.code).all()
     return render_template('contract/invoices.html', pagination=pagination,
                            suppliers=suppliers, contracts=contracts,
                            supplier_id=supplier_id, contract_id=contract_id)
@@ -760,3 +763,771 @@ def batch_export():
     resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     resp.headers['Content-Disposition'] = f'attachment; filename=contracts_{datetime.now().strftime("%Y%m%d%H%M%S")}.xlsx'
     return resp
+# ============================================================
+# 合同模板管理路由（新增）
+# 以下路由追加到 app/contract/routes.py 末尾
+# ============================================================
+
+from app.services.contract_service import (
+    # render_template 已移除（与Flask冲突）
+    render_template_html,
+    render_table_data,
+    generate_word_document,
+    generate_contract_no,
+    validate_variables,
+    generate_contract_instance,
+)
+from app.models import ContractTemplate, ContractInstance
+import json
+import os
+
+
+@bp.route('/templates')
+@login_required
+def contract_templates():
+    """合同模板列表页面"""
+    category = request.args.get('category', '')
+    keyword = request.args.get('keyword', '')
+
+    query = ContractTemplate.query
+    if category:
+        query = query.filter(ContractTemplate.category == category)
+    if keyword:
+        query = query.filter(
+            db.or_(
+                ContractTemplate.name.contains(keyword),
+                ContractTemplate.code.contains(keyword),
+            )
+        )
+    query = query.filter(ContractTemplate.is_active == True)
+    templates = query.order_by(ContractTemplate.created_at.desc()).all()
+
+    # 获取所有分类
+    categories = db.session.query(ContractTemplate.category).distinct().all()
+    categories = [c[0] for c in categories if c[0]]
+
+    return render_template('contract/templates.html',
+                           templates=templates,
+                           categories=categories,
+                           current_category=category,
+                           keyword=keyword)
+
+
+@bp.route('/templates/<int:template_id>')
+@login_required
+def contract_template_detail(template_id):
+    """模板详情页面（显示变量表单）"""
+    template = ContractTemplate.query.get_or_404(template_id)
+
+    # 解析变量schema
+    try:
+        variables_schema = json.loads(template.variables_schema) if template.variables_schema else []
+    except (json.JSONDecodeError, TypeError):
+        variables_schema = []
+
+    # 获取项目列表（供选择）
+    projects = Project.query.filter_by(is_deleted=False).all() if 'Project' in dir() else []
+
+    return render_template('contract/template_generate.html',
+                           template=template,
+                           variables_schema=variables_schema,
+                           projects=projects)
+
+
+@bp.route('/templates/generate', methods=['POST'])
+@login_required
+def contract_template_generate():
+    """基于模板生成合同实例"""
+    template_id = request.form.get('template_id', type=int)
+    if not template_id:
+        flash('模板ID不能为空', 'danger')
+        return redirect(url_for('contract.contract_templates'))
+
+    template = ContractTemplate.query.get_or_404(template_id)
+    if not template.is_active:
+        flash('该模板已禁用，无法使用', 'danger')
+        return redirect(url_for('contract.contract_templates'))
+
+    # 解析变量schema
+    try:
+        variables_schema = json.loads(template.variables_schema) if template.variables_schema else []
+    except (json.JSONDecodeError, TypeError):
+        variables_schema = []
+
+    # 收集表单数据
+    variable_values = {}
+    for var in variables_schema:
+        var_name = var['name']
+        var_type = var.get('type', 'text')
+
+        if var_type == 'table':
+            # 表格型变量 - 从JSON字符串解析
+            table_json = request.form.get(var_name, '[]')
+            try:
+                variable_values[var_name] = json.loads(table_json)
+            except (json.JSONDecodeError, TypeError):
+                variable_values[var_name] = []
+        else:
+            value = request.form.get(var_name, '')
+            if value:
+                variable_values[var_name] = value
+            elif var.get('default'):
+                variable_values[var_name] = var['default']
+
+    # 获取项目ID
+    project_id = request.form.get('project_id', type=int)
+
+    # 自动生成合同编号（如果未提供）
+    if not variable_values.get('contract_no'):
+        variable_values['contract_no'] = generate_contract_no(project_id, template.code)
+
+    # 校验必填字段
+    is_valid, missing = validate_variables(variables_schema, variable_values)
+    if not is_valid:
+        flash('以下必填字段未填写：{}'.format(', '.join(missing)), 'danger')
+        return redirect(url_for('contract.contract_template_detail', template_id=template_id))
+
+    # 创建合同实例
+    instance = generate_contract_instance(
+        template=template,
+        variable_values=variable_values,
+        project_id=project_id,
+        created_by=current_user.id,
+    )
+
+    flash('合同生成成功！合同编号：{}'.format(instance.contract_no), 'success')
+    return redirect(url_for('contract.contract_instance_detail', instance_id=instance.id))
+
+
+@bp.route('/instances')
+@login_required
+def contract_instances():
+    """合同实例列表页面"""
+    page = request.args.get('page', 1, type=int)
+    per_page = 15
+    status = request.args.get('status', '')
+    keyword = request.args.get('keyword', '')
+
+    query = ContractInstance.query
+    if status:
+        query = query.filter(ContractInstance.status == status)
+    if keyword:
+        query = query.filter(
+            db.or_(
+                ContractInstance.contract_no.contains(keyword),
+                ContractInstance.title.contains(keyword),
+            )
+        )
+    query = query.order_by(ContractInstance.created_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    instances = pagination.items
+
+    return render_template('contract/instances.html',
+                           instances=instances,
+                           pagination=pagination,
+                           current_status=status,
+                           keyword=keyword)
+
+
+@bp.route('/instances/<int:instance_id>')
+@login_required
+def contract_instance_detail(instance_id):
+    """合同实例详情页（HTML预览 + 下载Word按钮）"""
+    instance = ContractInstance.query.get_or_404(instance_id)
+    template = instance.template
+
+    # 获取变量值
+    variable_values = instance.get_variable_values()
+
+    # 解析variables_schema
+    try:
+        variables_schema = json.loads(template.variables_schema) if template.variables_schema else []
+    except (json.JSONDecodeError, TypeError):
+        variables_schema = []
+
+    # 渲染表格数据
+    table_data = render_table_data(variables_schema, variable_values)
+    all_values = {**variable_values, **table_data}
+
+    # 生成HTML预览
+    preview_html = render_template_html(template.template_content, all_values)
+
+    return render_template('contract/instance_detail.html',
+                           instance=instance,
+                           template=template,
+                           preview_html=preview_html)
+
+
+@bp.route('/instances/<int:instance_id>/download')
+@login_required
+def contract_instance_download(instance_id):
+    """下载Word文档"""
+    instance = ContractInstance.query.get_or_404(instance_id)
+    template = instance.template
+
+    # 生成文件路径
+    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+    contracts_dir = os.path.join(upload_folder, 'contract_documents')
+    filename = '{}.docx'.format(instance.contract_no or instance.id)
+    file_path = os.path.join(contracts_dir, filename)
+
+    # 如果文件不存在或需要重新生成
+    if not instance.generated_file_path or not os.path.exists(instance.generated_file_path):
+        # 获取变量值
+        variable_values = instance.get_variable_values()
+
+        # 解析variables_schema
+        try:
+            variables_schema = json.loads(template.variables_schema) if template.variables_schema else []
+        except (json.JSONDecodeError, TypeError):
+            variables_schema = []
+
+        # 渲染表格数据
+        table_data = render_table_data(variables_schema, variable_values)
+        all_values = {**variable_values, **table_data}
+
+        # 生成Word文档
+        generate_word_document(
+            template_content=template.template_content,
+            variables=all_values,
+            output_path=file_path,
+            template_name=template.name,
+        )
+
+        # 更新实例的文件路径
+        instance.generated_file_path = file_path
+        db.session.commit()
+
+    # 返回文件
+    if os.path.exists(instance.generated_file_path):
+        return send_file(
+            instance.generated_file_path,
+            as_attachment=True,
+            download_name='{}.docx'.format(instance.title or instance.contract_no),
+        )
+    else:
+        flash('文件生成失败', 'danger')
+        return redirect(url_for('contract.contract_instance_detail', instance_id=instance_id))
+
+
+@bp.route('/instances/<int:instance_id>/submit', methods=['POST'])
+@login_required
+def contract_instance_submit(instance_id):
+    """提交审批"""
+    instance = ContractInstance.query.get_or_404(instance_id)
+
+    if instance.status not in ('draft', 'rejected'):
+        flash('当前状态不允许提交', 'warning')
+        return redirect(url_for('contract.contract_instance_detail', instance_id=instance_id))
+
+    # 校验必填字段
+    template = instance.template
+    try:
+        variables_schema = json.loads(template.variables_schema) if template.variables_schema else []
+    except (json.JSONDecodeError, TypeError):
+        variables_schema = []
+
+    variable_values = instance.get_variable_values()
+    is_valid, missing = validate_variables(variables_schema, variable_values)
+    if not is_valid:
+        flash('以下必填字段未填写：{}'.format(', '.join(missing)), 'danger')
+        return redirect(url_for('contract.contract_instance_detail', instance_id=instance_id))
+
+    instance.status = 'submitted'
+    instance.updated_at = datetime.now()
+    db.session.commit()
+
+    # 如果没有配置审批流程，直接标记为已审批并同步到合同台账
+    from app.approval.service import is_approval_enabled
+    if not is_approval_enabled('contract_instance', instance.project_id):
+        instance.status = 'approved'
+        instance.updated_at = datetime.now()
+        db.session.commit()
+        try:
+            _sync_instance_to_contract(instance)
+            flash('合同已生成并同步到合同台账', 'success')
+        except Exception as e:
+            import logging
+            logging.error(f'合同同步失败: {e}')
+            flash('合同已提交，但同步到台账失败，请手动同步', 'warning')
+    else:
+        flash('合同已提交审批', 'success')
+    return redirect(url_for('contract.contract_instance_detail', instance_id=instance_id))
+
+
+# ============================================================
+# 合同模板管理 - 扩展路由（预览 + 新增模板）
+# ============================================================
+
+
+
+
+
+def sync_contract_instance_to_contract(instance_id):
+    """公开接口：将合同实例同步到传统合同台账
+    
+    Args:
+        instance_id: ContractInstance的ID
+        
+    Returns:
+        Contract: 创建或已关联的Contract记录
+        
+    Raises:
+        ValueError: 当合同实例不存在或状态不允许同步时
+    """
+    instance = ContractInstance.query.get(instance_id)
+    if not instance:
+        raise ValueError(f'合同实例 #{instance_id} 不存在')
+    
+    if instance.status not in ('approved', 'executed'):
+        raise ValueError(f'合同实例 #{instance_id} 状态为 {instance.status}，仅已审批/已执行的实例可同步')
+    
+    return _sync_instance_to_contract(instance)
+
+
+def _sync_instance_to_contract(instance):
+    """合同实例审批通过时，自动同步到传统合同台账"""
+    from app.models import Contract
+    # 检查是否已关联
+    existing = Contract.query.filter_by(contract_instance_id=instance.id).first()
+    if existing:
+        return existing
+    
+    # 从变量值中提取关键信息
+    variables = instance.get_variable_values()
+    
+    # 尝试从变量中提取供应商名称、合同金额等
+    supplier_name = variables.get('supplier_name', '') or variables.get('乙方名称', '') or variables.get('party_b', '')
+    contract_amount_str = variables.get('contract_amount', '') or variables.get('total_amount', '') or variables.get('合同金额', '') or variables.get('金额', '0')
+    sign_date_str = variables.get('sign_date', '') or variables.get('签订日期', '') or variables.get('签署日期', '')
+    
+    # 查找供应商
+    supplier_id = None
+    if supplier_name:
+        from app.models import Supplier
+        supplier = Supplier.query.filter_by(name=supplier_name).first()
+        if supplier:
+            supplier_id = supplier.id
+    
+    # 解析金额
+    try:
+        import re as _re
+        amount_str = _re.sub(r'[^\d.]', '', str(contract_amount_str))
+        contract_amount = float(amount_str) if amount_str else 0
+    except (ValueError, TypeError):
+        contract_amount = 0
+    
+    # 解析日期
+    from datetime import datetime
+    sign_date = None
+    if sign_date_str:
+        for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%Y年%m月%d日'):
+            try:
+                sign_date = datetime.strptime(str(sign_date_str), fmt).date()
+                break
+            except ValueError:
+                continue
+    
+    # 确定合同类型
+    template_category = instance.template.category if instance.template else '采购类'
+    type_map = {
+        '采购类': '采购合同',
+        '租赁类': '租赁合同',
+        '运输类': '运输合同',
+        '处置类': '处置合同',
+    }
+    contract_type = type_map.get(template_category, '其他')
+    
+    # 生成合同编号
+    from datetime import datetime as dt
+    code = f"HT-{dt.now().strftime('%Y%m%d')}-{instance.id:04d}"
+    
+    # 创建Contract记录
+    contract = Contract(
+        project_id=instance.project_id,
+        code=code,
+        name=instance.title or f"合同实例-{instance.contract_no or instance.id}",
+        supplier_id=supplier_id or 0,
+        contract_type=contract_type,
+        business_type=template_category,
+        sign_date=sign_date,
+        amount_with_tax=contract_amount,
+        tax_rate=13,
+        status='正常履约',
+        approval_status='passed',
+        contract_instance_id=instance.id,
+        remark=f"由合同模板实例 #{instance.id} 自动同步生成",
+    )
+    db.session.add(contract)
+    db.session.commit()
+    return contract
+
+
+@bp.route('/templates/preview', methods=['POST'])
+@login_required
+def contract_template_preview():
+    """AJAX预览合同（实时渲染）"""
+    from app.services.contract_service import render_template_html, render_table_data
+    import json as _json
+
+    template_id = request.form.get('template_id', type=int)
+    if not template_id:
+        return jsonify({'success': False, 'message': '模板ID不能为空'})
+
+    template = ContractTemplate.query.get_or_404(template_id)
+
+    # 解析变量schema
+    try:
+        variables_schema = _json.loads(template.variables_schema) if template.variables_schema else []
+    except (_json.JSONDecodeError, TypeError):
+        variables_schema = []
+
+    # 收集表单数据
+    variable_values = {}
+    for var in variables_schema:
+        var_name = var['name']
+        var_type = var.get('type', 'text')
+        if var_type == 'table':
+            table_json = request.form.get(var_name, '[]')
+            try:
+                variable_values[var_name] = _json.loads(table_json)
+            except (_json.JSONDecodeError, TypeError):
+                variable_values[var_name] = []
+        else:
+            value = request.form.get(var_name, '').strip()
+            if value:
+                variable_values[var_name] = value
+            elif var.get('default'):
+                variable_values[var_name] = var['default']
+
+    # 渲染表格数据
+    table_data = render_table_data(variables_schema, variable_values)
+    all_values = {**variable_values, **table_data}
+
+    # 添加甲方固定信息
+    from app.services.contract_service import PARTY_A_INFO
+    for k, v in PARTY_A_INFO.items():
+        if k not in all_values:
+            all_values[k] = v
+
+    # 生成HTML预览
+    preview_html = render_template_html(template.template_content, all_values)
+
+    return jsonify({'success': True, 'html': preview_html})
+
+
+@bp.route('/templates/new')
+@login_required
+def contract_template_new():
+    """新增合同模板页面"""
+    return render_template('contract/template_create.html')
+
+
+@bp.route('/templates/create', methods=['POST'])
+@login_required
+def contract_template_create():
+    """创建新合同模板"""
+    import json as _json
+
+    name = request.form.get('name', '').strip()
+    code = request.form.get('code', '').strip()
+    if not name or not code:
+        flash('模板名称和编号不能为空', 'danger')
+        return redirect(url_for('contract.contract_template_new'))
+
+    # 检查code是否重复
+    existing = ContractTemplate.query.filter_by(code=code).first()
+    if existing:
+        flash(f'模板编号 {code} 已存在', 'danger')
+        return redirect(url_for('contract.contract_template_new'))
+
+    category = request.form.get('category', '').strip()
+    description = request.form.get('description', '').strip()
+    version = request.form.get('version', '1.0').strip()
+    template_content = request.form.get('template_content', '')
+    variables_schema_str = request.form.get('variables_schema', '[]')
+
+    # 验证variables_schema是合法JSON
+    try:
+        variables_schema = _json.loads(variables_schema_str)
+    except (_json.JSONDecodeError, TypeError):
+        variables_schema = []
+
+    # 添加甲方固定信息变量到模板内容（如果不存在）
+    from app.services.contract_service import PARTY_A_INFO
+    for key in PARTY_A_INFO:
+        placeholder = '{{' + key + '}}'
+        if placeholder not in template_content:
+            # 不强制添加，用户可以手动使用
+            pass
+
+    template = ContractTemplate(
+        code=code,
+        name=name,
+        description=description,
+        template_content=template_content,
+        variables_schema=_json.dumps(variables_schema, ensure_ascii=False),
+        category=category,
+        is_active=True,
+        version=version
+    )
+    db.session.add(template)
+    db.session.commit()
+
+    flash(f'合同模板「{name}」创建成功！', 'success')
+    return redirect(url_for('contract.contract_templates'))
+
+
+
+@bp.route('/templates/<int:template_id>/edit', methods=['GET', 'POST'])
+@login_required
+def contract_template_edit(template_id):
+    """编辑合同模板"""
+    template = ContractTemplate.query.get_or_404(template_id)
+
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        code = request.form.get('code', '').strip()
+        if not name or not code:
+            flash('模板名称和编号不能为空', 'danger')
+            return redirect(url_for('contract.contract_template_edit', template_id=template_id))
+
+        # Check code uniqueness (excluding current)
+        existing = ContractTemplate.query.filter(
+            ContractTemplate.code == code,
+            ContractTemplate.id != template_id
+        ).first()
+        if existing:
+            flash(f'模板编号 {code} 已存在', 'danger')
+            return redirect(url_for('contract.contract_template_edit', template_id=template_id))
+
+        category = request.form.get('category', '').strip()
+        description = request.form.get('description', '').strip()
+        version = request.form.get('version', '1.0').strip()
+        template_content = request.form.get('template_content', '')
+        variables_schema_str = request.form.get('variables_schema', '[]')
+
+        # Auto increment minor version (e.g., 1.0 -> 1.1)
+        try:
+            parts = version.split('.')
+            if len(parts) >= 2:
+                minor = int(parts[-1]) + 1
+                parts[-1] = str(minor)
+                new_version = '.'.join(parts)
+            else:
+                new_version = version + '.1'
+        except (ValueError, IndexError):
+            new_version = version
+
+        # Validate variables_schema
+        try:
+            variables_schema = json.loads(variables_schema_str)
+        except (json.JSONDecodeError, TypeError):
+            variables_schema = []
+
+        template.name = name
+        template.code = code
+        template.description = description
+        template.template_content = template_content
+        template.variables_schema = json.dumps(variables_schema, ensure_ascii=False)
+        template.category = category
+        template.version = new_version
+        template.updated_at = datetime.now()
+
+        db.session.commit()
+        flash(f'合同模板「{name}」编辑成功！版本已更新至 v{new_version}', 'success')
+        return redirect(url_for('contract.contract_templates'))
+
+    # GET - render edit form
+    try:
+        variables_schema = json.loads(template.variables_schema) if template.variables_schema else []
+    except (json.JSONDecodeError, TypeError):
+        variables_schema = []
+
+    return render_template('contract/template_edit.html',
+                           template=template,
+                           variables_schema=variables_schema)
+
+
+@bp.route('/templates/<int:template_id>/delete', methods=['POST'])
+@login_required
+def contract_template_delete(template_id):
+    """删除合同模板（软删除）"""
+    template = ContractTemplate.query.get_or_404(template_id)
+
+    # Check if any contract instances are using this template
+    instance_count = ContractInstance.query.filter_by(template_id=template_id).count()
+    if instance_count > 0:
+        flash(f'无法删除模板「{template.name}」，有 {instance_count} 个合同实例正在使用此模板', 'danger')
+        return redirect(url_for('contract.contract_templates'))
+
+    # Soft delete - set is_active to False
+    template_name = template.name
+    template.is_active = False
+    template.updated_at = datetime.now()
+    db.session.commit()
+
+    flash(f'合同模板「{template_name}」已删除', 'success')
+    return redirect(url_for('contract.contract_templates'))
+
+
+@bp.route('/templates/import-word', methods=['POST'])
+@login_required
+def contract_template_import_word():
+    """导入Word文档，解析内容和变量"""
+    from docx import Document
+    import io
+    import re
+
+    file = request.files.get('word_file')
+    if not file or not file.filename:
+        return jsonify({'success': False, 'message': '请选择Word文件'}), 400
+
+    if not file.filename.endswith('.docx'):
+        return jsonify({'success': False, 'message': '仅支持 .docx 格式文件'}), 400
+
+    try:
+        file_stream = io.BytesIO(file.read())
+        doc = Document(file_stream)
+
+        # Extract text content from paragraphs
+        lines = []
+        for paragraph in doc.paragraphs:
+            lines.append(paragraph.text)
+
+        # Extract table content as markdown-style
+        for table in doc.tables:
+            for row in table.rows:
+                row_data = [cell.text for cell in row.cells]
+                lines.append('| ' + ' | '.join(row_data) + ' |')
+
+        content = '\n'.join(lines)
+
+        # Extract {{variable}} placeholders
+        var_pattern = r'\{\{(\w+)\}\}'
+        variables = list(set(re.findall(var_pattern, content)))
+
+        return jsonify({
+            'success': True,
+            'content': content,
+            'variables': variables
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'解析失败：{str(e)}'}), 500
+
+
+@bp.route('/instances/<int:instance_id>/sync_contract', methods=['POST'])
+@login_required
+def contract_instance_sync(instance_id):
+    """手动将合同实例同步到传统合同台账"""
+    instance = ContractInstance.query.get_or_404(instance_id)
+    if instance.status not in ('approved', 'executed'):
+        return jsonify({'success': False, 'message': '仅已审批的合同实例可同步'}), 400
+    
+    contract = _sync_instance_to_contract(instance)
+    return jsonify({
+        'success': True, 
+        'message': '同步成功',
+        'contract_id': contract.id,
+        'contract_code': contract.code
+    })
+
+
+
+# ========== P2: 合同变更/补充协议管理 ==========
+
+@bp.route('/<int:id>/change', methods=['GET', 'POST'])
+@login_required
+@editor_required
+def contract_change(id):
+    """合同变更/补充协议"""
+    contract = Contract.query.get_or_404(id)
+    if request.method == 'POST':
+        change_type = request.form.get('change_type', 'change')  # change/supplement
+        change_content = request.form.get('change_content', '').strip()
+        change_amount = request.form.get('change_amount', type=float) or 0
+        change_reason = request.form.get('change_reason', '').strip()
+        change_date_str = request.form.get('change_date')
+        try:
+            change_date = datetime.strptime(change_date_str, '%Y-%m-%d').date() if change_date_str else date.today()
+        except Exception:
+            change_date = date.today()
+        
+        # 创建变更记录（使用合同的备注字段记录变更历史）
+        change_record = f"[{change_date.strftime('%Y-%m-%d')}] {'补充协议' if change_type == 'supplement' else '合同变更'}: {change_content}"
+        if change_amount:
+            change_record += f" 金额变动: {change_amount}"
+        if change_reason:
+            change_record += f" 原因: {change_reason}"
+        
+        if contract.remark:
+            contract.remark = contract.remark + "\n" + change_record
+        else:
+            contract.remark = change_record
+        
+        # 如果有金额变动，更新合同金额
+        if change_amount and change_type == 'supplement':
+            contract.amount_with_tax = (float(contract.amount_with_tax or 0)) + change_amount
+        
+        db.session.commit()
+        flash('合同变更记录已保存。', 'success')
+        return redirect(url_for('contract.detail', id=id))
+    
+    return render_template('contract/change.html', contract=contract,
+                           today_str=date.today().strftime('%Y-%m-%d'))
+
+
+@bp.route('/<int:id>/changes')
+@login_required
+def contract_changes(id):
+    """合同变更历史"""
+    contract = Contract.query.get_or_404(id)
+    # 从备注中解析变更记录
+    changes = []
+    if contract.remark:
+        for line in contract.remark.split('\n'):
+            if line.startswith('[') and ('变更' in line or '补充协议' in line):
+                changes.append(line)
+    return jsonify({'changes': changes})
+
+
+@bp.route('/expiry-check')
+@login_required
+def expiry_check():
+    """合同到期检查 - P2"""
+    from flask import session
+    from datetime import timedelta
+    project_id = session.get('current_project_id')
+    
+    today = date.today()
+    warning_days = 30  # 30天内到期预警
+    
+    query = Contract.query.filter(Contract.is_deleted == False)
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+    
+    # 查找有结束日期的合同（从备注或其他字段推断，或使用sign_date + 合同期）
+    contracts = query.filter(Contract.status == '正常履约').all()
+    
+    expiry_list = []
+    for c in contracts:
+        # 如果合同金额大于0且有签订日期，假设合同期为1年（简化逻辑）
+        # 实际应根据合同条款字段判断
+        if c.sign_date:
+            estimated_end = c.sign_date + timedelta(days=365)
+            days_remaining = (estimated_end - today).days
+            if days_remaining <= warning_days and days_remaining >= -30:
+                expiry_list.append({
+                    'id': c.id,
+                    'name': c.name,
+                    'code': c.code,
+                    'sign_date': c.sign_date.strftime('%Y-%m-%d') if c.sign_date else '',
+                    'estimated_end': estimated_end.strftime('%Y-%m-%d'),
+                    'days_remaining': days_remaining,
+                    'status': 'urgent' if days_remaining <= 7 else ('warning' if days_remaining <= 30 else 'normal')
+                })
+    
+    # 按剩余天数排序
+    expiry_list.sort(key=lambda x: x['days_remaining'])
+    
+    return jsonify({'contracts': expiry_list, 'total': len(expiry_list)})

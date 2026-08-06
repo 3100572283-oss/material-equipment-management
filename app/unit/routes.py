@@ -3,6 +3,28 @@ from flask import render_template, request, redirect, url_for, flash, current_ap
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.unit import bp
+
+# P2: 文件上传扩展名校验
+def _validate_upload_file(file):
+    """校验上传文件扩展名，不通过则abort 400"""
+    if file and file.filename:
+        from app.utils import validate_file_extension
+        from flask import abort
+        ok, err = validate_file_extension(file.filename)
+        if not ok:
+            abort(400, err)
+    return file
+
+def _validate_upload_files(files):
+    """校验上传文件列表扩展名，不通过则abort 400"""
+    from app.utils import validate_file_extension
+    from flask import abort
+    for f in files:
+        if f and f.filename:
+            ok, err = validate_file_extension(f.filename)
+            if not ok:
+                abort(400, err)
+
 from app import db
 from app.models import UsageUnit, UnitTeam
 from app.decorators import editor_required, log_audit
@@ -53,6 +75,7 @@ def create():
 
     if request.method == 'POST':
         file = request.files.get('auth_file')
+        _validate_upload_file(file)
         auth_path = None
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
@@ -88,6 +111,7 @@ def edit(id):
     unit = UsageUnit.query.get_or_404(id)
     if request.method == 'POST':
         file = request.files.get('auth_file')
+        _validate_upload_file(file)
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'authorizations')

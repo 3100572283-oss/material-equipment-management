@@ -2,6 +2,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from flask import render_template, request, redirect, url_for, flash, jsonify, session
 from flask_login import login_required, current_user
+from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, func
 
 from app.stock_out import bp
@@ -33,7 +34,7 @@ def _allow_negative_stock(project_id, material_id):
             return True
         if current.negative_stock_policy == 'forbid':
             return False
-        if current.parent_id and current.parent_id != 0:
+        if current.parent_id is not None:
             current = current.parent
         else:
             break
@@ -48,6 +49,109 @@ def _gen_stock_out_code(project_id):
     """
     from app.utils import _gen_code_with_seq
     return _gen_code_with_seq('CK', project_id, StockOut)
+
+
+
+
+def _allocate_fifo_batches(project_id, material_id, quantity):
+    """P2: 按FIFO(先进先出)自动分配批次
+
+    返回: [(batch_no, allocated_qty), ...] 列表
+    """
+    from app.models import InventoryBatch
+    remaining = float(quantity)
+    allocations = []
+
+    # 按入库日期升序查询有库存的批次
+    batches = InventoryBatch.query.filter(
+        InventoryBatch.project_id == project_id,
+        InventoryBatch.material_id == material_id,
+        InventoryBatch.quantity > 0
+    ).order_by(
+        InventoryBatch.stock_in_date.asc(),
+        InventoryBatch.created_at.asc()
+    ).all()
+
+    for batch in batches:
+        if remaining <= 0:
+            break
+        available = float(batch.quantity)
+        if available <= 0:
+            continue
+        alloc = min(available, remaining)
+        allocations.append((batch.batch_no, alloc))
+        remaining -= alloc
+
+    # 如果批次不够，返回未分配的剩余量（不指定批次）
+    if remaining > 0.001:
+        allocations.append((None, remaining))
+
+    return allocations
+
+
+def _process_transfer_in(stock_out):
+    """P2: 调拨出库审批通过后，自动在目标项目创建入库单"""
+    from app.models import StockIn, StockInItem, Project
+    from datetime import date as date_cls
+
+    if not stock_out.destination_project_id:
+        return False, "未设置调拨目标项目"
+
+    dest_project = Project.query.get(stock_out.destination_project_id)
+    if not dest_project:
+        return False, "调拨目标项目不存在"
+
+    # 检查是否已创建过调拨入库（防止重复）
+    existing = StockIn.query.filter(
+        StockIn.remark.contains(f"调拨入库:{stock_out.code}"),
+        StockIn.project_id == stock_out.destination_project_id
+    ).first()
+    if existing:
+        return False, "调拨入库单已存在"
+
+    # 生成入库单号
+    from app.stock_in.routes import _gen_stock_in_code
+    try:
+        in_code = _gen_stock_in_code(stock_out.destination_project_id)
+    except Exception:
+        in_code = f"TR-IN-{stock_out.code}"
+
+    stock_in = StockIn(
+        project_id=stock_out.destination_project_id,
+        code=in_code,
+        stock_in_date=date_cls.today(),
+        stock_in_type='调拨入库',
+        operator=stock_out.operator,
+        remark=f"调拨入库:{stock_out.code}"
+    )
+    db.session.add(stock_in)
+    db.session.flush()
+
+    total_qty = 0
+    total_amount = 0
+    for out_item in stock_out.items:
+        in_item = StockInItem(
+            stock_in_id=stock_in.id,
+            material_id=out_item.material_id,
+            quantity=out_item.quantity,
+            unit_price=out_item.unit_price,
+            amount=out_item.amount,
+            batch_no=out_item.batch_no
+        )
+        db.session.add(in_item)
+        total_qty += float(out_item.quantity)
+        total_amount += float(out_item.amount)
+
+        # 增加目标项目库存
+        _apply_stock(stock_out.destination_project_id, out_item.material_id, float(out_item.quantity))
+
+    stock_in.total_quantity = total_qty
+    stock_in.total_amount = total_amount
+    stock_in.status = 'approved'
+    stock_in.approval_status = 'passed'
+
+    db.session.flush()
+    return True, f"调拨入库单 {in_code} 已创建"
 
 
 def _get_current_stock(project_id, material_id):
@@ -174,6 +278,10 @@ def index():
         except Exception:
             pass
 
+    # P2: 预加载关联数据，避免 N+1 查询
+    query = query.options(
+        joinedload(StockOut.usage_unit)
+    )
     pagination = query.order_by(StockOut.created_at.desc()).paginate(
         page=page, per_page=10, error_out=False)
 
@@ -206,11 +314,15 @@ def create():
         except Exception:
             stock_out_date = date.today()
 
+        stock_out_type = request.form.get('stock_out_type', '工程领用')
+        dest_project_id = request.form.get('destination_project_id', type=int) if stock_out_type == '调拨出库' else None
+
         stock_out = StockOut(
             project_id=project_id,
             code=_gen_stock_out_code(project_id),
             stock_out_date=stock_out_date,
-            stock_out_type=request.form.get('stock_out_type', '工程领用'),
+            stock_out_type=stock_out_type,
+            destination_project_id=dest_project_id,
             usage_unit_id=usage_unit_id,
             work_number_id=work_number_id,
             team_id=team_id,
@@ -246,20 +358,67 @@ def create():
                 m = Material.query.get(mid)
                 errors.append(f"{m.name if m else '物资'}库存不足（当前{current_stock}，出库{float(qty)}）")
                 continue
+            # === P2: 限额领料控制 ===
+            if work_number_id:
+                from app.models import MaterialQuota
+                quota = MaterialQuota.query.filter_by(
+                    work_number_id=work_number_id,
+                    material_id=int(mid)
+                ).first()
+                if quota and quota.quota_type == 'quantity' and float(quota.quota_quantity) > 0:
+                    # 查询该工号下该物资已出库总量
+                    from sqlalchemy import func as _func
+                    used = db.session.query(_func.coalesce(_func.sum(StockOutItem.quantity), 0)).join(
+                        StockOut, StockOut.id == StockOutItem.stock_out_id
+                    ).filter(
+                        StockOut.work_number_id == work_number_id,
+                        StockOutItem.material_id == int(mid),
+                        StockOut.status.in_(['approved', 'completed'])
+                    ).scalar() or 0
+                    remaining = float(quota.quota_quantity) - float(used)
+                    if float(qty) > remaining:
+                        m = Material.query.get(mid)
+                        errors.append(f"{m.name if m else '物资'}超出限额（限额{float(quota.quota_quantity)}，已用{float(used)}，剩余{remaining}，本次申请{float(qty)}）")
+                        continue
 
             amount = float(qty) * float(price)
-            si_item = StockOutItem(
-                stock_out_id=stock_out.id,
-                material_id=int(mid),
-                quantity=qty,
-                unit_price=price,
-                amount=amount
-            )
-            db.session.add(si_item)
+
+            # P2: FIFO批次自动分配
+            from app.models import SystemModule
+            batch_enabled = False
+            try:
+                proj_module = SystemModule.query.filter_by(project_id=project_id).first()
+                batch_enabled = proj_module and proj_module.batch_management
+            except Exception:
+                pass
+
+            if batch_enabled:
+                # 按FIFO分配批次
+                allocations = _allocate_fifo_batches(project_id, int(mid), float(qty))
+                for batch_no, alloc_qty in allocations:
+                    si_item = StockOutItem(
+                        stock_out_id=stock_out.id,
+                        material_id=int(mid),
+                        quantity=alloc_qty,
+                        unit_price=price,
+                        amount=float(alloc_qty) * float(price),
+                        batch_no=batch_no
+                    )
+                    db.session.add(si_item)
+            else:
+                si_item = StockOutItem(
+                    stock_out_id=stock_out.id,
+                    material_id=int(mid),
+                    quantity=qty,
+                    unit_price=price,
+                    amount=amount
+                )
+                db.session.add(si_item)
+
             total_qty = to_decimal(total_qty) + qty
             total_amount = to_decimal(total_amount) + to_decimal(amount)
 
-            _apply_stock(project_id, int(mid), -float(qty))
+            # P2-FIX: 草稿/提交不扣减库存，仅在审批通过时扣减
 
         if errors:
             db.session.rollback()
@@ -274,9 +433,6 @@ def create():
         if action == 'save':
             stock_out.status = 'draft'
             stock_out.approval_status = 'draft'
-            # 回滚刚才扣减的库存
-            for item in stock_out.items:
-                _apply_stock(project_id, item.material_id, float(item.quantity))
         elif action == 'submit':
             if not usage_unit_id:
                 db.session.rollback()
@@ -288,9 +444,6 @@ def create():
                 return redirect(url_for('stock_out.create'))
             stock_out.status = 'pending'
             stock_out.approval_status = 'pending'
-            # 回滚刚才扣减的库存
-            for item in stock_out.items:
-                _apply_stock(project_id, item.material_id, float(item.quantity))
             db.session.commit()
 
             from app.approval.service import submit_approval, is_project_approval_enabled
@@ -310,6 +463,14 @@ def create():
         elif action == 'approve_save':
             stock_out.status = 'approved'
             stock_out.approval_status = 'passed'
+            # P2-FIX: approve_save 直接审批通过，需要扣减库存
+            for item in stock_out.items:
+                _apply_stock(project_id, item.material_id, -float(item.quantity))
+            # P2: 调拨出库自动创建入库单
+            if stock_out.stock_out_type == '调拨出库' and stock_out.destination_project_id:
+                success, msg = _process_transfer_in(stock_out)
+                if success:
+                    flash(f'调拨入库已自动创建: {msg}', 'info')
 
         db.session.commit()
         flash('出库单创建成功。', 'success')
@@ -329,11 +490,12 @@ def create():
             copy_stock_out = src
 
     from app.approval.service import is_approval_enabled
+    all_projects = Project.query.order_by(Project.name).all()
     return render_template('stock_out/form.html', stock_out=copy_stock_out, usage_units=usage_units,
                            work_numbers=work_numbers, materials=materials,
                            default_code=_gen_stock_out_code(project_id),
                            is_copy=bool(copy_stock_out),
-                           approval_enabled=is_approval_enabled('stockout', project_id=project_id))
+                           approval_enabled=is_approval_enabled('stockout', project_id=project_id), projects=all_projects)
 
 
 @bp.route('/<int:id>')
@@ -391,9 +553,7 @@ def edit(id):
         return redirect(url_for('stock_out.detail', id=stock_out.id))
 
     if request.method == 'POST':
-        # 回滚原库存
-        for item in stock_out.items:
-            _apply_stock(stock_out.project_id, item.material_id, float(item.quantity))
+        # P2-FIX: 草稿状态未扣减库存，无需回滚
 
         # 删除原明细
         for item in list(stock_out.items):
@@ -455,7 +615,7 @@ def edit(id):
             total_qty = to_decimal(total_qty) + qty
             total_amount = to_decimal(total_amount) + to_decimal(amount)
 
-            _apply_stock(stock_out.project_id, int(mid), -float(qty))
+            # P2-FIX: 草稿/提交不扣减库存，仅在审批通过时扣减
 
         if errors:
             db.session.rollback()
@@ -500,6 +660,9 @@ def edit(id):
         elif action == 'approve_save':
             stock_out.status = 'approved'
             stock_out.approval_status = 'passed'
+            # P2-FIX: approve_save 直接审批通过，需要扣减库存
+            for item in stock_out.items:
+                _apply_stock(stock_out.project_id, item.material_id, -float(item.quantity))
 
         db.session.commit()
         flash('出库单更新成功。', 'success')
@@ -511,7 +674,7 @@ def edit(id):
     from app.approval.service import is_approval_enabled
     return render_template('stock_out/form.html', stock_out=stock_out, usage_units=usage_units,
                            work_numbers=work_numbers, materials=materials,
-                           approval_enabled=is_approval_enabled('stockout', project_id=stock_out.project_id))
+                           approval_enabled=is_approval_enabled('stockout', project_id=stock_out.project_id), projects=Project.query.order_by(Project.name).all())
 
 
 @bp.route('/<int:id>/delete', methods=['POST'])
@@ -528,9 +691,7 @@ def delete(id):
         flash('仅草稿状态的单据可作废。', 'danger')
         return redirect(url_for('stock_out.detail', id=stock_out.id))
 
-    # 先回滚库存（库存增加）
-    for item in stock_out.items:
-        _apply_stock(stock_out.project_id, item.material_id, float(item.quantity))
+    # P2-FIX: 草稿状态未扣减库存，无需回滚
 
     stock_out.is_deleted = True
     stock_out.status = 'voided'
@@ -640,7 +801,7 @@ def export():
         return redirect(url_for('stock_out.index'))
     
     keyword = request.args.get('keyword', '')
-    query = StockOut.query.filter_by(project_id=project_id)
+    query = StockOut.query.filter_by(project_id=project_id).filter(StockOut.deleted_at.is_(None))
     if keyword:
         query = query.filter(StockOut.code.contains(keyword))
     
@@ -739,8 +900,7 @@ def batch_delete():
             fail_count += 1
             continue
         try:
-            for item in stock_out.items:
-                _apply_stock(stock_out.project_id, item.material_id, float(item.quantity))
+            # P2-FIX: 草稿状态未扣减库存，无需回滚
             stock_out.is_deleted = True
             stock_out.status = 'voided'
             success_count += 1
@@ -766,7 +926,7 @@ def batch_export():
     ids_str = request.args.get('ids', '')
     id_list = [int(x) for x in ids_str.split(',') if x.strip().isdigit()]
 
-    query = StockOut.query.filter_by(project_id=project_id)
+    query = StockOut.query.filter_by(project_id=project_id).filter(StockOut.deleted_at.is_(None))
     if id_list:
         query = query.filter(StockOut.id.in_(id_list))
     stock_outs = query.order_by(StockOut.code).all()

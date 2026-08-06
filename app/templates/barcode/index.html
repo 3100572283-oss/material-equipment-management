@@ -158,7 +158,7 @@
     if (previewBtn) {
         previewBtn.addEventListener('click', function() {
             var ids = Array.from(document.querySelectorAll('.material-checkbox:checked')).map(function(cb) { return cb.value; });
-            if (ids.length === 0) { alert('请至少选择一个物资'); return; }
+            if (ids.length === 0) { customAlert('请至少选择一个物资'); return; }
             var params = new URLSearchParams();
             ids.forEach(function(id) { params.append('material_id', id); });
             params.append('label_size', document.querySelector('input[name=label_size]:checked').value);
@@ -205,7 +205,7 @@
                     resultArea.style.display = '';
                 }
             }).catch(function(err) {
-                alert('请求失败：' + err);
+                customAlert('请求失败：' + err);
             });
         });
     }

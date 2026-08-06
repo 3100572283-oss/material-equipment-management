@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{% if mr %}编辑退料单{% else %}新建退料单{% endif %} - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-arrow-return-left me-2"></i>{% if mr %}编辑退料单{% else %}新建退料单{% endif %}</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" id="mrForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">退料单号</label>
+                    <input type="text" class="form-control" name="return_number" value="{{ mr.return_number if mr else default_return_number }}" readonly>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">关联出库单</label>
+                    <select class="form-select" name="stock_out_id" id="stock_out_select">
+                        <option value="">不关联</option>
+                        {% for so in stock_outs %}
+                        <option value="{{ so.id }}" {% if mr and mr.stock_out_id == so.id %}selected{% endif %}>{{ so.code }} ({{ so.stock_out_date or '' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">退料类型</label>
+                    <select class="form-select" name="return_type">
+                        <option value="部分退料" {% if mr and mr.return_type == '部分退料' %}selected{% endif %}>部分退料</option>
+                        <option value="全部退料" {% if mr and mr.return_type == '全部退料' %}selected{% endif %}>全部退料</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">备注</label>
+                    <input type="text" class="form-control" name="remark" value="{{ mr.remark if mr and mr.remark else '' }}">
+                </div>
+            </div>
+
+            <h6 class="mt-4 mb-2">退料明细</h6>
+            <div class="table-responsive">
+                <table class="table table-bordered" id="itemsTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>物资</th>
+                            <th style="width:120px">数量</th>
+                            <th style="width:120px">单价</th>
+                            <th style="width:120px">小计</th>
+                            <th>退料原因</th>
+                            <th>备注</th>
+                            <th style="width:50px"><button type="button" class="btn btn-sm btn-success" onclick="addItem()"><i class="bi bi-plus"></i></button></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsBody">
+                        {% if mr and items %}
+                        {% for item in items %}
+                        <tr>
+                            <td>
+                                <select class="form-select form-select-sm" name="material_id[]">
+                                    {% for m in materials %}
+                                    <option value="{{ m.id }}" {% if item.material_id == m.id %}selected{% endif %}>{{ m.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td><input type="number" step="0.0001" class="form-control form-control-sm qty" name="quantity[]" value="{{ item.quantity }}" oninput="calcRow(this)"></td>
+                            <td><input type="number" step="0.0001" class="form-control form-control-sm price" name="unit_price[]" value="{{ item.unit_price }}" oninput="calcRow(this)"></td>
+                            <td><input type="text" class="form-control form-control-sm subtotal" value="{{ '%.2f'|format(item.total_price or 0) }}" readonly></td>
+                            <td><input type="text" class="form-control form-control-sm" name="reason[]" value="{{ item.reason or '' }}"></td>
+                            <td><input type="text" class="form-control form-control-sm" name="item_remark[]" value="{{ item.remark or '' }}"></td>
+                            <td><button type="button" class="btn btn-sm btn-danger" onclick="removeItem(this)"><i class="bi bi-dash"></i></button></td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td>
+                                <select class="form-select form-select-sm" name="material_id[]">
+                                    <option value="">请选择物资</option>
+                                    {% for m in materials %}
+                                    <option value="{{ m.id }}">{{ m.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td><input type="number" step="0.0001" class="form-control form-control-sm qty" name="quantity[]" value="0" oninput="calcRow(this)"></td>
+                            <td><input type="number" step="0.0001" class="form-control form-control-sm price" name="unit_price[]" value="0" oninput="calcRow(this)"></td>
+                            <td><input type="text" class="form-control form-control-sm subtotal" value="0.00" readonly></td>
+                            <td><input type="text" class="form-control form-control-sm" name="reason[]" value=""></td>
+                            <td><input type="text" class="form-control form-control-sm" name="item_remark[]" value=""></td>
+                            <td><button type="button" class="btn btn-sm btn-danger" onclick="removeItem(this)"><i class="bi bi-dash"></i></button></td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>保存</button>
+                <a href="{{ url_for('material_return.index') }}" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function calcRow(input) {
+    var row = input.closest('tr');
+    var qty = parseFloat(row.querySelector('.qty').value) || 0;
+    var price = parseFloat(row.querySelector('.price').value) || 0;
+    row.querySelector('.subtotal').value = (qty * price).toFixed(2);
+}
+
+function addItem() {
+    var tbody = document.getElementById('itemsBody');
+    var firstRow = tbody.querySelector('tr');
+    var newRow = firstRow.cloneNode(true);
+    newRow.querySelectorAll('input').forEach(function(input) {
+        if (input.classList.contains('subtotal')) {
+            input.value = '0.00';
+        } else {
+            input.value = '';
+        }
+    });
+    var select = newRow.querySelector('select');
+    if (select) select.selectedIndex = 0;
+    tbody.appendChild(newRow);
+}
+
+function removeItem(btn) {
+    var tbody = document.getElementById('itemsBody');
+    if (tbody.querySelectorAll('tr').length > 1) {
+        btn.closest('tr').remove();
+    }
+}
+
+// 关联出库单时自动填充明细
+document.getElementById('stock_out_select').addEventListener('change', function() {
+    var soId = this.value;
+    if (!soId) return;
+    fetch('{{ url_for("material_return.api_stock_out_items", stock_out_id=0) }}'.replace('/0', '/' + soId))
+        .then(r => r.json())
+        .then(data => {
+            if (data.items && data.items.length > 0) {
+                var tbody = document.getElementById('itemsBody');
+                tbody.innerHTML = '';
+                data.items.forEach(function(item) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><input type="hidden" name="material_id[]" value="${item.material_id}">${item.material_name}</td>
+                        <td><input type="number" step="0.0001" class="form-control form-control-sm qty" name="quantity[]" value="${item.quantity}" oninput="calcRow(this)"></td>
+                        <td><input type="number" step="0.0001" class="form-control form-control-sm price" name="unit_price[]" value="${item.unit_price}" oninput="calcRow(this)"></td>
+                        <td><input type="text" class="form-control form-control-sm subtotal" value="${(item.quantity * item.unit_price).toFixed(2)}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" name="reason[]" value=""></td>
+                        <td><input type="text" class="form-control form-control-sm" name="item_remark[]" value=""></td>
+                        <td><button type="button" class="btn btn-sm btn-danger" onclick="removeItem(this)"><i class="bi bi-dash"></i></button></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        })
+        .catch(err => console.error('Error:', err));
+});
+</script>
+{% endblock %}

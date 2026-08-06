@@ -136,7 +136,7 @@ def _sync_dingtalk(app_key, app_secret):
             for dept in dept_data.get('department', []):
                 dept_id = dept.get('id')
                 dept_name = dept.get('name', '')
-                parent_id = dept.get('parentid') or 0
+                parent_id = dept.get('parentid') or None
                 code = f'DT_{dept_id}'
                 existing = SysDept.query.filter_by(dept_code=code).first()
                 if existing:

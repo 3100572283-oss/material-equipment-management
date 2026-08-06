@@ -1,9 +1,24 @@
+import os
 """定时任务调度"""
 from datetime import datetime
 
 
 def init_scheduler(app):
     """初始化APScheduler定时任务"""
+    # 文件锁防止gunicorn多worker重复启动调度器
+    import fcntl
+    lock_file = '/opt/material-equipment-management/scheduler.lock'
+    lock_fp = open(lock_file, 'w')
+    try:
+        fcntl.flock(lock_fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError):
+        print("APScheduler: 另一个worker已启动调度器，跳过")
+        return None
+    lock_fp.write(str(os.getpid()))
+    lock_fp.flush()
+    # 将lock_fp存储到app对象上，防止GC回收导致锁释放
+    app._scheduler_lock = lock_fp
+
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.cron import CronTrigger
@@ -27,6 +42,24 @@ def init_scheduler(app):
         daily_warning_job,
         CronTrigger(hour=9, minute=0),
         id='daily_warnings',
+        replace_existing=True
+    )
+
+    def inventory_warning_job():
+        with app.app_context():
+            from app.notification_service import notify_inventory_warning
+            try:
+                count = notify_inventory_warning()
+                if count > 0:
+                    print(f"[Scheduler] Inventory warnings: {count} items at {datetime.now()}")
+            except Exception as e:
+                print(f"[Scheduler] Inventory warning error: {e}")
+
+    # 每天上午10点检查库存预警
+    scheduler.add_job(
+        inventory_warning_job,
+        CronTrigger(hour=10, minute=0),
+        id='inventory_warnings',
         replace_existing=True
     )
 
@@ -76,5 +109,5 @@ def init_scheduler(app):
     )
 
     scheduler.start()
-    print("APScheduler started: daily_warnings@09:00, cleanup_audit@02:00, cleanup_recycle@03:00")
+    print("APScheduler started: daily_warnings@09:00, inventory_warnings@10:00, cleanup_audit@02:00, cleanup_recycle@03:00")
     return scheduler

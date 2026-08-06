@@ -1,0 +1,54 @@
+{% extends "mobile/base.html" %}
+{% block title %}调拨列表{% endblock %}
+{% block nav_title %}调拨申请{% endblock %}
+
+{% block content %}
+<div class="m-card" style="padding:10px 14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-size:15px; font-weight:600; color:#212529;">
+            <i class="bi bi-arrow-left-right" style="color:#fd7e14;"></i> 调拨记录
+        </span>
+        <a href="{{ url_for('mobile.m_transfer_create') }}" class="m-btn m-btn-primary m-btn-sm">
+            <i class="bi bi-plus-lg" style="margin-right:2px;"></i>新建调拨
+        </a>
+    </div>
+</div>
+
+{% if transfers %}
+    {% for t in transfers %}
+    <a href="{{ url_for('mobile.m_transfer_detail', id=t.id) }}" style="text-decoration:none; display:block;">
+        <div class="m-card" style="padding:12px 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:600; color:#212529; font-size:14px;">{{ t.transfer_no }}</span>
+                <span style="font-size:11px; padding:2px 8px; border-radius:10px;
+                    {% if t.status == 'draft' %}background:#e2e3e5; color:#6c757d;
+                    {% elif t.status == 'pending' %}background:#fff3cd; color:#664d03;
+                    {% elif t.status == 'approved' %}background:#d1e7dd; color:#0f5132;
+                    {% else %}background:#f8d7da; color:#842029;{% endif %}">
+                    {% if t.status == 'draft' %}草稿
+                    {% elif t.status == 'pending' %}待审批
+                    {% elif t.status == 'approved' %}已批准
+                    {% elif t.status == 'rejected' %}已拒绝
+                    {% else %}{{ t.status }}{% endif %}
+                </span>
+            </div>
+            <div style="font-size:13px; color:#495057; margin-top:6px;">
+                {{ t.from_project.name if t.from_project else '?' }} <i class="bi bi-arrow-right" style="color:#adb5bd;"></i> {{ t.to_project.name if t.to_project else '?' }}
+            </div>
+            <div style="font-size:12px; color:#adb5bd; margin-top:4px;">
+                {{ t.transfer_date.strftime('%Y-%m-%d') if t.transfer_date else '' }}
+                {% if t.applicant %} · {{ t.applicant }}{% endif %}
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+{% else %}
+    <div class="m-card" style="text-align:center; padding:40px 14px; color:#adb5bd;">
+        <i class="bi bi-inbox" style="font-size:48px; display:block; margin-bottom:10px;"></i>
+        <div style="font-size:14px;">暂无调拨记录</div>
+        <a href="{{ url_for('mobile.m_transfer_create') }}" class="m-btn m-btn-primary" style="margin-top:12px;">
+            <i class="bi bi-plus-lg" style="margin-right:4px;"></i>新建调拨
+        </a>
+    </div>
+{% endif %}
+{% endblock %}

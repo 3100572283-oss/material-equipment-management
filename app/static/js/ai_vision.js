@@ -11,7 +11,7 @@ var AIVision = (function() {
      * 压缩图片
      */
     function compressImage(file, callback) {
-        if (!file.type.match(/image\/(jpeg|jpg|png)/i)) {
+        if (!file.type.match(/image\/(jpeg|jpg|png|gif|bmp|webp)/i)) {
             callback(null, '仅支持JPG、PNG格式图片');
             return;
         }
@@ -101,6 +101,37 @@ var AIVision = (function() {
      * @param {Function} callback - callback(success, data, message)
      */
     function recognizeImage(type, file, callback) {
+        // PDF文件：直接用FormData上传，不压缩
+        var fileName = (file.name || '').toLowerCase();
+        if (fileName.endsWith('.pdf') || file.type === 'application/pdf') {
+            if (file.size > 20 * 1024 * 1024) {
+                callback(false, null, 'PDF文件不能超过20MB');
+                return;
+            }
+            var formData = new FormData();
+            formData.append('image', file);
+            formData.append('type', type);
+            var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            if (csrfMeta) formData.append('csrf_token', csrfMeta.getAttribute('content'));
+
+            fetch('/ai/vision/recognize', {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    callback(true, data.data, null);
+                } else {
+                    callback(false, null, data.message || '识别失败');
+                }
+            })
+            .catch(function(err) {
+                callback(false, null, '网络错误：' + err.message);
+            });
+            return;
+        }
+        // 图片文件：压缩后用JSON发送
         compressImage(file, function(base64, err) {
             if (err) {
                 callback(false, null, err);
@@ -124,7 +155,7 @@ var AIVision = (function() {
 
         var input = document.createElement('input');
         input.type = 'file';
-        input.accept = 'image/jpeg,image/png';
+        input.accept = 'image/jpeg,image/png,application/pdf';
         input.style.display = 'none';
 
         btn.appendChild(input);

@@ -549,6 +549,79 @@ def apply_data_scope(query, model_cls, user=None):
     return permission_service.apply_data_scope_filter(query, model_cls, user)
 
 
+def get_scoped_query(model_cls, user=None, filter_project=True):
+    """P1-8: 创建带数据权限过滤的查询对象
+
+    自动应用以下过滤：
+    1. 项目隔离：按 session.current_project_id 过滤（如果模型有 project_id 字段）
+    2. 数据范围：按用户角色 data_scope 过滤（如果模型有 dept_id 字段）
+    3. 软删除：排除已删除记录（如果模型有 is_deleted 字段）
+
+    Args:
+        model_cls: SQLAlchemy 模型类
+        user: 用户对象，默认为 current_user
+        filter_project: 是否按当前项目过滤
+
+    Returns:
+        SQLAlchemy Query 对象（已应用过滤条件）
+    """
+    from flask import session
+    from flask_login import current_user
+    
+    if user is None:
+        user = current_user
+    
+    query = model_cls.query
+    
+    # 1. 项目隔离
+    if filter_project and hasattr(model_cls, 'project_id'):
+        project_id = session.get('current_project_id')
+        if project_id:
+            query = query.filter(model_cls.project_id == project_id)
+    
+    # 2. 数据范围过滤（非管理员）
+    if user and hasattr(user, 'is_authenticated') and user.is_authenticated:
+        if not user.is_admin():
+            # 应用数据范围过滤
+            try:
+                query = apply_data_scope(query, model_cls, user)
+            except Exception:
+                pass  # 数据范围过滤异常时不阻断查询
+    
+    # 3. 软删除过滤
+    if hasattr(model_cls, 'is_deleted'):
+        query = query.filter(model_cls.is_deleted == False)
+    
+    return query
+
+
+def validate_project_access(project_id, user=None):
+    """P1-8: 验证用户是否有权访问指定项目
+
+    Args:
+        project_id: 项目ID
+        user: 用户对象，默认为 current_user
+
+    Returns:
+        bool: 是否有权访问
+    """
+    from flask_login import current_user
+    
+    if user is None:
+        user = current_user
+    
+    if not user or not hasattr(user, 'is_authenticated') or not user.is_authenticated:
+        return False
+    
+    if user.is_admin():
+        return True
+    
+    try:
+        return user.can_access_project(project_id)
+    except Exception:
+        return False
+
+
 def get_current_project_id():
     """获取当前选中项目ID，无则返回None"""
     from flask import session
@@ -628,6 +701,46 @@ class ConfigCache:
         for c in configs:
             cls._cache[c.config_key] = (c.config_value, now + cls._ttl)
 
+
+
+
+# === P2: 敏感数据加密/解密 ===
+def _get_encryption_key():
+    import os
+    from cryptography.fernet import Fernet
+    import base64, hashlib
+    key = os.environ.get('ENCRYPTION_KEY', '')
+    if not key:
+        from dotenv import load_dotenv
+        load_dotenv()
+        key = os.environ.get('ENCRYPTION_KEY', '')
+    if not key:
+        from flask import current_app
+        secret = current_app.config.get('SECRET_KEY', 'fallback')
+        key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()).decode()
+    return key
+
+
+def encrypt_secret(plaintext):
+    if not plaintext or plaintext.startswith('ENC:'):
+        return plaintext
+    import os
+    from cryptography.fernet import Fernet
+    key = _get_encryption_key()
+    f = Fernet(key.encode() if isinstance(key, str) else key)
+    encrypted = f.encrypt(plaintext.encode()).decode()
+    return 'ENC:' + encrypted
+
+
+def decrypt_secret(ciphertext):
+    if not ciphertext or not ciphertext.startswith('ENC:'):
+        return ciphertext
+    import os
+    from cryptography.fernet import Fernet
+    key = _get_encryption_key()
+    f = Fernet(key.encode() if isinstance(key, str) else key)
+    encrypted_part = ciphertext[4:]
+    return f.decrypt(encrypted_part.encode()).decode()
 
 def get_config(key, default=None):
     """获取系统配置值"""
@@ -771,12 +884,80 @@ def init_system_config():
 # ============== 统一附件上传服务 ==============
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx'}
+
+def validate_file_extension(filename):
+    """P2: 校验文件扩展名是否在白名单中
+
+    Args:
+        filename: 文件名
+
+    Returns:
+        (bool, str): (是否允许, 错误信息)
+    """
+    if not filename or '.' not in filename:
+        return False, '文件名无效或缺少扩展名'
+    ext = filename.rsplit('.', 1)[1].lower()
+    if ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
+        return False, f'不支持的文件类型(.{ext})，仅支持：{", ".join(sorted(ALLOWED_ATTACHMENT_EXTENSIONS))}'
+    return True, ''
+
 MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10MB
 
 
+# P2-16: 扩展名→MIME类型映射（用于二次验证）
+EXTENSION_MIME_MAP = {
+    'jpg': {'image/jpeg'}, 'jpeg': {'image/jpeg'},
+    'png': {'image/png'}, 'gif': {'image/gif'},
+    'pdf': {'application/pdf'},
+    'doc': {'application/msword'},
+    'docx': {'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},
+    'xls': {'application/vnd.ms-excel'},
+    'xlsx': {'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},
+}
+
+
 def allowed_file(filename):
-    """检查文件扩展名是否允许"""
+    """检查文件扩展名是否允许（P2-16: 增强版）"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_ATTACHMENT_EXTENSIONS
+
+
+def validate_file_mimetype(filename, file_storage):
+    """P2-16: 验证文件MIME类型与扩展名是否一致
+    
+    Returns:
+        (bool, str): (是否通过, 错误信息)
+    """
+    if '.' not in filename:
+        return False, '文件名无效'
+    ext = filename.rsplit('.', 1)[1].lower()
+    expected_mimes = EXTENSION_MIME_MAP.get(ext)
+    if not expected_mimes:
+        return True, ''  # 未在映射表中的扩展名，允许通过（仅靠白名单限制）
+    
+    # 检查文件头魔数
+    file_storage.stream.seek(0)
+    header = file_storage.stream.read(16)
+    file_storage.stream.seek(0)
+    
+    # 常见文件头魔数验证
+    magic_numbers = {
+        'jpg': [b'\xff\xd8\xff'],
+        'jpeg': [b'\xff\xd8\xff'],
+        'png': [b'\x89PNG\r\n\x1a\n'],
+        'gif': [b'GIF87a', b'GIF89a'],
+        'pdf': [b'%PDF'],
+        'doc': [b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'],  # OLE2
+        'docx': [b'PK\x03\x04', b'PK\x05\x06'],  # ZIP
+        'xls': [b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'],  # OLE2
+        'xlsx': [b'PK\x03\x04', b'PK\x05\x06'],  # ZIP
+    }
+    
+    magic = magic_numbers.get(ext)
+    if magic:
+        if not any(header.startswith(m) for m in magic):
+            return False, f'文件内容与扩展名(.{ext})不匹配，疑似伪造文件'
+    
+    return True, ''
 
 
 def upload_attachment(file_storage, module, biz_id=None, project_id=None):
@@ -796,6 +977,11 @@ def upload_attachment(file_storage, module, biz_id=None, project_id=None):
     filename = file_storage.filename
     if not allowed_file(filename):
         return None, f'不支持的文件类型，仅支持：{", ".join(sorted(ALLOWED_ATTACHMENT_EXTENSIONS))}'
+
+    # P2-16: MIME类型+文件头魔数验证
+    mime_ok, mime_err = validate_file_mimetype(filename, file_storage)
+    if not mime_ok:
+        return None, mime_err
 
     ext = filename.rsplit('.', 1)[1].lower()
     new_filename = f'{uuid.uuid4().hex}.{ext}'
@@ -1098,12 +1284,14 @@ def get_project_materials(project_id, common_only=True):
         ).filter(
             ProjectMaterial.project_id == project_id,
             Material.status == 'active',
+            Material.deleted_at.is_(None),
         ).order_by(ProjectMaterial.sort, Material.code)
     else:
         # 返回公司主库全部物资
         return Material.query.filter(
             Material.source == 'company',
             Material.status == 'active',
+            Material.deleted_at.is_(None),
         ).order_by(Material.code)
 
 
@@ -1122,11 +1310,13 @@ def get_project_suppliers(project_id, common_only=True):
         ).filter(
             ProjectSupplier.project_id == project_id,
             Supplier.status == 'qualified',
+            Supplier.deleted_at.is_(None),
         ).order_by(ProjectSupplier.sort, Supplier.name)
     else:
         return Supplier.query.filter(
             Supplier.source == 'company',
             Supplier.status == 'qualified',
+            Supplier.deleted_at.is_(None),
         ).order_by(Supplier.name)
 
 
@@ -1367,3 +1557,22 @@ class PriceCalculator:
         parts.append(f"税率{detail['tax_rate']}% 不含税: {detail['price_without_tax']}")
         return ' → '.join(parts)
 
+
+
+# P1安全加固: 密码复杂度验证
+def validate_password(password):
+    """验证密码复杂度: 最短8位, 必须包含大小写字母和数字
+    返回: (bool, str) - (是否通过, 错误消息)
+    """
+    if not password or len(password) < 8:
+        return False, '密码长度不能少于8位'
+    if not re.search(r'[a-z]', password):
+        return False, '密码必须包含小写字母'
+    if not re.search(r'[A-Z]', password):
+        return False, '密码必须包含大写字母'
+    if not re.search(r'[0-9]', password):
+        return False, '密码必须包含数字'
+    return True, ''
+
+
+import re as _re_module

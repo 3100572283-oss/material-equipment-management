@@ -1,0 +1,365 @@
+<!-- 移动端AI助手聊天组件 -->
+<!-- 仅在AI启用时渲染 -->
+{% if get_config('ai_enabled', 'false') == 'true' %}
+
+<!-- AI浮动按钮 -->
+<button id="mAIFloatBtn" class="m-ai-float-btn" aria-label="AI助手">
+    <i class="bi bi-robot"></i>
+</button>
+
+<!-- AI聊天面板（全屏底部弹出式） -->
+<div id="mAIChatPanel" class="m-ai-chat-panel">
+    <!-- 头部 -->
+    <div class="m-ai-chat-header">
+        <div class="m-ai-chat-header-left">
+            <div class="m-ai-avatar"><i class="bi bi-robot"></i></div>
+            <span class="m-ai-title">AI智能助手</span>
+        </div>
+        <button id="mAIChatClose" class="m-ai-close-btn" aria-label="关闭">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+
+    <!-- 消息区域 -->
+    <div id="mAIChatMessages" class="m-ai-chat-messages"></div>
+
+    <!-- 快捷按钮 -->
+    <div class="m-ai-quick-bar" id="mAIQuickBar">
+        <button class="m-ai-quick-btn" data-msg="查库存">查库存</button>
+        <button class="m-ai-quick-btn" data-msg="待我审批">待我审批</button>
+        <button class="m-ai-quick-btn" data-msg="本月入库">本月入库</button>
+        <button class="m-ai-quick-btn" data-msg="合同预警">合同预警</button>
+    </div>
+
+    <!-- 输入区域 -->
+    <div class="m-ai-input-area">
+        <button id="mAIVoiceBtn" class="m-ai-voice-btn" aria-label="语音输入" title="语音输入">
+            <i class="bi bi-mic"></i>
+        </button>
+        <input type="text" id="mAIInput" class="m-ai-input" placeholder="输入您的问题..." autocomplete="off">
+        <button id="mAISendBtn" class="m-ai-send-btn" aria-label="发送">
+            <i class="bi bi-send"></i>
+        </button>
+    </div>
+
+    <!-- 语音录制状态 -->
+    <div id="mAIVoiceOverlay" class="m-ai-voice-overlay" style="display:none;">
+        <div class="m-ai-voice-anim">
+            <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <p>正在录音... 点击停止</p>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    var floatBtn = document.getElementById('mAIFloatBtn');
+    var panel = document.getElementById('mAIChatPanel');
+    var closeBtn = document.getElementById('mAIChatClose');
+    var input = document.getElementById('mAIInput');
+    var sendBtn = document.getElementById('mAISendBtn');
+    var messages = document.getElementById('mAIChatMessages');
+    var voiceBtn = document.getElementById('mAIVoiceBtn');
+    var voiceOverlay = document.getElementById('mAIVoiceOverlay');
+    var quickBtns = document.querySelectorAll('.m-ai-quick-btn');
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+    if (!floatBtn || !panel) return;
+
+    var SPEECH_ENABLED = {{ 'true' if get_config('ai_speech_enabled', 'false') == 'true' else 'false' }};
+    if (!SPEECH_ENABLED && voiceBtn) voiceBtn.style.display = 'none';
+
+    // ========== 浮动按钮位置记忆 ==========
+    var POS_KEY = 'mAIFloatPos';
+    function restorePos() {
+        try {
+            var saved = JSON.parse(localStorage.getItem(POS_KEY));
+            if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+                floatBtn.style.left = Math.max(8, Math.min(saved.x, window.innerWidth - 56)) + 'px';
+                floatBtn.style.top = Math.max(60, Math.min(saved.y, window.innerHeight - 120)) + 'px';
+                floatBtn.style.right = 'auto';
+                floatBtn.style.bottom = 'auto';
+            }
+        } catch(e) {}
+    }
+    restorePos();
+
+    // ========== 浮动按钮拖拽 ==========
+    var dragData = { dragging: false, moved: false, sx: 0, sy: 0, sl: 0, st: 0 };
+    var THRESHOLD = 5;
+
+    function getPoint(e) {
+        if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    function onDragStart(e) {
+        var p = getPoint(e);
+        var rect = floatBtn.getBoundingClientRect();
+        dragData.dragging = false;
+        dragData.moved = false;
+        dragData.sx = p.x;
+        dragData.sy = p.y;
+        dragData.sl = rect.left;
+        dragData.st = rect.top;
+        floatBtn.style.right = 'auto';
+        floatBtn.style.bottom = 'auto';
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('touchend', onDragEnd);
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('mouseup', onDragEnd);
+    }
+
+    function onDragMove(e) {
+        var p = getPoint(e);
+        var dx = p.x - dragData.sx;
+        var dy = p.y - dragData.sy;
+        if (!dragData.dragging) {
+            if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
+            dragData.dragging = true;
+            dragData.moved = true;
+            floatBtn.classList.add('dragging');
+            floatBtn.style.right = 'auto';
+            floatBtn.style.bottom = 'auto';
+        }
+        if (e.cancelable) e.preventDefault();
+        var nl = Math.max(8, Math.min(dragData.sl + dx, window.innerWidth - 56));
+        var nt = Math.max(60, Math.min(dragData.st + dy, window.innerHeight - 120));
+        floatBtn.style.left = nl + 'px';
+        floatBtn.style.top = nt + 'px';
+    }
+
+    function onDragEnd() {
+        document.removeEventListener('touchmove', onDragMove);
+        document.removeEventListener('touchend', onDragEnd);
+        document.removeEventListener('mousemove', onDragMove);
+        document.removeEventListener('mouseup', onDragEnd);
+        floatBtn.classList.remove('dragging');
+        if (dragData.dragging) {
+            try {
+                localStorage.setItem(POS_KEY, JSON.stringify({
+                    x: parseFloat(floatBtn.style.left) || 0,
+                    y: parseFloat(floatBtn.style.top) || 0
+                }));
+            } catch(e) {}
+        }
+    }
+
+    floatBtn.addEventListener('touchstart', onDragStart, { passive: true });
+    floatBtn.addEventListener('mousedown', function(e) { e.preventDefault(); onDragStart(e); });
+
+    // ========== 打开/关闭面板 ==========
+    floatBtn.addEventListener('click', function(e) {
+        if (dragData.moved) { dragData.moved = false; e.preventDefault(); return; }
+        openPanel();
+    });
+
+    function openPanel() {
+        panel.classList.add('show');
+        document.body.style.overflow = 'hidden';
+        if (messages.children.length === 0) {
+            addBotMsg('您好！我是AI智能助手，可以帮您查询库存、分析数据、总结记录等。请问有什么可以帮您的？');
+        }
+        setTimeout(function() { if (input) input.focus(); }, 300);
+    }
+
+    function closePanel() {
+        panel.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+
+    closeBtn.addEventListener('click', closePanel);
+
+    // ========== 消息发送 ==========
+    function sendMsg(msg) {
+        if (!msg || !msg.trim()) return;
+        msg = msg.trim();
+        addUserMsg(msg);
+        if (input) input.value = '';
+        showTyping();
+
+        var formData = new FormData();
+        formData.append('message', msg);
+        if (csrfToken) formData.append('csrf_token', csrfToken);
+
+        fetch('/ai/chat', {
+            method: 'POST',
+            body: formData,
+            headers: csrfToken ? { 'X-CSRFToken': csrfToken } : {}
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            removeTyping();
+            if (data.success) {
+                addBotMsg(data.response || data.message || '收到');
+            } else {
+                addBotMsg(data.message || '请求失败，请稍后重试', true);
+            }
+        }).catch(function(err) {
+            removeTyping();
+            addBotMsg('网络错误：' + err.message, true);
+        });
+    }
+
+    function addUserMsg(text) {
+        var div = document.createElement('div');
+        div.className = 'm-ai-msg m-ai-msg-user';
+        div.innerHTML = '<div class="m-ai-bubble">' + escapeHtml(text) + '</div>';
+        messages.appendChild(div);
+        scrollBottom();
+    }
+
+    function addBotMsg(text, isError) {
+        var div = document.createElement('div');
+        div.className = 'm-ai-msg m-ai-msg-bot';
+        div.innerHTML = '<div class="m-ai-bubble' + (isError ? ' m-ai-error' : '') + '">' + formatMsg(text) + '</div>';
+        messages.appendChild(div);
+        scrollBottom();
+    }
+
+    function showTyping() {
+        var div = document.createElement('div');
+        div.className = 'm-ai-msg m-ai-msg-bot';
+        div.id = 'mAITyping';
+        div.innerHTML = '<div class="m-ai-bubble"><span class="m-ai-typing"><span></span><span></span><span></span></span></div>';
+        messages.appendChild(div);
+        scrollBottom();
+    }
+
+    function removeTyping() {
+        var t = document.getElementById('mAITyping');
+        if (t) t.remove();
+    }
+
+    function scrollBottom() {
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    // ========== 事件绑定 ==========
+    sendBtn.addEventListener('click', function() { sendMsg(input ? input.value : ''); });
+    if (input) {
+        input.addEventListener('keypress', function(e) {
+            if (e.keyCode === 13) { e.preventDefault(); sendMsg(input.value); }
+        });
+    }
+    quickBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() { sendMsg(this.getAttribute('data-msg')); });
+    });
+
+    // ========== 语音输入 ==========
+    var mediaRecorder = null;
+    var audioChunks = [];
+    var isRecording = false;
+
+    if (voiceBtn && SPEECH_ENABLED) {
+        voiceBtn.addEventListener('click', function() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        });
+    }
+
+    function startRecording() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            M.toast('您的浏览器不支持语音录制', 'error');
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            mediaRecorder.addEventListener('dataavailable', function(e) { audioChunks.push(e.data); });
+            mediaRecorder.addEventListener('stop', function() {
+                var blob = new Blob(audioChunks, { type: 'audio/webm' });
+                stream.getTracks().forEach(function(t) { t.stop(); });
+                sendSpeech(blob);
+            });
+            mediaRecorder.start();
+            isRecording = true;
+            voiceBtn.classList.add('recording');
+            voiceBtn.querySelector('i').className = 'bi bi-stop-circle';
+            voiceOverlay.style.display = 'flex';
+            voiceOverlay.onclick = stopRecording;
+        }).catch(function(err) {
+            M.toast('无法访问麦克风：' + err.message, 'error');
+        });
+    }
+
+    function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        isRecording = false;
+        voiceBtn.classList.remove('recording');
+        voiceBtn.querySelector('i').className = 'bi bi-mic';
+        voiceOverlay.style.display = 'none';
+    }
+
+    function sendSpeech(blob) {
+        M.toast('正在识别语音...', 'info');
+        var formData = new FormData();
+        formData.append('file', blob, 'speech.webm');
+        if (csrfToken) formData.append('csrf_token', csrfToken);
+
+        fetch('/ai/speech/to_text', {
+            method: 'POST',
+            body: formData,
+            headers: csrfToken ? { 'X-CSRFToken': csrfToken } : {}
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            if (data.success && data.text) {
+                if (input) {
+                    input.value = data.text;
+                    input.focus();
+                }
+                M.toast('语音识别成功', 'success');
+            } else {
+                M.toast(data.message || '语音识别失败', 'error');
+            }
+        }).catch(function(err) {
+            M.toast('语音识别出错：' + err.message, 'error');
+        });
+    }
+
+    // ========== 工具函数 ==========
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function formatMsg(text) {
+        if (!text) return '';
+        var html = escapeHtml(text);
+        // Markdown: 代码块
+        html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function(m, lang, code) {
+            return '<pre><code>' + code.trim() + '</code></pre>';
+        });
+        // 行内代码
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        // 加粗
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        // 列表
+        html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+        html = html.replace(/(<li>[\s\S]*?<\/li>)/g, function(m) { return '<ul>' + m + '</ul>'; });
+        html = html.replace(/<\/ul>\s*<ul>/g, '');
+        // 换行
+        html = html.replace(/\n/g, '<br>');
+        // 表格简单处理
+        html = html.replace(/\|(.+)\|/g, function(m) {
+            var cells = m.split('|').filter(function(c) { return c.trim(); });
+            if (cells.length > 1) return '<table><tr>' + cells.map(function(c) { return '<td>' + c.trim() + '</td>'; }).join('') + '</tr></table>';
+            return m;
+        });
+        return html;
+    }
+
+    // 检查AI是否启用
+    fetch('/ai/is_enabled').then(function(r) { return r.json(); }).then(function(data) {
+        if (!data.enabled) floatBtn.style.display = 'none';
+    }).catch(function() { floatBtn.style.display = 'none'; });
+
+})();
+</script>
+{% endif %}

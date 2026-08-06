@@ -2,6 +2,7 @@ import json
 from datetime import datetime, date
 from flask import render_template, request, redirect, url_for, flash, jsonify, session, make_response
 from flask_login import login_required, current_user
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy import or_, func
 
 from app.stock_in import bp
@@ -198,6 +199,10 @@ def index():
         except Exception:
             pass
 
+    # P2: 预加载关联数据，避免 N+1 查询
+    query = query.options(
+        joinedload(StockIn.supplier)
+    )
     pagination = query.order_by(StockIn.created_at.desc()).paginate(
         page=page, per_page=10, error_out=False)
 
@@ -917,7 +922,7 @@ def export():
         return redirect(url_for('stock_in.index'))
     
     keyword = request.args.get('keyword', '')
-    query = StockIn.query.filter_by(project_id=project_id)
+    query = StockIn.query.filter_by(project_id=project_id).filter(StockIn.deleted_at.is_(None))
     if keyword:
         query = query.filter(StockIn.code.contains(keyword))
     

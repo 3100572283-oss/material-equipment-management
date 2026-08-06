@@ -4,6 +4,7 @@ import json
 from flask import render_template, request, redirect, url_for, flash, current_app, send_from_directory, session, jsonify
 from flask_login import login_required
 from werkzeug.utils import secure_filename
+from sqlalchemy.orm import selectinload
 from app.material import bp
 from app import db
 from app.models import Material, Category, ProjectMaterial
@@ -68,6 +69,8 @@ def index():
     if category_id:
         query = query.filter(Material.category_id == category_id)
 
+    # P2: 预加载分类信息，避免 N+1 查询
+    query = query.options(selectinload(Material.category))
     pagination = query.order_by(Material.code.asc()).paginate(
         page=page, per_page=10, error_out=False
     )
@@ -275,6 +278,8 @@ def api_project_materials():
     if category_id:
         query = query.filter(Material.category_id == category_id)
 
+    # P2: 预加载分类信息，避免 N+1 查询
+    query = query.options(selectinload(Material.category))
     pagination = query.order_by(Material.code.asc()).paginate(
         page=page, per_page=per_page, error_out=False
     )

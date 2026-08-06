@@ -16,6 +16,29 @@ import os
 import json
 
 from app.mobile import bp
+
+# P2: 文件上传扩展名校验
+def _validate_upload_file(file):
+    """校验上传文件扩展名，不通过则abort 400"""
+    if file and file.filename:
+        from app.utils import validate_file_extension
+        from flask import abort
+        ok, err = validate_file_extension(file.filename)
+        if not ok:
+            abort(400, err)
+    return file
+
+def _validate_upload_files(files):
+    """校验上传文件列表扩展名，不通过则abort 400"""
+    from app.utils import validate_file_extension
+    from flask import abort
+    for f in files:
+        if f and f.filename:
+            ok, err = validate_file_extension(f.filename)
+            if not ok:
+                abort(400, err)
+
+from app.mobile.jwt_utils import (generate_access_token, generate_refresh_token, verify_token, mobile_auth_required, get_current_user_id, get_current_username)
 from app import db
 from app.models import (Material, Category, UsageUnit, StockIn, StockInItem,
                         StockOut, StockOutItem, Project, Inventory, Supplier,
@@ -28,6 +51,7 @@ from app.models import (Material, Category, UsageUnit, StockIn, StockInItem,
                         EquipmentInspectionRecord,
                         PurchaseRequisition, PurchaseRequisitionItem,
                         MaterialScrap, MaterialScrapItem,
+                        MaterialTransfer, MaterialTransferItem,
                         ConcreteTicket, Invoice)
 from app.utils import (to_decimal, _gen_code_with_seq, get_dict_items,
                        apply_data_scope, get_project_materials, get_project_suppliers,
@@ -63,6 +87,135 @@ def _require_project():
         flash('请先选择项目。', 'warning')
         return None, redirect(url_for('mobile.portal_home'))
     return project_id, None
+
+
+def _check_project_access():
+    """P1-6: 验证当前用户是否有权访问当前项目（移动端API专用）
+    
+    返回 (project_id, error_response):
+    - 成功: (project_id, None)
+    - 失败: (None, jsonify_response)
+    """
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return None, (jsonify({'success': False, 'message': '请先选择项目'}), 400)
+    # 验证用户是否有权访问该项目
+    if not current_user.can_access_project(project_id):
+        return None, (jsonify({'success': False, 'message': '无权限访问该项目'}), 403)
+    return project_id, None
+
+
+def _check_project_access_or_redirect():
+    """P1-6: 验证项目访问权限（页面路由专用，失败时重定向）
+    
+    返回 (project_id, redirect_response):
+    - 成功: (project_id, None)
+    - 失败: (None, redirect_response)
+    """
+    project_id = session.get('current_project_id')
+    if not project_id:
+        flash('请先选择项目。', 'warning')
+        return None, redirect(url_for('mobile.portal_home'))
+    if not current_user.can_access_project(project_id):
+        flash('您无权限访问该项目。', 'danger')
+        session.pop('current_project_id', None)
+        return None, redirect(url_for('mobile.portal_home'))
+    return project_id, None
+
+
+
+# ============== JWT认证端点 ==============
+
+@bp.route('/api/auth/token', methods=['POST'])
+def api_auth_token():
+    """移动端JWT登录 — 用户名密码换取token"""
+    data = request.get_json(silent=True) or request.form
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    
+    if not username or not password:
+        return jsonify({'success': False, 'message': '请输入用户名和密码'}), 400
+    
+    from app.models import User
+    user = User.query.filter_by(username=username).first()
+    
+    if user is None or not check_password_hash(user.password_hash, password):
+        return jsonify({'success': False, 'message': '用户名或密码错误'}), 401
+    
+    if user.status and user.status != 'active':
+        return jsonify({'success': False, 'message': '账号已被禁用'}), 403
+    
+    access_token = generate_access_token(user.id, user.username, user.role_id)
+    refresh_token = generate_refresh_token(user.id, user.username)
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'token_type': 'Bearer',
+            'expires_in': 86400,
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'name': user.name or user.username,
+                'role_id': user.role_id,
+            }
+        }
+    })
+
+
+@bp.route('/api/auth/refresh', methods=['POST'])
+def api_auth_refresh():
+    """刷新access token"""
+    data = request.get_json(silent=True) or request.form
+    refresh_token = data.get('refresh_token', '').strip()
+    
+    if not refresh_token:
+        return jsonify({'success': False, 'message': '缺少refresh_token'}), 400
+    
+    payload = verify_token(refresh_token)
+    if not payload or payload.get('type') != 'refresh':
+        return jsonify({'success': False, 'message': 'refresh_token无效或已过期'}), 401
+    
+    from app.models import User
+    user = User.query.get(payload['user_id'])
+    if user is None:
+        return jsonify({'success': False, 'message': '用户不存在'}), 401
+    
+    access_token = generate_access_token(user.id, user.username, user.role_id)
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'access_token': access_token,
+            'token_type': 'Bearer',
+            'expires_in': 86400,
+        }
+    })
+
+
+@bp.route('/api/auth/profile', methods=['GET'])
+@mobile_auth_required
+def api_auth_profile():
+    """获取当前用户信息（需认证）"""
+    user_id = get_current_user_id()
+    from app.models import User
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'success': False, 'message': '用户不存在'}), 404
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'id': user.id,
+            'username': user.username,
+            'name': user.name or user.username,
+            'role_id': user.role_id,
+            'email': user.email or '',
+            'phone': user.phone or '',
+        }
+    })
 
 
 @bp.route('/offline')
@@ -111,12 +264,12 @@ def offline_data():
 
 
 @bp.route('/api/material_list')
-@login_required
+@mobile_auth_required
 def api_material_list():
     """获取当前项目的物资列表JSON（供离线缓存）"""
-    project_id = session.get('current_project_id')
-    if not project_id:
-        return jsonify([])
+    project_id, err = _check_project_access()
+    if err:
+        return err
 
     materials = Material.query.filter_by(project_id=project_id) \
         .order_by(Material.code.asc(), Material.name.asc()).all()
@@ -131,12 +284,12 @@ def api_material_list():
 
 
 @bp.route('/api/category_list')
-@login_required
+@mobile_auth_required
 def api_category_list():
     """获取当前项目的分类列表JSON"""
-    project_id = session.get('current_project_id')
-    if not project_id:
-        return jsonify([])
+    project_id, err = _check_project_access()
+    if err:
+        return err
 
     categories = Category.query.filter_by(project_id=project_id) \
         .order_by(Category.sort_order.asc(), Category.name.asc()).all()
@@ -149,12 +302,12 @@ def api_category_list():
 
 
 @bp.route('/api/usage_units')
-@login_required
+@mobile_auth_required
 def api_usage_units():
     """获取当前项目的用料单位列表JSON"""
-    project_id = session.get('current_project_id')
-    if not project_id:
-        return jsonify([])
+    project_id, err = _check_project_access()
+    if err:
+        return err
 
     units = UsageUnit.query.filter_by(project_id=project_id) \
         .order_by(UsageUnit.name.asc()).all()
@@ -167,12 +320,12 @@ def api_usage_units():
 
 
 @bp.route('/api/sync', methods=['POST'])
-@login_required
+@mobile_auth_required
 def api_sync():
     """同步离线数据到服务器（旧版，保留向后兼容）"""
-    project_id = session.get('current_project_id')
-    if not project_id:
-        return jsonify({'success': False, 'message': '请先选择项目。'}), 400
+    project_id, err = _check_project_access()
+    if err:
+        return err
 
     payload = request.get_json(silent=True) or {}
     records = payload.get('records') or []
@@ -364,7 +517,6 @@ def _sync_stock_out(project_id, data):
 # 第二部分：移动端门户（第一期）
 # ============================================================
 
-# ============== PWA：manifest.json 和 Service Worker ==============
 
 @bp.route('/manifest.json')
 def manifest_json():
@@ -385,8 +537,6 @@ def service_worker():
     resp = make_response(send_from_directory(static_dir, 'sw.js'))
     resp.headers['Content-Type'] = 'application/javascript; charset=utf-8'
     resp.headers['Cache-Control'] = 'no-cache'
-    # Service-Worker-Allowed 让 SW 可以控制更高级的路径
-    resp.headers['Service-Worker-Allowed'] = '/mobile/'
     return resp
 
 def _parse_user_agent(user_agent_str):
@@ -595,6 +745,16 @@ def portal_home():
     except Exception:
         pass
 
+    # 未读消息数
+    unread_message_count = 0
+    try:
+        from app.models import Message
+        unread_message_count = Message.query.filter_by(
+            user_id=current_user.id, is_read=False
+        ).count()
+    except Exception:
+        pass
+
     return render_template('mobile/home.html', project=project,
                            greeting=greeting,
                            today_str=today_str,
@@ -605,7 +765,8 @@ def portal_home():
                            today_out_qty=sum(float(s.total_quantity or 0) for s in today_out),
                            pending_qc=pending_qc,
                            pending_approval_count=pending_approval_count,
-                           pending_inspection_count=pending_inspection_count)
+                           pending_inspection_count=pending_inspection_count,
+                           unread_message_count=unread_message_count)
 
 
 # ============== 录入中心 ==============
@@ -938,6 +1099,7 @@ def _handle_stock_in_submit(project):
 
         # 处理照片上传
         photos = request.files.getlist('photos[]')
+        _validate_upload_files(photos)
         uploaded = 0
         for photo in photos:
             if photo and photo.filename:
@@ -950,6 +1112,7 @@ def _handle_stock_in_submit(project):
 
         # 处理手写签名
         signatures = request.files.getlist('signatures[]')
+        _validate_upload_files(signatures)
         sig_uploaded = 0
         for sig in signatures:
             if sig and sig.filename:
@@ -1102,6 +1265,7 @@ def _handle_stock_out_submit(project):
 
         # 处理照片上传
         photos = request.files.getlist('photos[]')
+        _validate_upload_files(photos)
         uploaded = 0
         for photo in photos:
             if photo and photo.filename:
@@ -1114,6 +1278,7 @@ def _handle_stock_out_submit(project):
 
         # 处理手写签名
         signatures = request.files.getlist('signatures[]')
+        _validate_upload_files(signatures)
         sig_uploaded = 0
         for sig in signatures:
             if sig and sig.filename:
@@ -1585,11 +1750,108 @@ def messages_read_all():
     return jsonify({'success': True})
 
 
+
+
+# ============== 采购申请 ==============
+
+@bp.route('/purchase-request', methods=['GET', 'POST'])
+@login_required
+def purchase_request():
+    """移动端采购申请（复用领料申请模型和审批流程）"""
+    project = _m_require_project()
+    if not project:
+        return redirect(url_for('mobile.profile'))
+
+    if request.method == 'POST':
+        apply_dept = request.form.get('apply_dept', '').strip()
+        demand_date_str = request.form.get('demand_date', '')
+        try:
+            demand_date = datetime.strptime(demand_date_str, '%Y-%m-%d').date()
+        except Exception:
+            demand_date = None
+        remark = request.form.get('remark', '').strip()
+        supplier_id = request.form.get('supplier_id', type=int) or None
+
+        # 补充供应商信息到备注
+        if supplier_id:
+            supplier = Supplier.query.get(supplier_id)
+            if supplier:
+                remark = f'供应商: {supplier.name}\n' + remark if remark else f'供应商: {supplier.name}'
+
+        pr = PurchaseRequisition(
+            pr_no=_m_gen_pr_no(project.id),
+            project_id=project.id,
+            apply_dept=apply_dept,
+            apply_user=current_user.name or current_user.username,
+            apply_date=date.today(),
+            demand_date=demand_date,
+            status='draft',
+            remark=remark,
+        )
+        db.session.add(pr)
+        db.session.flush()
+
+        # 明细
+        material_ids = request.form.getlist('material_id[]')
+        apply_qtys = request.form.getlist('apply_qty[]')
+        purposes = request.form.getlist('purpose[]')
+        est_prices = request.form.getlist('est_price[]')
+        for idx, mid in enumerate(material_ids):
+            if not mid:
+                continue
+            qty = _m_to_float(apply_qtys[idx] if idx < len(apply_qtys) else 0)
+            if qty == 0:
+                continue
+            mat = Material.query.get(int(mid))
+            purpose = (purposes[idx] if idx < len(purposes) else '').strip()
+            # 附加预计单价到用途
+            est_price = _m_to_float(est_prices[idx] if idx < len(est_prices) else 0)
+            if est_price > 0:
+                purpose = f'预计单价: ¥{est_price:.2f} | ' + purpose if purpose else f'预计单价: ¥{est_price:.2f}'
+            item = PurchaseRequisitionItem(
+                pr_id=pr.id, material_id=int(mid),
+                material_name=mat.name if mat else '',
+                specification=mat.specification if mat else '',
+                unit=mat.unit if mat else '',
+                apply_qty=qty, purpose=purpose,
+                converted=False,
+            )
+            db.session.add(item)
+
+        db.session.commit()
+
+        # 自动提交审批
+        if request.form.get('submit_type') == 'submit':
+            from app.approval.service import submit_approval
+            success, msg, instance = submit_approval('purchase_requisition', pr.id,
+                                                     applicant_id=current_user.id)
+            if success:
+                pr.status = 'pending'
+                db.session.commit()
+                flash('采购申请已提交审批', 'success')
+            else:
+                flash(f'提交审批失败：{msg}', 'danger')
+            return redirect(url_for('mobile.pr_detail', id=pr.id))
+
+        flash('采购申请已保存为草稿', 'success')
+        return redirect(url_for('mobile.pr_detail', id=pr.id))
+
+    suppliers = Supplier.query.filter_by(project_id=project.id).order_by(Supplier.name).all()
+    return render_template('mobile/purchase_request.html', project=project,
+                           suppliers=suppliers,
+                           today=date.today().isoformat(),
+                           default_pr_no=_m_gen_pr_no(project.id))
+
+
 # ============== API 接口 ==============
 
 @bp.route('/api/materials/search')
-@login_required
+@mobile_auth_required
 def api_materials_search():
+    # P1-6: 验证项目访问权限
+    _pid, _err = _check_project_access()
+    if _err:
+        return _err
     """搜索物资（含库存信息）"""
     project = _get_current_project()
     if not project:
@@ -1616,8 +1878,12 @@ def api_materials_search():
 
 
 @bp.route('/api/suppliers/search')
-@login_required
+@mobile_auth_required
 def api_suppliers_search():
+    # P1-6: 验证项目访问权限
+    _pid, _err = _check_project_access()
+    if _err:
+        return _err
     """搜索供应商"""
     project = _get_current_project()
     if not project:
@@ -1635,7 +1901,7 @@ def api_suppliers_search():
 
 
 @bp.route('/api/teams/<int:unit_id>')
-@login_required
+@mobile_auth_required
 def api_teams(unit_id):
     """获取班组列表"""
     teams = UnitTeam.query.filter_by(unit_id=unit_id).all()
@@ -1647,8 +1913,12 @@ def api_teams(unit_id):
 
 
 @bp.route('/api/stock_check')
-@login_required
+@mobile_auth_required
 def api_stock_check():
+    # P1-6: 验证项目访问权限
+    _pid, _err = _check_project_access()
+    if _err:
+        return _err
     """查询当前物资库存"""
     project = _get_current_project()
     if not project:
@@ -1862,6 +2132,7 @@ def equipment_create():
 
             # 上传进场照片
             photos = request.files.getlist('photos[]')
+            _validate_upload_files(photos)
             uploaded = 0
             for photo in photos:
                 if photo and photo.filename:
@@ -1919,6 +2190,7 @@ def equipment_exit(eid):
 
     # 上传退场照片
     photos = request.files.getlist('photos[]')
+    _validate_upload_files(photos)
     for photo in photos:
         if photo and photo.filename:
             upload_attachment(photo, 'equipment_exit',
@@ -1968,6 +2240,7 @@ def equipment_maintenance(eid):
 
             # 上传维修前后照片
             photos = request.files.getlist('photos[]')
+            _validate_upload_files(photos)
             for photo in photos:
                 if photo and photo.filename:
                     upload_attachment(photo, 'equipment_maintenance',
@@ -2024,8 +2297,12 @@ def equipment_qrcode(eid):
 
 
 @bp.route('/api/equipments/search')
-@login_required
+@mobile_auth_required
 def api_equipments_search():
+    # P1-6: 验证项目访问权限
+    _pid, _err = _check_project_access()
+    if _err:
+        return _err
     """搜索设备"""
     project = _m_require_project()
     if not project:
@@ -2043,7 +2320,7 @@ def api_equipments_search():
 
 
 @bp.route('/api/equipment/by_code/<code>')
-@login_required
+@mobile_auth_required
 def api_equipment_by_code(code):
     """扫码查设备：根据编码返回设备ID"""
     project = _m_require_project()
@@ -2152,6 +2429,7 @@ def turnover_borrow():
 
             # 上传现场照片
             photos = request.files.getlist('photos[]')
+            _validate_upload_files(photos)
             for photo in photos:
                 if photo and photo.filename:
                     upload_attachment(photo, 'turnover_borrow',
@@ -2209,6 +2487,7 @@ def turnover_return(rid):
 
             # 损坏拍照
             photos = request.files.getlist('photos[]')
+            _validate_upload_files(photos)
             for photo in photos:
                 if photo and photo.filename:
                     upload_attachment(photo, 'turnover_return',
@@ -2247,8 +2526,12 @@ def turnover_rental():
 
 
 @bp.route('/api/turnover/search')
-@login_required
+@mobile_auth_required
 def api_turnover_search():
+    # P1-6: 验证项目访问权限
+    _pid, _err = _check_project_access()
+    if _err:
+        return _err
     """搜索周转材"""
     project = _m_require_project()
     if not project:
@@ -2272,7 +2555,7 @@ def api_turnover_search():
 
 
 @bp.route('/api/turnover/inventory/<int:mid>')
-@login_required
+@mobile_auth_required
 def api_turnover_inventory(mid):
     """周转材库存查询"""
     project = _m_require_project()
@@ -2394,6 +2677,7 @@ def inspection_form(tid):
 
             # 上传现场照片
             photos = request.files.getlist('photos[]')
+            _validate_upload_files(photos)
             for photo in photos:
                 if photo and photo.filename:
                     upload_attachment(photo, 'equipment_inspection',
@@ -2728,6 +3012,7 @@ def concrete_create():
     if request.method == 'POST':
         try:
             photos_files = request.files.getlist('photos[]')
+            _validate_upload_files(photos_files)
             ticket, ticket_no, uploaded = _save_concrete_ticket(
                 project.id, request.form, files=photos_files)
             db.session.commit()
@@ -2762,8 +3047,12 @@ def concrete_create():
 
 
 @bp.route('/api/concrete/sync', methods=['POST'])
-@login_required
+@mobile_auth_required
 def api_concrete_sync():
+    # P1-6: 验证项目访问权限
+    _pid, _err = _check_project_access()
+    if _err:
+        return _err
     """离线商砼小票同步接口
 
     请求体: { ticket: { client_id, ticket_no, supplier_id, supplier_name,
@@ -2872,6 +3161,7 @@ def concrete_edit(tid):
 
             # 追加照片
             photos = request.files.getlist('photos[]')
+            _validate_upload_files(photos)
             uploaded = 0
             for photo in photos:
                 if photo and photo.filename:
@@ -2906,8 +3196,12 @@ def concrete_edit(tid):
 
 
 @bp.route('/api/concrete/suppliers')
-@login_required
+@mobile_auth_required
 def api_concrete_suppliers():
+    # P1-6: 验证项目访问权限
+    _pid, _err = _check_project_access()
+    if _err:
+        return _err
     """当前项目供应商列表"""
     project = _m_require_project()
     if not project:
@@ -2921,8 +3215,12 @@ def api_concrete_suppliers():
 
 
 @bp.route('/api/concrete/history_pour_part')
-@login_required
+@mobile_auth_required
 def api_concrete_history_pour_part():
+    # P1-6: 验证项目访问权限
+    _pid, _err = _check_project_access()
+    if _err:
+        return _err
     """历史浇筑部位联想（GET ?keyword=）"""
     project = _m_require_project()
     if not project:
@@ -3139,7 +3437,7 @@ def invoice_list():
         )
 
     page = request.args.get('page', 1, type=int)
-    pagination = query.order_by(Invoice.invoice_date.desc().nullslast()).paginate(
+    pagination = query.order_by(Invoice.invoice_date.desc()).paginate(
         page=page, per_page=20, error_out=False
     )
     invoices = pagination.items
@@ -3352,6 +3650,7 @@ def scrap_create():
 
         # 照片上传
         photos = request.files.getlist('photos[]')
+        _validate_upload_files(photos)
         for photo in photos:
             if photo and photo.filename:
                 att, err = upload_attachment(photo, 'scrap',
@@ -3444,7 +3743,7 @@ def scrap_detail(id):
 
 
 @bp.route('/api/scrap/inventory/<int:mid>')
-@login_required
+@mobile_auth_required
 def api_scrap_inventory(mid):
     """查询物资当前库存"""
     project = _m_require_project()
@@ -3696,8 +3995,12 @@ def pr_convert_stock_out(id):
 
 
 @bp.route('/api/pr/materials')
-@login_required
+@mobile_auth_required
 def api_pr_materials():
+    # P1-6: 验证项目访问权限
+    _pid, _err = _check_project_access()
+    if _err:
+        return _err
     """物资搜索"""
     project = _m_require_project()
     if not project:
@@ -3719,6 +4022,7 @@ def api_pr_materials():
 
 # ========== 公告相关 ==========
 from app.models import SysAnnouncement, SysAnnouncementRead
+
 
 @bp.context_processor
 def inject_announcements():
@@ -3778,7 +4082,7 @@ def inject_announcements():
 
 
 @bp.route('/api/announcement/<int:id>/read', methods=['POST'])
-@login_required
+@mobile_auth_required
 def mark_announcement_read(id):
     """标记公告已读"""
     existing = SysAnnouncementRead.query.filter_by(
@@ -3792,3 +4096,308 @@ def mark_announcement_read(id):
         db.session.add(read)
         db.session.commit()
     return jsonify({'success': True})
+
+
+# ============================================================
+# P2-1: Mobile Contract Viewing
+# ============================================================
+
+@bp.route('/contracts')
+@login_required
+def m_contract_list():
+    """Mobile contract list"""
+    project = _m_require_project()
+    if not project:
+        return redirect(url_for('mobile.profile'))
+
+    status = request.args.get('status', '')
+    keyword = request.args.get('keyword', '').strip()
+
+    q = Contract.query.filter_by(project_id=project.id, is_deleted=False)
+    if status:
+        q = q.filter(Contract.status == status)
+    if keyword:
+        q = q.filter(or_(Contract.name.like('%%%s%%' % keyword),
+                         Contract.code.like('%%%s%%' % keyword)))
+    contracts = q.order_by(Contract.created_at.desc()).limit(50).all()
+    return render_template('mobile/m_contract_list.html', contracts=contracts,
+                           status=status, keyword=keyword, project=project)
+
+
+@bp.route('/contracts/<int:id>')
+@login_required
+def m_contract_detail(id):
+    """Mobile contract detail"""
+    contract = Contract.query.get_or_404(id)
+    items = contract.items.all() if contract.items else []
+    payments = contract.payments.all() if contract.payments else []
+    invoices = contract.invoices.all() if contract.invoices else []
+    paid_amount = sum(p.amount or 0 for p in payments)
+    invoiced_amount = sum(i.amount_with_tax or 0 for i in invoices)
+
+    return render_template('mobile/m_contract_detail.html',
+                           contract=contract, items=items,
+                           payments=payments, invoices=invoices,
+                           paid_amount=paid_amount,
+                           invoiced_amount=invoiced_amount)
+
+
+# ============================================================
+# P2-4: Mobile Transfer (调拨) Application
+# ============================================================
+
+@bp.route('/transfers')
+@login_required
+def m_transfer_list():
+    """Mobile transfer list"""
+    project = _m_require_project()
+    if not project:
+        return redirect(url_for('mobile.profile'))
+
+    status = request.args.get('status', '')
+    q = MaterialTransfer.query.filter(
+        or_(MaterialTransfer.from_project_id == project.id,
+            MaterialTransfer.to_project_id == project.id)
+    )
+    if status:
+        q = q.filter(MaterialTransfer.status == status)
+    transfers = q.order_by(MaterialTransfer.created_at.desc()).limit(50).all()
+    return render_template('mobile/m_transfer_list.html', transfers=transfers,
+                           status=status, project=project)
+
+
+@bp.route('/transfers/create', methods=['GET', 'POST'])
+@login_required
+def m_transfer_create():
+    """Mobile transfer create"""
+    project = _m_require_project()
+    if not project:
+        return redirect(url_for('mobile.profile'))
+
+    if request.method == 'POST':
+        to_project_id = request.form.get('to_project_id', type=int)
+        transfer_date_str = request.form.get('transfer_date', '')
+        try:
+            transfer_date = datetime.strptime(transfer_date_str, '%Y-%m-%d').date()
+        except Exception:
+            transfer_date = date.today()
+        remark = request.form.get('remark', '').strip()
+
+        if not to_project_id:
+            flash('Please select target project', 'danger')
+            return redirect(url_for('mobile.m_transfer_create'))
+
+        # Generate transfer number
+        today = datetime.now().strftime('%Y%m%d')
+        prefix = 'DB-%s-%s-' % (project.id, today)
+        existing = MaterialTransfer.query.filter(
+            MaterialTransfer.transfer_no.like('%s%%' % prefix)
+        ).count()
+        transfer_no = '%s%03d' % (prefix, existing + 1)
+
+        transfer = MaterialTransfer(
+            transfer_no=transfer_no,
+            from_project_id=project.id,
+            to_project_id=to_project_id,
+            transfer_date=transfer_date,
+            status='draft',
+            applicant=current_user.name or current_user.username,
+            remark=remark,
+        )
+        db.session.add(transfer)
+        db.session.flush()
+
+        # Add items
+        material_ids = request.form.getlist('material_id[]')
+        transfer_qtys = request.form.getlist('transfer_qty[]')
+        for idx, mid in enumerate(material_ids):
+            if not mid:
+                continue
+            qty = _m_to_float(transfer_qtys[idx] if idx < len(transfer_qtys) else 0)
+            if qty == 0:
+                continue
+            mat = Material.query.get(int(mid))
+            item = MaterialTransferItem(
+                transfer_id=transfer.id,
+                material_id=int(mid),
+                material_name=mat.name if mat else '',
+                specification=mat.specification if mat else '',
+                unit=mat.unit if mat else '',
+                transfer_qty=qty,
+            )
+            db.session.add(item)
+
+        db.session.commit()
+
+        # Submit to approval if requested
+        if request.form.get('submit_type') == 'submit':
+            from app.approval.service import submit_approval
+            success, msg, instance = submit_approval('material_transfer', transfer.id,
+                                                     applicant_id=current_user.id)
+            if success:
+                transfer.status = 'pending'
+                db.session.commit()
+                flash('Transfer submitted for approval', 'success')
+            else:
+                flash('Submit failed: %s' % msg, 'danger')
+        else:
+            flash('Transfer saved as draft', 'success')
+
+        return redirect(url_for('mobile.m_transfer_detail', id=transfer.id))
+
+    projects = Project.query.filter(Project.id != project.id).all()
+    return render_template('mobile/m_transfer_form.html', project=project,
+                           projects=projects, today=date.today().isoformat())
+
+
+@bp.route('/transfers/<int:id>')
+@login_required
+def m_transfer_detail(id):
+    """Mobile transfer detail"""
+    transfer = MaterialTransfer.query.get_or_404(id)
+    items = transfer.items.all() if transfer.items else []
+    instance = None
+    if transfer.approval_instance_id:
+        from app.approval.service import get_instance_by_biz
+        instance = get_instance_by_biz('material_transfer', id)
+    return render_template('mobile/m_transfer_detail.html',
+                           transfer=transfer, items=items, instance=instance)
+
+
+# ============================================================
+# P2-7/8: Mobile AI API Endpoints
+# ============================================================
+
+@bp.route('/api/ai/approval_opinion', methods=['POST'])
+@mobile_auth_required
+def api_ai_approval_opinion():
+    """Mobile: AI-assisted approval opinion generation"""
+    from app.ai.service import get_ai_service
+    ai = get_ai_service()
+
+    data = request.get_json() or {}
+    biz_type = data.get('biz_type', '')
+    action = data.get('action', 'approve')
+    biz_data = data.get('biz_data', {})
+
+    if not biz_type:
+        return jsonify({'success': False, 'message': 'Missing biz_type'})
+
+    result, error = ai.call_with_scene(
+        'text:approval_opinion',
+        'Generate %s opinion for %s' % (action, biz_type),
+        extra_context={'biz_type': biz_type, 'action': action, 'biz_data': biz_data},
+    )
+
+    if error:
+        return jsonify({'success': False, 'message': error})
+
+    return jsonify({'success': True, 'data': result})
+
+
+@bp.route('/api/ai/inventory_analysis', methods=['POST'])
+@mobile_auth_required
+def api_ai_inventory_analysis():
+    """Mobile: AI inventory analysis"""
+    from app.ai.service import get_ai_service
+    ai = get_ai_service()
+
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'success': False, 'message': 'Please select project'})
+
+    inventories = Inventory.query.filter_by(project_id=project_id).all()
+    inventory_data = []
+    for inv in inventories[:50]:
+        mat = inv.material
+        safety = getattr(inv, 'safety_stock', 0) or 0
+        inventory_data.append({
+            'material': mat.name if mat else '',
+            'specification': mat.specification if mat else '',
+            'quantity': float(inv.quantity or 0),
+            'unit': mat.unit if mat else '',
+            'safety_stock': float(safety),
+        })
+
+    if not inventory_data:
+        return jsonify({'success': False, 'message': 'No inventory data'})
+
+    result, error = ai.analyze_inventory({'inventory': inventory_data})
+
+    if error:
+        return jsonify({'success': False, 'message': error})
+
+    return jsonify({'success': True, 'data': result})
+
+
+@bp.route('/api/ai/chat', methods=['POST'])
+@mobile_auth_required
+def api_ai_chat():
+    """Mobile: AI chat"""
+    from app.ai.service import get_ai_service
+    ai = get_ai_service()
+
+    data = request.get_json() or {}
+    message = data.get('message', '')
+    if not message:
+        return jsonify({'success': False, 'message': 'Empty message'})
+
+    project_id = session.get('current_project_id')
+    context_data = {}
+    if project_id:
+        inventories = Inventory.query.filter_by(project_id=project_id).limit(20).all()
+        context_data['inventory'] = [{
+            'material': inv.material.name if inv.material else '',
+            'quantity': float(inv.quantity or 0),
+            'unit': inv.material.unit if inv.material else '',
+        } for inv in inventories]
+
+    result, error = ai.chat(message, extra_context=context_data if context_data else None)
+
+    if error:
+        return jsonify({'success': False, 'message': error})
+
+    return jsonify({'success': True, 'data': result})
+
+
+
+
+
+# ============================================================
+# 移动端工程计算器
+# ============================================================
+
+@bp.route('/calculator')
+@login_required
+def m_calculator():
+    """移动端工程计算器"""
+    project = _m_require_project()
+    if not project:
+        return redirect(url_for('mobile.profile'))
+    return render_template('mobile/calculator.html', project=project)
+
+
+# ============================================================
+# P2-5: Mobile Location API
+# ============================================================
+
+@bp.route('/api/location', methods=['POST'])
+@mobile_auth_required
+def api_save_location():
+    """Save mobile device geolocation"""
+    data = request.get_json() or {}
+    lat = data.get('lat')
+    lng = data.get('lng')
+    accuracy = data.get('accuracy')
+
+    if lat and lng:
+        # Store in session for use in stock_in/out
+        session['mobile_location'] = {
+            'lat': lat,
+            'lng': lng,
+            'accuracy': accuracy,
+            'timestamp': datetime.now().isoformat()
+        }
+        return jsonify({'success': True, 'message': 'Location saved'})
+
+    return jsonify({'success': False, 'message': 'Invalid location data'}), 400

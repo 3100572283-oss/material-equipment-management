@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}AI智能助手{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <h3><i class="fas fa-robot"></i> AI智能助手</h3>
+            <p class="text-muted">智能问答、数据分析、文档识别、语音输入 — 您的全方位工程管理AI助手</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 左侧：快捷功能 -->
+        <div class="col-lg-3 mb-3">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <strong><i class="fas fa-bolt"></i> 快捷功能</strong>
+                </div>
+                <div class="card-body p-2">
+                    <button class="btn btn-outline-primary btn-sm w-100 mb-2 text-left" onclick="sendQuickMsg('帮我分析当前项目的库存状况')">
+                        <i class="fas fa-chart-bar"></i> 库存分析
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm w-100 mb-2 text-left" onclick="sendQuickMsg('总结最近的入库记录')">
+                        <i class="fas fa-file-import"></i> 入库总结
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm w-100 mb-2 text-left" onclick="sendQuickMsg('帮我检查合同台账中的异常')">
+                        <i class="fas fa-file-contract"></i> 合同检查
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm w-100 mb-2 text-left" onclick="sendQuickMsg('分析供应商表现')">
+                        <i class="fas fa-truck"></i> 供应商分析
+                    </button>
+                    <button class="btn btn-outline-info btn-sm w-100 mb-2 text-left" onclick="document.getElementById('visionInput').click()">
+                        <i class="fas fa-camera"></i> 图片/PDF识别
+                    </button>
+                    <button class="btn btn-outline-info btn-sm w-100 mb-2 text-left" onclick="startSpeech()">
+                        <i class="fas fa-microphone"></i> 语音输入
+                    </button>
+                </div>
+            </div>
+
+            {% if ai_stats %}
+            <div class="card mt-3">
+                <div class="card-header bg-light">
+                    <strong><i class="fas fa-chart-pie"></i> 使用统计</strong>
+                </div>
+                <div class="card-body p-2 small">
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">今日调用:</span>
+                        <strong>{{ ai_stats.today_count or 0 }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">本月调用:</span>
+                        <strong>{{ ai_stats.month_count or 0 }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">总调用:</span>
+                        <strong>{{ ai_stats.total_count or 0 }}</strong>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 右侧：聊天区域 -->
+        <div class="col-lg-9">
+            <div class="card" style="height: calc(100vh - 180px);">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-comments"></i> 智能对话</span>
+                    <button class="btn btn-sm btn-light" onclick="clearChat()">
+                        <i class="fas fa-trash"></i> 清空
+                    </button>
+                </div>
+                <div class="card-body overflow-auto" id="chatMessages" style="height: calc(100% - 70px); overflow-y: auto;">
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-robot" style="font-size: 48px; opacity: 0.3;"></i>
+                        <p class="mt-3">您好！我是AI智能助手，可以帮您：</p>
+                        <div class="d-flex flex-wrap justify-content-center gap-2">
+                            <span class="badge bg-light text-dark">📊 数据分析</span>
+                            <span class="badge bg-light text-dark">📄 文档总结</span>
+                            <span class="badge bg-light text-dark">🔍 异常检查</span>
+                            <span class="badge bg-light text-dark">💡 智能建议</span>
+                            <span class="badge bg-light text-dark">📷 图片/PDF识别</span>
+                        </div>
+                        <p class="mt-3 small">请在下方输入您的问题，或点击左侧快捷功能</p>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <div class="input-group">
+                        <input type="file" id="visionInput" accept="image/*,application/pdf" style="display:none;" onchange="handleVision(this)">
+                        <input type="text" class="form-control" id="messageInput" placeholder="输入您的问题..." 
+                               onkeypress="if(event.keyCode===13)sendMessage()">
+                        <button class="btn btn-primary" onclick="sendMessage()">
+                            <i class="fas fa-paper-plane"></i> 发送
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.chat-msg-user {
+    text-align: right;
+    margin-bottom: 12px;
+}
+.chat-msg-user .bubble {
+    display: inline-block;
+    background: #409eff;
+    color: white;
+    padding: 8px 14px;
+    border-radius: 12px 12px 0 12px;
+    max-width: 70%;
+    text-align: left;
+}
+.chat-msg-ai {
+    margin-bottom: 12px;
+}
+.chat-msg-ai .bubble {
+    display: inline-block;
+    background: #f1f3f5;
+    color: #333;
+    padding: 8px 14px;
+    border-radius: 12px 12px 12px 0;
+    max-width: 80%;
+    text-align: left;
+}
+.chat-msg-ai .bubble table { border-collapse: collapse; width: 100%; margin: 5px 0; }
+.chat-msg-ai .bubble table td, .chat-msg-ai .bubble table th { border: 1px solid #ddd; padding: 4px 8px; font-size: 13px; }
+.chat-msg-ai .bubble pre { background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 13px; margin: 6px 0; }
+.chat-msg-ai .bubble code { background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+.chat-msg-ai .bubble pre code { background: none; padding: 0; }
+.chat-msg-ai .bubble ul, .chat-msg-ai .bubble ol { padding-left: 20px; margin: 4px 0; }
+.chat-msg-ai .bubble blockquote { border-left: 3px solid #409eff; padding-left: 10px; margin: 6px 0; color: #666; }
+.chat-msg-ai .bubble h1, .chat-msg-ai .bubble h2, .chat-msg-ai .bubble h3 { font-size: 15px; font-weight: 600; margin: 6px 0; }
+.chat-msg-ai .bubble p { margin: 4px 0; }
+.typing-indicator {
+    display: inline-block;
+    padding: 8px 14px;
+    background: #f1f3f5;
+    border-radius: 12px;
+}
+.typing-indicator span {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: #999;
+    border-radius: 50%;
+    margin: 0 2px;
+    animation: typing 1.4s infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing {
+    0%, 60%, 100% { opacity: 0.3; }
+    30% { opacity: 1; }
+}
+</style>
+
+<script>
+var csrfToken = '';
+var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+if (csrfMeta) csrfToken = csrfMeta.getAttribute('content');
+
+function escapeHtmlBasic(text) {
+    if (!text) return '';
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function appendMessage(role, text) {
+    var container = document.getElementById('chatMessages');
+    // 清除欢迎信息
+    var welcome = container.querySelector('.text-center');
+    if (welcome) welcome.remove();
+
+    var div = document.createElement('div');
+    div.className = role === 'user' ? 'chat-msg-user' : 'chat-msg-ai';
+    
+    // Enhanced Markdown rendering with marked.js + highlight.js
+    var html;
+    if (typeof marked !== 'undefined') {
+        try {
+            marked.setOptions({
+                breaks: true,
+                gfm: true
+            });
+            html = marked.parse(text);
+            // Highlight code blocks
+            if (typeof hljs !== 'undefined') {
+                div.querySelectorAll('pre code').forEach(function(block) {
+                    hljs.highlightElement(block);
+                });
+            }
+        } catch(e) {
+            html = escapeHtmlBasic(text).replace(/\n/g, '<br>');
+        }
+    } else {
+        html = escapeHtmlBasic(text)
+            .replace(/\n/g, '<br>')
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/`(.+?)`/g, '<code>$1</code>');
+    }
+
+    div.innerHTML = '<div class="bubble">' + html + '</div>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function showTyping() {
+    var container = document.getElementById('chatMessages');
+    var welcome = container.querySelector('.text-center');
+    if (welcome) welcome.remove();
+    var div = document.createElement('div');
+    div.className = 'chat-msg-ai';
+    div.id = 'typingIndicator';
+    div.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function hideTyping() {
+    var t = document.getElementById('typingIndicator');
+    if (t) t.remove();
+}
+
+function sendMessage() {
+    var input = document.getElementById('messageInput');
+    var msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    
+    appendMessage('user', msg);
+    showTyping();
+
+    var formData = new FormData();
+    formData.append('message', msg);
+    if (csrfToken) formData.append('csrf_token', csrfToken);
+
+    fetch('/ai/chat', {
+        method: 'POST',
+        body: formData,
+        headers: csrfToken ? { 'X-CSRFToken': csrfToken } : {}
+    }).then(function(r) {
+        if (!r.ok) {
+            return r.text().then(function(t) {
+                throw new Error('服务器返回错误（' + r.status + '）');
+            });
+        }
+        return r.json();
+    })
+    .then(function(data) {
+        hideTyping();
+        if (data.success) {
+            appendMessage('ai', data.response || data.message || '收到');
+        } else {
+            appendMessage('ai', '⚠️ ' + (data.message || '请求失败，请稍后重试'));
+        }
+    }).catch(function(err) {
+        hideTyping();
+        var msg = err.message || '';
+        if (msg.indexOf('JSON') >= 0 || msg.indexOf('parse') >= 0 || msg.indexOf('pattern') >= 0) {
+            appendMessage('ai', '⚠️ AI服务暂时不可用，请稍后重试或联系管理员检查AI配置。');
+        } else if (msg.indexOf('Failed to fetch') >= 0 || msg.indexOf('NetworkError') >= 0) {
+            appendMessage('ai', '⚠️ 网络连接失败，请检查网络后重试。');
+        } else {
+            appendMessage('ai', '⚠️ ' + msg);
+        }
+    });
+}
+
+function sendQuickMsg(msg) {
+    document.getElementById('messageInput').value = msg;
+    sendMessage();
+}
+
+function clearChat() {
+    document.getElementById('chatMessages').innerHTML = '';
+}
+
+function handleVision(input) {
+    var file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    
+    appendMessage('user', '📷 [图片] ' + file.name);
+    showTyping();
+
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var formData = new FormData();
+        formData.append('image', file);
+        formData.append('type', 'general');
+        if (csrfToken) formData.append('csrf_token', csrfToken);
+
+        fetch('/ai/vision/recognize', {
+            method: 'POST',
+            body: formData
+        }).then(function(r) { return r.json(); })
+        .then(function(data) {
+            hideTyping();
+            if (data.success) {
+                var result = data.data || data.response || JSON.stringify(data, null, 2);
+                if (typeof result === 'object') result = JSON.stringify(result, null, 2);
+                appendMessage('ai', '📷 图片/PDF识别结果：\n\n' + result);
+            } else {
+                appendMessage('ai', '⚠️ 识别失败：' + (data.message || '未知错误'));
+            }
+        }).catch(function(err) {
+            hideTyping();
+            appendMessage('ai', '⚠️ 识别请求失败：' + err.message);
+        });
+    };
+    reader.readAsDataURL(file);
+}
+
+// 语音输入
+var _speechSupported = ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
+function startSpeech() {
+    if (!_speechSupported) {
+        if (typeof customAlert !== 'undefined') { customAlert('当前浏览器不支持语音输入，请使用Chrome'); } else { alert('当前浏览器不支持语音输入，请使用Chrome'); }
+        return;
+    }
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var rec = new SR();
+    rec.lang = 'zh-CN';
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onresult = function(e) {
+        var text = e.results[0][0].transcript;
+        document.getElementById('messageInput').value = text;
+        sendMessage();
+    };
+    rec.onerror = function(e) {
+        if (typeof customAlert !== 'undefined') { customAlert('语音识别失败：' + e.error); } else { alert('语音识别失败：' + e.error); }
+    };
+    rec.start();
+}
+</script>
+{% endblock %}

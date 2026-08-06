@@ -1,7 +1,8 @@
 {% extends "mobile/base.html" %}
 {% block title %}发票台账{% endblock %}
 {% block nav_title %}发票台账{% endblock %}
-{% block hide_tab %}true{% endblock %}
+{% block content_class %}no-tab{% endblock %}
+{% block mobile_tabbar %}{% endblock %}
 
 {% block nav_right %}
 <a href="{{ url_for('mobile.invoice_create') }}" style="color:#165DFF; font-size:14px; margin-right:8px;">

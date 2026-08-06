@@ -92,12 +92,12 @@
     form.addEventListener('submit', function (e) {
         if (!newStatusSel.value) {
             e.preventDefault();
-            alert('请选择新状态');
+            customAlert('请选择新状态');
             return;
         }
         if (newStatusSel.value === 'exited' && !exitDateInput.value) {
             e.preventDefault();
-            alert('设备退场必须填写退场日期');
+            customAlert('设备退场必须填写退场日期');
         }
     });
 })();

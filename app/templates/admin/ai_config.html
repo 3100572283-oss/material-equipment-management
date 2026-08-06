@@ -29,8 +29,8 @@
 
             <div class="col-md-6">
                 <label class="form-label">API Key <span class="text-danger">*</span></label>
-                <input type="password" class="form-control" name="ai_api_key" value="{{ config.api_key }}" placeholder="请输入豆包API Key">
-                <div class="text-muted small mt-2">在火山引擎控制台获取API Key</div>
+                <input type="password" class="form-control" name="ai_api_key" value="{{ config.api_key }}" placeholder="请输入API Key">
+                <div class="text-muted small mt-2">在对应模型提供商控制台获取API Key。<strong class="text-info">同一个API Key可驱动该提供商的文本、视觉、语音全部功能</strong>（如提供商支持该功能）。</div>
             </div>
 
             <!-- 文本模型配置 -->
@@ -38,21 +38,34 @@
                 <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-chat-dots me-2"></i>文本模型配置</h6>
             </div>
 
+            <!-- 模型提供商选择 -->
+            <div class="col-md-6">
+                <label class="form-label">模型提供商</label>
+                <select class="form-select" name="ai_provider" id="ai_provider_select" onchange="onProviderChange()">
+                    <option value="doubao" {% if config.provider == 'doubao' %}selected{% endif %}>豆包（火山引擎）</option>
+                    <option value="openai" {% if config.provider == 'openai' %}selected{% endif %}>OpenAI</option>
+                    <option value="deepseek" {% if config.provider == 'deepseek' %}selected{% endif %}>DeepSeek（深度求索）</option>
+                    <option value="qwen" {% if config.provider == 'qwen' %}selected{% endif %}>通义千问（阿里云）</option>
+                    <option value="glm" {% if config.provider == 'glm' %}selected{% endif %}>智谱GLM</option>
+                </select>
+                <div class="text-muted small mt-2">选择提供商后将自动填充接口地址和推荐模型</div>
+            </div>
+
             <div class="col-md-6">
                 <label class="form-label">模型名称</label>
                 <input type="text" class="form-control" name="ai_model" id="ai_model_input" value="{{ config.model }}" list="ai_model_list" placeholder="选择或输入模型ID">
                 <datalist id="ai_model_list">
-                    <option value="doubao-1.5-pro-32k">doubao-1.5-pro-32k（推荐）</option>
-                    <option value="doubao-1.5-pro-128k">doubao-1.5-pro-128k（长文本）</option>
-                    <option value="doubao-1.5-lite-4k">doubao-1.5-lite-4k（轻量）</option>
+                    <option value="doubao-1.5-pro-32k">doubao-1.5-pro-32k（豆包推荐）</option>
+                    <option value="doubao-1.5-pro-128k">doubao-1.5-pro-128k（豆包长文本）</option>
+                    <option value="doubao-1.5-lite-4k">doubao-1.5-lite-4k（豆包轻量）</option>
                 </datalist>
                 <div class="text-muted small mt-2">可从下拉列表选择，或直接输入自定义模型ID</div>
             </div>
 
             <div class="col-md-6">
                 <label class="form-label">API接口地址</label>
-                <input type="text" class="form-control" name="ai_base_url" value="{{ config.base_url }}" placeholder="https://ark.cn-beijing.volces.com/api/v3/chat/completions">
-                <div class="text-muted small mt-2">火山引擎豆包API官方地址，一般无需修改</div>
+                <input type="text" class="form-control" name="ai_base_url" id="ai_base_url_input" value="{{ config.base_url }}" placeholder="API接口地址">
+                <div class="text-muted small mt-2">不同提供商的接口地址不同，选择提供商后自动填充</div>
             </div>
 
             <div class="col-md-6">
@@ -92,7 +105,7 @@
 
             <div class="col-md-6">
                 <label class="form-label">视觉API接口地址</label>
-                <input type="text" class="form-control" name="ai_vision_base_url" value="{{ config.vision_base_url }}" placeholder="https://ark.cn-beijing.volces.com/api/v3/chat/completions">
+                <input type="text" class="form-control" name="ai_vision_base_url" value="{{ config.vision_base_url }}" placeholder="https://...">
                 <div class="text-muted small mt-2">一般与文本模型使用相同地址</div>
             </div>
 
@@ -104,7 +117,7 @@
 
             <!-- 语音配置 -->
             <div class="col-12 mt-4">
-                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-mic me-2"></i>语音识别配置</h6>
+                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-mic me-2"></i>语音识别配置 <span class="badge bg-secondary ms-1" id="speech_badge" style="font-size:11px;">跟随提供商</span></h6>
             </div>
 
             <div class="col-md-6">
@@ -125,13 +138,13 @@
             <div class="col-md-6">
                 <label class="form-label">语音模型名称</label>
                 <input type="text" class="form-control" name="ai_speech_model" value="{{ config.speech_model }}" placeholder="语音识别模型ID">
-                <div class="text-muted small mt-2">火山引擎语音识别模型ID</div>
+                <div class="text-muted small mt-2">语音转文字模型ID</div>
             </div>
 
             <div class="col-md-6">
                 <label class="form-label">语音API接口地址</label>
                 <input type="text" class="form-control" name="ai_speech_base_url" value="{{ config.speech_base_url }}" placeholder="https://...">
-                <div class="text-muted small mt-2">语音转文字API地址</div>
+                <div class="text-muted small mt-2">语音转文字API地址（切换提供商时自动填充，DeepSeek/智谱GLM暂不支持语音）</div>
             </div>
 
             <!-- 成本配置 -->
@@ -170,11 +183,13 @@
             <div class="col-12">
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle me-2"></i>
-                    <strong>前置条件说明：</strong>
+                    <strong>配置说明：</strong>
                     <ul class="mb-0 mt-2">
-                        <li>需要自行在火山引擎开通豆包大模型服务并获取API Key</li>
-                        <li>API调用费用由用户的火山引擎账号承担</li>
-                        <li>首次使用需填写API Key并启用</li>
+                        <li>支持豆包（火山引擎）、OpenAI、DeepSeek、通义千问、智谱GLM等多种大模型</li>
+                        <li>所有提供商均使用OpenAI兼容的API格式，选择提供商后自动填充接口地址</li>
+                        <li>需要自行在对应平台开通服务并获取API Key</li>
+                        <li>API调用费用由用户的平台账号承担</li>
+                        <li>首次使用需填写API Key、选择模型并启用</li>
                         <li>视觉识别支持：营业执照识别、发票识别、收料小票识别、通用文字提取</li>
                     </ul>
                 </div>
@@ -188,4 +203,185 @@
         </form>
     </div>
 </div>
+
+<script>
+// 模型提供商配置
+var providerConfig = {
+    'doubao': {
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+        models: [
+            {value: 'doubao-1.5-pro-32k', label: 'doubao-1.5-pro-32k（推荐）'},
+            {value: 'doubao-1.5-lite-32k', label: 'doubao-1.5-lite-32k（轻量）'},
+            {value: 'doubao-pro-32k', label: 'doubao-pro-32k'},
+            {value: 'doubao-pro-128k', label: 'doubao-pro-128k（长上下文）'},
+        ],
+        visionModels: [
+            {value: 'doubao-1.5-vision-pro-32k', label: 'doubao-1.5-vision-pro（视觉）'},
+        ],
+        visionBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+        speechModels: [
+            {value: 'whisper-large-v3', label: 'whisper-large-v3（语音识别）'},
+        ],
+        speechBaseUrl: 'https://openspeech.bytedance.com/api/v1/asr',
+        speechSupported: true
+    },
+    'openai': {
+        baseUrl: 'https://api.openai.com/v1/chat/completions',
+        models: [
+            {value: 'gpt-4o', label: 'gpt-4o（推荐）'},
+            {value: 'gpt-4o-mini', label: 'gpt-4o-mini（快速）'},
+            {value: 'gpt-4-turbo', label: 'gpt-4-turbo'},
+        ],
+        visionModels: [
+            {value: 'gpt-4o', label: 'gpt-4o（视觉）'},
+        ],
+        visionBaseUrl: 'https://api.openai.com/v1/chat/completions',
+        speechModels: [
+            {value: 'whisper-1', label: 'whisper-1（语音识别）'},
+        ],
+        speechBaseUrl: 'https://api.openai.com/v1/audio/transcriptions',
+        speechSupported: true
+    },
+    'deepseek': {
+        baseUrl: 'https://api.deepseek.com/v1/chat/completions',
+        models: [
+            {value: 'deepseek-chat', label: 'deepseek-chat（推荐）'},
+            {value: 'deepseek-reasoner', label: 'deepseek-reasoner（推理模型）'},
+        ],
+        visionModels: [],
+        visionBaseUrl: 'https://api.deepseek.com/v1/chat/completions',
+        speechModels: [],
+        speechBaseUrl: '',
+        speechSupported: false
+    },
+    'qwen': {
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+        models: [
+            {value: 'qwen-plus', label: 'qwen-plus（推荐）'},
+            {value: 'qwen-turbo', label: 'qwen-turbo（快速）'},
+            {value: 'qwen-max', label: 'qwen-max（最强）'},
+        ],
+        visionModels: [
+            {value: 'qwen-vl-plus', label: 'qwen-vl-plus（视觉）'},
+        ],
+        visionBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+        speechModels: [
+            {value: 'paraformer-v2', label: 'paraformer-v2（语音识别）'},
+        ],
+        speechBaseUrl: 'https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription',
+        speechSupported: true
+    },
+    'glm': {
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+        models: [
+            {value: 'glm-4', label: 'glm-4（推荐）'},
+            {value: 'glm-4-flash', label: 'glm-4-flash（快速免费）'},
+            {value: 'glm-4-air', label: 'glm-4-air（轻量）'},
+        ],
+        visionModels: [
+            {value: 'glm-4v', label: 'glm-4v（视觉）'},
+        ],
+        visionBaseUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+        speechModels: [],
+        speechBaseUrl: '',
+        speechSupported: false
+    }
+};
+
+function onProviderChange() {
+    var provider = document.getElementById('ai_provider_select').value;
+    var cfg = providerConfig[provider];
+    if (!cfg) return;
+
+    // Auto-fill text base URL
+    document.getElementById('ai_base_url_input').value = cfg.baseUrl;
+
+    // Update text model datalist
+    var datalist = document.getElementById('ai_model_list');
+    datalist.innerHTML = '';
+    cfg.models.forEach(function(m) {
+        var opt = document.createElement('option');
+        opt.value = m.value;
+        opt.textContent = m.label;
+        datalist.appendChild(opt);
+    });
+
+    // Auto-select first model if current model not in list
+    var currentModel = document.getElementById('ai_model_input').value;
+    var modelExists = cfg.models.some(function(m) { return m.value === currentModel; });
+    if (!modelExists && cfg.models.length > 0) {
+        document.getElementById('ai_model_input').value = cfg.models[0].value;
+    }
+
+    // Update vision model datalist
+    var visionDatalist = document.getElementById('ai_vision_model_list');
+    visionDatalist.innerHTML = '';
+    cfg.visionModels.forEach(function(m) {
+        var opt = document.createElement('option');
+        opt.value = m.value;
+        opt.textContent = m.label;
+        visionDatalist.appendChild(opt);
+    });
+
+    // Update vision base URL
+    var visionUrlInput = document.querySelector('input[name="ai_vision_base_url"]');
+    if (visionUrlInput) {
+        visionUrlInput.value = cfg.visionBaseUrl;
+    }
+
+    // === 修复：语音配置也跟随提供商联动 ===
+    var speechUrlInput = document.querySelector('input[name="ai_speech_base_url"]');
+    var speechModelInput = document.querySelector('input[name="ai_speech_model"]');
+    var speechEnabledRadios = document.querySelectorAll('input[name="ai_speech_enabled"]');
+
+    if (cfg.speechSupported) {
+        // 支持语音：自动填充地址和模型
+        if (speechUrlInput) {
+            speechUrlInput.value = cfg.speechBaseUrl;
+            speechUrlInput.readOnly = false;
+            speechUrlInput.style.opacity = '1';
+        }
+        // 自动选择第一个语音模型
+        if (speechModelInput && cfg.speechModels.length > 0) {
+            speechModelInput.value = cfg.speechModels[0].value;
+            speechModelInput.readOnly = false;
+            speechModelInput.style.opacity = '1';
+        }
+        // 显示语音配置区域
+        var speechSection = document.getElementById('speech_config_section');
+        if (speechSection) speechSection.style.display = '';
+    } else {
+        // 不支持语音：清空并禁用
+        if (speechUrlInput) {
+            speechUrlInput.value = '';
+            speechUrlInput.placeholder = '该提供商暂不支持语音功能';
+            speechUrlInput.style.opacity = '0.5';
+        }
+        if (speechModelInput) {
+            speechModelInput.value = '';
+            speechModelInput.placeholder = '该提供商暂不支持语音功能';
+            speechModelInput.style.opacity = '0.5';
+        }
+        // 自动选择"否"
+        speechEnabledRadios.forEach(function(radio) {
+            if (radio.value === 'false') radio.checked = true;
+        });
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Set initial datalist based on current provider
+    onProviderChange();
+    // Restore the saved model value
+    var savedModel = '{{ config.model }}';
+    if (savedModel) {
+        document.getElementById('ai_model_input').value = savedModel;
+    }
+    var savedBaseUrl = '{{ config.base_url }}';
+    if (savedBaseUrl) {
+        document.getElementById('ai_base_url_input').value = savedBaseUrl;
+    }
+});
+</script>
 {% endblock %}

@@ -17,9 +17,14 @@ def get_migrations_dir():
 def ensure_migration_table():
     """确保迁移记录表存在"""
     from sqlalchemy import text
-    sql = """
+    dialect = db.engine.dialect.name
+    if dialect == 'sqlite':
+        auto_inc = 'INTEGER PRIMARY KEY AUTOINCREMENT'
+    else:
+        auto_inc = 'INTEGER PRIMARY KEY AUTO_INCREMENT'
+    sql = f"""
     CREATE TABLE IF NOT EXISTS db_migration (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id {auto_inc},
         version VARCHAR(32) NOT NULL UNIQUE,
         description VARCHAR(256),
         applied_at DATETIME NOT NULL,

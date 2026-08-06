@@ -40,12 +40,12 @@ class User(UserMixin, db.Model):
     role_obj = db.relationship('SysRole', backref=db.backref('users', lazy='dynamic'))
 
     def is_admin(self):
-        if self.role_obj and self.role_obj.role_code == 'super_admin':
-            return True
-        # 兜底：兼容老数据/role 字段被清空的情况
-        if not self.role_obj and self.role:
+        # P0-4: 优先使用role_id体系，role字符串仅作兜底
+        if self.role_obj:
+            return self.role_obj.role_code == 'super_admin'
+        if not self.role_id and self.role:
             return self.role == 'admin'
-        return self.role == 'admin'
+        return False
 
     def is_editor(self):
         if self.role_obj:
@@ -142,7 +142,7 @@ class SysDept(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     dept_code = db.Column(db.String(64), nullable=False, unique=True)
     dept_name = db.Column(db.String(128), nullable=False)
-    parent_id = db.Column(db.Integer, db.ForeignKey('sys_dept.id'), default=0)
+    parent_id = db.Column(db.Integer, db.ForeignKey('sys_dept.id'), nullable=True, default=None)
     dept_type = db.Column(db.String(16), default='dept')  # company/branch/project/dept/team 公司/分公司/项目部/部门/班组
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)  # 仅项目部类型有值
     leader = db.Column(db.String(64), nullable=True)  # 负责人
@@ -280,7 +280,7 @@ class SysMenu(db.Model):
     """菜单表 - 统一权限点管理"""
     __tablename__ = 'sys_menu'
     id = db.Column(db.Integer, primary_key=True)
-    parent_id = db.Column(db.Integer, db.ForeignKey('sys_menu.id'), default=0)
+    parent_id = db.Column(db.Integer, db.ForeignKey('sys_menu.id'), nullable=True, default=None)
     menu_name = db.Column(db.String(128), nullable=False)
     menu_code = db.Column(db.String(64), nullable=True, unique=True)
     menu_type = db.Column(db.String(16), default='menu')  # catalog/menu/button
@@ -440,6 +440,8 @@ class Supplier(db.Model):
     source = db.Column(db.String(16), default='project')  # company 公司级主库 / project 项目级
     status = db.Column(db.String(16), default='qualified')  # qualified 合格 / unqualified 不合格 / blacklist 黑名单
     create_dept = db.Column(db.Integer, nullable=True)  # 创建部门
+    is_deleted = db.Column(db.Boolean, default=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
 
@@ -447,7 +449,7 @@ class Category(db.Model):
     __tablename__ = 'categories'
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=False)
-    parent_id = db.Column(db.Integer, db.ForeignKey('categories.id'), default=0)  # 0=一级分类
+    parent_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True, default=None)  # None=一级分类
     level = db.Column(db.Integer, default=1)  # 1/2/3
     category_code = db.Column(db.String(32), nullable=True)  # MC01 / MC0106 / MC010601
     name = db.Column(db.String(128), nullable=False)
@@ -476,8 +478,13 @@ class Material(db.Model):
     source = db.Column(db.String(16), default='project')  # company 公司级主库 / project 项目级
     status = db.Column(db.String(16), default='active')  # active 启用 / inactive 停用
     create_dept = db.Column(db.Integer, nullable=True)  # 创建部门
+    is_deleted = db.Column(db.Boolean, default=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
+    __table_args__ = (
+        db.UniqueConstraint('project_id', 'code', name='uq_material_project_code'),
+    )
 
 # 主数据统一改造：项目常用物资关联表
 class ProjectMaterial(db.Model):
@@ -599,7 +606,9 @@ class Contract(db.Model):
     approval_status = db.Column(db.String(16), default='passed')  # draft/pending/approving/passed/rejected/withdrawn
     is_final_settled = db.Column(db.Boolean, default=False)
     is_deleted = db.Column(db.Boolean, default=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     is_litigated = db.Column(db.Boolean, default=False)
+    contract_instance_id = db.Column(db.Integer, nullable=True, index=True)  # 关联合同模板生成的实例
     attachment = db.Column(db.String(256), nullable=True)
     remark = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
@@ -760,6 +769,7 @@ class StockIn(db.Model):
     quality_checker = db.Column(db.String(64), nullable=True)
     quality_check_time = db.Column(db.DateTime, nullable=True)
     is_deleted = db.Column(db.Boolean, default=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     dept_id = db.Column(db.Integer, db.ForeignKey('sys_dept.id'), nullable=True)
     status = db.Column(db.String(16), default='draft')
     quality_remark = db.Column(db.Text, nullable=True)
@@ -802,6 +812,7 @@ class Inventory(db.Model):
     in_transit_qty = db.Column(db.Numeric(18, 4), default=0)  # 在途数量
     estimated_amount = db.Column(db.Numeric(18, 2), default=0)
     actual_amount = db.Column(db.Numeric(18, 2), default=0)
+    safety_stock = db.Column(db.Integer, default=0)  # 安全库存量
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     __table_args__ = (
@@ -831,10 +842,12 @@ class StockOut(db.Model):
     status = db.Column(db.String(16), default='approved')  # draft/pending/approved/rejected/voided
     approval_status = db.Column(db.String(16), default='passed')
     is_deleted = db.Column(db.Boolean, default=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     location_lat = db.Column(db.Float, nullable=True)
     location_lng = db.Column(db.Float, nullable=True)
     location_accuracy = db.Column(db.Float, nullable=True)
     location_time = db.Column(db.DateTime, nullable=True)
+    destination_project_id = db.Column(db.Integer, nullable=True)  # P2: 调拨目标项目
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     items = db.relationship('StockOutItem', backref='stock_out', lazy='dynamic', cascade='all, delete-orphan')
@@ -2065,3 +2078,260 @@ class BarcodeLabel(db.Model):
     quantity = db.Column(db.Integer, default=1)
     created_at = db.Column(db.DateTime, default=datetime.now)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+# ============================================================
+# 合同模板管理模型（新增）
+# ============================================================
+
+class ContractTemplate(db.Model):
+    """合同模板
+
+    支持8类合同模板：物资采购、周转材料租赁、机械设备租赁、建设工程设备采购、
+    一般货物买卖、委托运输、材料补充、废旧物资处置。
+
+    每个模板包含 template_content（含 {{变量名}} 占位符的模板正文）
+    和 variables_schema（JSON格式的变量定义清单）。
+    """
+    __tablename__ = 'contract_templates'
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(128), nullable=False)
+    description = db.Column(db.Text)
+    template_content = db.Column(db.Text)
+    variables_schema = db.Column(db.Text)
+    category = db.Column(db.String(32), default='采购类')
+    is_active = db.Column(db.Boolean, default=True)
+    version = db.Column(db.String(16), default='1.0')
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    instances = db.relationship('ContractInstance', backref='template', lazy='dynamic')
+
+    def to_dict(self, include_content=False):
+        import json
+        data = {
+            'id': self.id,
+            'code': self.code,
+            'name': self.name,
+            'description': self.description,
+            'category': self.category,
+            'is_active': self.is_active,
+            'version': self.version,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if self.variables_schema:
+            try:
+                data['variables_schema'] = json.loads(self.variables_schema)
+            except (json.JSONDecodeError, TypeError):
+                data['variables_schema'] = []
+        else:
+            data['variables_schema'] = []
+        if include_content:
+            data['template_content'] = self.template_content
+        return data
+
+
+class ContractInstance(db.Model):
+    """合同实例（基于模板生成的合同）
+
+    用户选择模板后填写变量值，系统生成合同实例。
+    支持预览、下载Word、提交审批等操作。
+    """
+    __tablename__ = 'contract_instances'
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('contract_templates.id'), nullable=False, index=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True)
+    contract_no = db.Column(db.String(64), index=True)
+    title = db.Column(db.String(256))
+    variable_values = db.Column(db.Text)
+    status = db.Column(db.String(16), default='draft', index=True)
+    generated_file_path = db.Column(db.String(256))
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    project = db.relationship('Project', backref='contract_instances')
+    creator = db.relationship('User', foreign_keys=[created_by])
+
+    _STATUS_MAP = {
+        'draft': '草稿',
+        'submitted': '已提交',
+        'approved': '已审批',
+        'rejected': '已驳回',
+        'executed': '已执行',
+    }
+
+    def get_status_display(self):
+        return self._STATUS_MAP.get(self.status, self.status)
+
+    def get_variable_values(self):
+        """获取变量值（JSON解析）"""
+        import json
+        if self.variable_values:
+            try:
+                return json.loads(self.variable_values)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        return {}
+
+    def set_variable_values(self, values_dict):
+        """设置变量值（JSON序列化）"""
+        import json
+        self.variable_values = json.dumps(values_dict, ensure_ascii=False)
+
+    def to_dict(self):
+        import json
+        return {
+            'id': self.id,
+            'template_id': self.template_id,
+            'project_id': self.project_id,
+            'contract_no': self.contract_no,
+            'title': self.title,
+            'variable_values': self.get_variable_values(),
+            'status': self.status,
+            'status_display': self.get_status_display(),
+            'generated_file_path': self.generated_file_path,
+            'created_by': self.created_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'template_name': self.template.name if self.template else None,
+            'template_code': self.template.code if self.template else None,
+            'template_category': self.template.category if self.template else None,
+        }
+
+
+
+# ============================================================
+# P2: 采购订单(PO)模型
+# ============================================================
+
+class PurchaseOrder(db.Model):
+    """采购订单"""
+    __tablename__ = 'purchase_orders'
+    id = db.Column(db.Integer, primary_key=True)
+    po_number = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True, index=True)
+    supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=True, index=True)
+    status = db.Column(db.String(16), default='draft', index=True)  # draft/submitted/approved/received/closed
+    total_amount = db.Column(db.Numeric(18, 2), default=0)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    remark = db.Column(db.Text, nullable=True)
+
+    project = db.relationship('Project', backref='purchase_orders')
+    supplier = db.relationship('Supplier', backref='purchase_orders')
+    creator = db.relationship('User', foreign_keys=[created_by])
+    items = db.relationship('PurchaseOrderItem', backref='purchase_order', lazy='dynamic', cascade='all, delete-orphan')
+
+    _STATUS_MAP = {
+        'draft': '草稿',
+        'submitted': '已提交',
+        'approved': '已审批',
+        'received': '已收货',
+        'closed': '已关闭',
+    }
+
+    def get_status_display(self):
+        return self._STATUS_MAP.get(self.status, self.status)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'po_number': self.po_number,
+            'project_id': self.project_id,
+            'project_name': self.project.name if self.project else None,
+            'supplier_id': self.supplier_id,
+            'supplier_name': self.supplier.name if self.supplier else None,
+            'status': self.status,
+            'status_display': self.get_status_display(),
+            'total_amount': float(self.total_amount or 0),
+            'created_by': self.created_by,
+            'created_by_name': self.creator.name if self.creator else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'remark': self.remark,
+        }
+
+
+class PurchaseOrderItem(db.Model):
+    """采购订单明细"""
+    __tablename__ = 'purchase_order_items'
+    id = db.Column(db.Integer, primary_key=True)
+    po_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'), nullable=False, index=True)
+    material_id = db.Column(db.Integer, db.ForeignKey('materials.id'), nullable=False)
+    quantity = db.Column(db.Numeric(18, 4), default=0)
+    unit_price = db.Column(db.Numeric(18, 4), default=0)
+    total_price = db.Column(db.Numeric(18, 2), default=0)
+    remark = db.Column(db.String(256), nullable=True)
+
+    material = db.relationship('Material', backref='purchase_order_items', lazy='select')
+
+
+# ============================================================
+# P2: 退料单模型
+# ============================================================
+
+class MaterialReturn(db.Model):
+    """退料单"""
+    __tablename__ = 'material_returns'
+    id = db.Column(db.Integer, primary_key=True)
+    return_number = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('projects.id'), nullable=True, index=True)
+    stock_out_id = db.Column(db.Integer, db.ForeignKey('stock_outs.id'), nullable=True, index=True)
+    status = db.Column(db.String(16), default='draft', index=True)  # draft/submitted/approved/rejected
+    total_amount = db.Column(db.Numeric(18, 2), default=0)
+    return_type = db.Column(db.String(16), default='部分退料')  # 全部退料/部分退料
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    remark = db.Column(db.Text, nullable=True)
+
+    project = db.relationship('Project', backref='material_returns')
+    stock_out = db.relationship('StockOut', backref='material_returns')
+    creator = db.relationship('User', foreign_keys=[created_by])
+    items = db.relationship('MaterialReturnItem', backref='material_return', lazy='dynamic', cascade='all, delete-orphan')
+
+    _STATUS_MAP = {
+        'draft': '草稿',
+        'submitted': '已提交',
+        'approved': '已审批',
+        'rejected': '已驳回',
+    }
+
+    def get_status_display(self):
+        return self._STATUS_MAP.get(self.status, self.status)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'return_number': self.return_number,
+            'project_id': self.project_id,
+            'project_name': self.project.name if self.project else None,
+            'stock_out_id': self.stock_out_id,
+            'stock_out_code': self.stock_out.code if self.stock_out else None,
+            'status': self.status,
+            'status_display': self.get_status_display(),
+            'total_amount': float(self.total_amount or 0),
+            'return_type': self.return_type,
+            'created_by': self.created_by,
+            'created_by_name': self.creator.name if self.creator else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'remark': self.remark,
+        }
+
+
+class MaterialReturnItem(db.Model):
+    """退料明细"""
+    __tablename__ = 'material_return_items'
+    id = db.Column(db.Integer, primary_key=True)
+    return_id = db.Column(db.Integer, db.ForeignKey('material_returns.id'), nullable=False, index=True)
+    material_id = db.Column(db.Integer, db.ForeignKey('materials.id'), nullable=False)
+    quantity = db.Column(db.Numeric(18, 4), default=0)
+    unit_price = db.Column(db.Numeric(18, 4), default=0)
+    total_price = db.Column(db.Numeric(18, 2), default=0)
+    reason = db.Column(db.String(256), nullable=True)
+    remark = db.Column(db.String(256), nullable=True)
+
+    material = db.relationship('Material', backref='material_return_items', lazy='select')

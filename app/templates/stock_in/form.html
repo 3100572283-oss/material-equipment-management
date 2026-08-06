@@ -232,6 +232,8 @@
 {% block extra_js %}
 <script src="/static/js/ai_vision.js"></script>
 <script>
+function _confirmSync(msg) { return confirm(msg); } // Fallback for inline confirm
+
 const materialsData = [{% for m in materials %}{{ {'id': m.id, 'name': m.name, 'spec': m.specification or '', 'unit': m.unit} | tojson }},{% endfor %}];
 
 function generateMaterialOptions() {
@@ -277,7 +279,7 @@ function addRow() {
 
 function removeRow(btn) {
     if (document.querySelectorAll('#itemsBody tr').length <= 1) {
-        if (!confirm('至少保留一行明细，确认清空？')) return;
+        if (!_confirmSync('至少保留一行明细，确认清空？')) return;
     }
     const tr = btn.closest('tr');
     tr.remove();
@@ -542,7 +544,7 @@ function doSubmit() {
     // 必填校验
     const supplier = document.getElementById('supplierSelect').value;
     if (!supplier) {
-        alert('请选择供应商');
+        customAlert('请选择供应商');
         return;
     }
     const rows = document.querySelectorAll('#itemsBody tr');
@@ -556,7 +558,7 @@ function doSubmit() {
         }
     }
     if (!hasItem) {
-        alert('请至少添加一条有效的物资明细');
+        customAlert('请至少添加一条有效的物资明细');
         return;
     }
     document.getElementById('stockInForm').submit();

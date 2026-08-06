@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}退料单管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-arrow-return-left me-2"></i>退料单管理</h5>
+        <div>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('material_return.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新建退料单</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('material_return.index') }}">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" name="keyword" value="{{ keyword or '' }}" placeholder="退料单号">
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    <option value="draft" {% if status == 'draft' %}selected{% endif %}>草稿</option>
+                    <option value="submitted" {% if status == 'submitted' %}selected{% endif %}>已提交</option>
+                    <option value="approved" {% if status == 'approved' %}selected{% endif %}>已审批</option>
+                    <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>已驳回</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('material_return.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>退料单号</th>
+                        <th>关联出库单</th>
+                        <th>退料类型</th>
+                        <th>状态</th>
+                        <th class="text-end">总金额</th>
+                        <th>创建时间</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mr in pagination.items %}
+                    <tr>
+                        <td><a href="{{ url_for('material_return.detail', id=mr.id) }}" class="text-decoration-none fw-bold">{{ mr.return_number }}</a></td>
+                        <td>{{ mr.stock_out.code if mr.stock_out else '-' }}</td>
+                        <td>
+                            {% if mr.return_type == '全部退料' %}<span class="badge bg-warning text-dark">全部退料</span>
+                            {% else %}<span class="badge bg-info">部分退料</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if mr.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif mr.status == 'submitted' %}<span class="badge bg-warning text-dark">已提交</span>
+                            {% elif mr.status == 'approved' %}<span class="badge bg-success">已审批</span>
+                            {% elif mr.status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
+                            {% else %}<span class="badge bg-secondary">{{ mr.status }}</span>{% endif %}
+                        </td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(mr.total_amount or 0) }}</td>
+                        <td>{{ mr.created_at.strftime('%Y-%m-%d %H:%M') if mr.created_at else '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('material_return.detail', id=mr.id) }}" class="btn btn-sm btn-outline-primary" title="查看详情"><i class="bi bi-eye"></i></a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include '_pagination.html' %}
+    </div>
+</div>
+{% endblock %}

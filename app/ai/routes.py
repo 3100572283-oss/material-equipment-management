@@ -9,6 +9,28 @@
 from flask import request, jsonify, session, render_template, flash, redirect, url_for
 from flask_login import login_required, current_user
 from app.ai import bp
+
+# P2: 文件上传扩展名校验
+def _validate_upload_file(file):
+    """校验上传文件扩展名，不通过则abort 400"""
+    if file and file.filename:
+        from app.utils import validate_file_extension
+        from flask import abort
+        ok, err = validate_file_extension(file.filename)
+        if not ok:
+            abort(400, err)
+    return file
+
+def _validate_upload_files(files):
+    """校验上传文件列表扩展名，不通过则abort 400"""
+    from app.utils import validate_file_extension
+    from flask import abort
+    for f in files:
+        if f and f.filename:
+            ok, err = validate_file_extension(f.filename)
+            if not ok:
+                abort(400, err)
+
 from app.ai.service import get_ai_service, get_ai_config, save_ai_config
 from app.models import (Inventory, Material, Supplier, StockIn, StockOut,
                        Contract, PurchaseRequisition, StockCheck,
@@ -19,6 +41,47 @@ from app.decorators import admin_required, permission_required
 import json
 from datetime import datetime, timedelta
 from sqlalchemy import func
+import time
+from collections import defaultdict
+
+
+# ================= P2-14: AI接口速率限制 =================
+
+class AIRateLimiter:
+    """简单的内存速率限制器（每用户每分钟N次）"""
+    _instance = None
+    _requests = defaultdict(list)
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def check(self, user_id, max_per_minute=10):
+        """检查是否允许请求"""
+        now = time.time()
+        window = 60
+        self._requests[user_id] = [t for t in self._requests[user_id] if now - t < window]
+        if len(self._requests[user_id]) >= max_per_minute:
+            oldest = self._requests[user_id][0]
+            retry_after = int(window - (now - oldest)) + 1
+            return False, max(retry_after, 1)
+        self._requests[user_id].append(now)
+        return True, 0
+
+ai_rate_limiter = AIRateLimiter()
+
+
+def _check_ai_rate_limit():
+    """检查AI接口速率限制"""
+    allowed, retry_after = ai_rate_limiter.check(current_user.id, max_per_minute=10)
+    if not allowed:
+        return jsonify({
+            'success': False,
+            'code': 429,
+            'message': f'请求过于频繁，请在{retry_after}秒后重试'
+        }), 429, {'Retry-After': str(retry_after)}
+    return None
 
 
 # ================= 全局权限校验 =================
@@ -30,7 +93,7 @@ def _ai_global_check():
     注意：配置页面和查询接口本身不受开关限制（管理员需要能看到配置页）
     """
     # 白名单：配置、日志、权限查询等管理功能不受总开关限制
-    public_paths = ['/config', '/logs', '/is_enabled', '/permission/', '/scene/', '/statistics']
+    public_paths = ['/config', '/logs', '/is_enabled', '/permission/', '/scene/', '/statistics', '/api/']
     path = request.path.replace('/ai', '', 1) if request.path.startswith('/ai') else request.path
 
     # 配置和管理页面只需要管理员权限，不受AI总开关影响
@@ -99,8 +162,8 @@ def chat():
     """智能问答"""
     ai = get_ai_service()
 
-    data = request.get_json()
-    user_message = data.get('message', '')
+    data = request.get_json(silent=True) or request.form
+    user_message = (data.get('message', '') or '').strip()
     context = data.get('context', [])
 
     if not user_message:
@@ -112,8 +175,12 @@ def chat():
 
     data_context = _build_data_context(user_message, project_id)
 
+    data_json = json.dumps(data_context, ensure_ascii=False)
+    if len(data_json) > 5000:
+        data_json = data_json[:5000] + '...(数据已截断)'
+
     response_text, error = ai.chat(
-        user_message + '\n\n当前项目数据：\n' + json.dumps(data_context, ensure_ascii=False),
+        user_message + '\n\n当前项目数据：\n' + data_json,
         context
     )
 
@@ -146,7 +213,7 @@ def _build_data_context(user_message, project_id):
         context['suppliers'] = []
         for s in suppliers[:20]:
             context['suppliers'].append({
-                'name': s.name,
+                'name': s.name[:4] + '***' if s.name and len(s.name) > 4 else (s.name or ''),
                 'code': s.code or ''
             })
 
@@ -337,7 +404,16 @@ def generate_opinion():
 @bp.route('/vision/recognize', methods=['POST'])
 @login_required
 def vision_recognize():
+    # P2-14: 速率限制
+    _rate_err = _check_ai_rate_limit()
+    if _rate_err:
+        return _rate_err
+
     """视觉识别API（统一入口）
+
+    支持两种上传方式：
+    1. JSON: {type: 'license', image: 'base64...'}
+    2. FormData: image=文件对象, type=license (支持图片和PDF)
 
     type: license/invoice/receipt/concrete/ocr
     """
@@ -345,38 +421,101 @@ def vision_recognize():
     if not ai.is_vision_enabled():
         return jsonify({'success': False, 'message': '视觉识别未启用'})
 
-    data = request.get_json()
-    if not data:
-        return jsonify({'success': False, 'message': '无效请求数据'})
+    import base64 as _b64
 
-    image_base64 = data.get('image', '')
-    recognize_type = data.get('type', 'ocr')
+    def _do_recognize(image_base64, recognize_type):
+        """执行识别，返回 (result, error)"""
+        if recognize_type == 'license':
+            return ai.recognize_business_license(image_base64)
+        elif recognize_type == 'invoice':
+            return ai.recognize_invoice(image_base64)
+        elif recognize_type == 'receipt':
+            return ai.recognize_receipt(image_base64)
+        elif recognize_type == 'concrete':
+            return ai.recognize_concrete_ticket(image_base64)
+        else:
+            return ai.extract_text(image_base64)
 
-    if not image_base64:
-        return jsonify({'success': False, 'message': '请上传图片'})
+    # 尝试JSON方式（base64图片）
+    data = request.get_json(silent=True)
+    if data:
+        image_base64 = data.get('image', '')
+        recognize_type = data.get('type', 'ocr')
+        if not image_base64:
+            return jsonify({'success': False, 'message': '请上传图片'})
+        if ',' in image_base64:
+            image_base64 = image_base64.split(',')[1]
+        result, error = _do_recognize(image_base64, recognize_type)
+        if error:
+            return jsonify({'success': False, 'message': error})
+        return jsonify({'success': True, 'data': result})
 
-    # 移除可能的data:image/xxx;base64,前缀
-    if ',' in image_base64:
-        image_base64 = image_base64.split(',')[1]
+    # FormData方式（文件上传，支持图片和PDF）
+    file = request.files.get('image') or request.files.get('file')
+    recognize_type = request.form.get('type', 'ocr')
 
-    result = None
-    error = None
+    if not file:
+        return jsonify({'success': False, 'message': '请上传文件'})
 
-    if recognize_type == 'license':
-        result, error = ai.recognize_business_license(image_base64)
-    elif recognize_type == 'invoice':
-        result, error = ai.recognize_invoice(image_base64)
-    elif recognize_type == 'receipt':
-        result, error = ai.recognize_receipt(image_base64)
-    elif recognize_type == 'concrete':
-        result, error = ai.recognize_concrete_ticket(image_base64)
+    filename = (file.filename or '').lower()
+
+    if filename.endswith('.pdf') or file.content_type == 'application/pdf':
+        # PDF处理：用PyMuPDF将每页转为图片
+        try:
+            import fitz  # PyMuPDF
+        except ImportError:
+            return jsonify({'success': False, 'message': '服务器未安装PDF处理库，请联系管理员'})
+
+        try:
+            pdf_bytes = file.read()
+            doc = fitz.open(stream=pdf_bytes, filetype='pdf')
+            total_pages = len(doc)
+
+            if total_pages == 0:
+                return jsonify({'success': False, 'message': 'PDF文件为空'})
+
+            # 限制最多处理10页
+            max_pages = min(total_pages, 10)
+            results = []
+
+            for page_num in range(max_pages):
+                page = doc[page_num]
+                # 渲染页面为图片（DPI=200保证清晰度）
+                mat = fitz.Matrix(200/72, 200/72)
+                pix = page.get_pixmap(matrix=mat)
+                img_bytes = pix.tobytes('png')
+                img_base64 = _b64.b64encode(img_bytes).decode('utf-8')
+
+                result, error = _do_recognize(img_base64, recognize_type)
+                if error:
+                    results.append({'page': page_num + 1, 'error': error})
+                else:
+                    results.append({'page': page_num + 1, 'data': result})
+
+            doc.close()
+
+            # 单页PDF直接返回结果
+            if max_pages == 1:
+                if results[0].get('error'):
+                    return jsonify({'success': False, 'message': results[0]['error']})
+                return jsonify({'success': True, 'data': results[0]['data']})
+
+            # 多页PDF返回分页结果
+            return jsonify({'success': True, 'data': results, 'pages': max_pages, 'total_pages': total_pages})
+
+        except Exception as e:
+            return jsonify({'success': False, 'message': f'PDF处理失败: {str(e)}'})
+
     else:
-        result, error = ai.extract_text(image_base64)
-
-    if error:
-        return jsonify({'success': False, 'message': error})
-
-    return jsonify({'success': True, 'data': result})
+        # 图片处理：转为base64
+        img_bytes = file.read()
+        if len(img_bytes) > 10 * 1024 * 1024:
+            return jsonify({'success': False, 'message': '文件大小不能超过10MB'})
+        image_base64 = _b64.b64encode(img_bytes).decode('utf-8')
+        result, error = _do_recognize(image_base64, recognize_type)
+        if error:
+            return jsonify({'success': False, 'message': error})
+        return jsonify({'success': True, 'data': result})
 
 
 # ================= 语音转文字 =================
@@ -398,6 +537,7 @@ def speech_to_text():
     # 文件上传方式
     if 'file' in request.files:
         f = request.files['file']
+        _validate_upload_file(f)
         if f.filename:
             audio_data = f.read()
             ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else 'webm'
@@ -462,6 +602,7 @@ def config():
     if request.method == 'POST':
         config_data = {
             'enabled': request.form.get('ai_enabled', 'false'),
+            'provider': request.form.get('ai_provider', 'doubao'),
             'api_key': request.form.get('ai_api_key', ''),
             'model': request.form.get('ai_model', 'doubao-1.5-pro-32k'),
             'base_url': request.form.get('ai_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'),
@@ -748,3 +889,244 @@ def statistics_data():
         })
 
     return jsonify({'success': True, 'data': data})
+
+
+# ============================================================
+# AI助手页面
+# ============================================================
+
+@bp.route('/assistant')
+@login_required
+def assistant():
+    """AI智能助手页面"""
+    from app.models import AICallLog
+    from datetime import datetime, timedelta
+    from sqlalchemy import func
+    
+    # 统计数据
+    today = datetime.now().date()
+    month_start = today.replace(day=1)
+    
+    today_count = AICallLog.query.filter(
+        func.date(AICallLog.created_at) == today
+    ).count() if hasattr(AICallLog, 'created_at') else 0
+    
+    month_count = AICallLog.query.filter(
+        func.date(AICallLog.created_at) >= month_start
+    ).count() if hasattr(AICallLog, 'created_at') else 0
+    
+    total_count = AICallLog.query.count()
+    
+    ai_stats = {
+        'today_count': today_count,
+        'month_count': month_count,
+        'total_count': total_count
+    }
+    
+    return render_template('ai/assistant.html', ai_stats=ai_stats)
+
+
+# ============================================================
+# P2: AI Inventory Analysis API
+# ============================================================
+
+@bp.route('/api/inventory_analysis', methods=['POST'])
+@login_required
+def api_inventory_analysis():
+    """AI inventory analysis - stale materials / restock suggestions"""
+    err = _check_ai_rate_limit()
+    if err:
+        return err
+
+    ai = get_ai_service()
+
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'success': False, 'message': 'Please select a project first'})
+
+    # Build inventory context
+    inventories = Inventory.query.filter_by(project_id=project_id).all()
+    inventory_data = []
+    for inv in inventories[:50]:
+        mat = inv.material
+        safety = getattr(inv, 'safety_stock', 0) or 0
+        inventory_data.append({
+            'material': mat.name if mat else '',
+            'specification': mat.specification if mat else '',
+            'quantity': float(inv.quantity or 0),
+            'unit': mat.unit if mat else '',
+            'category': mat.category.name if mat and mat.category else '',
+            'safety_stock': float(safety),
+        })
+
+    if not inventory_data:
+        return jsonify({'success': False, 'message': 'No inventory data found'})
+
+    result, error = ai.analyze_inventory({'inventory': inventory_data})
+
+    if error:
+        return jsonify({'success': False, 'message': error})
+
+    return jsonify({'success': True, 'data': result})
+
+
+# ============================================================
+# P2: AI Supplier Evaluation API
+# ============================================================
+
+@bp.route('/api/supplier_evaluation', methods=['POST'])
+@login_required
+def api_supplier_evaluation():
+    """AI supplier evaluation"""
+    err = _check_ai_rate_limit()
+    if err:
+        return err
+
+    ai = get_ai_service()
+
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'success': False, 'message': 'Please select a project first'})
+
+    suppliers = Supplier.query.filter_by(project_id=project_id).limit(20).all()
+    supplier_data = []
+    for s in suppliers:
+        supplier_data.append({
+            'name': s.name[:4] + '***' if s.name and len(s.name) > 4 else (s.name or ''),
+            'code': s.code or '',
+        })
+
+    if not supplier_data:
+        return jsonify({'success': False, 'message': 'No supplier data found'})
+
+    result, error = ai.evaluate_supplier({'suppliers': supplier_data})
+
+    if error:
+        return jsonify({'success': False, 'message': error})
+
+    return jsonify({'success': True, 'data': result})
+
+
+# ============================================================
+# P2: AI Contract Review API
+# ============================================================
+
+@bp.route('/api/contract_review', methods=['POST'])
+@login_required
+def api_contract_review():
+    """AI contract review"""
+    err = _check_ai_rate_limit()
+    if err:
+        return err
+
+    ai = get_ai_service()
+
+    project_id = session.get('current_project_id')
+    if not project_id:
+        return jsonify({'success': False, 'message': 'Please select a project first'})
+
+    contracts = Contract.query.filter_by(project_id=project_id, is_deleted=False).limit(10).all()
+    contract_data = []
+    for c in contracts:
+        paid = sum(p.amount or 0 for p in c.payments)
+        contract_data.append({
+            'code': c.code,
+            'name': c.name,
+            'amount_with_tax': float(c.amount_with_tax or 0),
+            'paid_amount': float(paid),
+            'status': c.status,
+        })
+
+    if not contract_data:
+        return jsonify({'success': False, 'message': 'No contract data found'})
+
+    result, error = ai.review_contract({'contracts': contract_data})
+
+    if error:
+        return jsonify({'success': False, 'message': error})
+
+    return jsonify({'success': True, 'data': result})
+
+
+# ============================================================
+# P2: AI Approval Opinion Generation API
+# ============================================================
+
+@bp.route('/api/approval_opinion', methods=['POST'])
+@login_required
+def api_approval_opinion():
+    """AI-assisted approval opinion generation"""
+    err = _check_ai_rate_limit()
+    if err:
+        return err
+
+    ai = get_ai_service()
+
+    data = request.get_json() or {}
+    biz_type = data.get('biz_type', '')
+    action = data.get('action', 'approve')
+    biz_data = data.get('biz_data', {})
+
+    if not biz_type:
+        return jsonify({'success': False, 'message': 'Missing biz_type'})
+
+    context = {
+        'biz_type': biz_type,
+        'action': action,
+        'biz_data': biz_data,
+    }
+
+    result, error = ai.call_with_scene(
+        'text:approval_opinion',
+        'Generate %s opinion for %s' % (action, biz_type),
+        extra_context=context,
+    )
+
+    if error:
+        return jsonify({'success': False, 'message': error})
+
+    return jsonify({'success': True, 'data': result})
+
+
+# ============================================================
+# P2: AI Monthly Budget Status API
+# ============================================================
+
+@bp.route('/api/budget_status')
+@login_required
+def api_budget_status():
+    """Check monthly AI budget usage"""
+    try:
+        from app.utils import get_config
+        budget_enabled = str(get_config('ai_monthly_budget_enabled', 'false')).lower() == 'true'
+        budget_amount = float(get_config('ai_monthly_budget_amount', '100'))
+
+        from datetime import datetime
+        now = datetime.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        from sqlalchemy import func
+        total_cost = db.session.query(
+            func.sum(AICallLog.cost_amount)
+        ).filter(
+            AICallLog.created_at >= month_start
+        ).scalar() or 0
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'enabled': budget_enabled,
+                'budget_amount': budget_amount,
+                'used_amount': float(total_cost),
+                'remaining': float(budget_amount) - float(total_cost),
+                'usage_percent': round(float(total_cost) / budget_amount * 100, 1) if budget_amount > 0 else 0,
+            }
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+

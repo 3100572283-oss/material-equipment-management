@@ -32,6 +32,11 @@ def _save_photo(file):
     """保存小票随车照片，返回相对路径（如 uploads/xxx.jpg）"""
     if not file or not file.filename:
         return None
+    from app.utils import validate_file_extension
+    from flask import abort
+    ok, err = validate_file_extension(file.filename)
+    if not ok:
+        abort(400, err)
     ext = os.path.splitext(secure_filename(file.filename))[1]
     if not ext:
         ext = '.jpg'

@@ -598,7 +598,7 @@ function applyBatchPriceType() {
     const priceType = document.getElementById('batchPriceTypeSelect').value;
     const checked = document.querySelectorAll('.item-checkbox:checked');
     if (checked.length === 0) {
-        alert('请先选择要修改的明细行');
+        customAlert('请先选择要修改的明细行');
         return;
     }
     if (!confirm('确定要将选中的 ' + checked.length + ' 条明细的单价类型修改为 "' + priceType + '"？')) {
@@ -613,9 +613,9 @@ function applyBatchPriceType() {
         if (data.success) {
             location.reload();
         } else {
-            alert(data.message || '修改失败');
+            customAlert(data.message || '修改失败');
         }
-    }).catch(() => alert('修改失败'));
+    }).catch(() => customAlert('修改失败'));
 }
 
 // ---------------- 批量添加物资：分类树 ----------------
@@ -705,7 +705,7 @@ function updateSelectedCount() {
 
 function submitBatchAdd() {
     if (selectedMaterials.size === 0) {
-        alert('请至少选择一项物资');
+        customAlert('请至少选择一项物资');
         return;
     }
     const form = document.getElementById('batchForm');

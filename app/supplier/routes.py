@@ -6,6 +6,18 @@ from flask import render_template, request, redirect, url_for, flash, current_ap
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.supplier import bp
+
+# P2: 文件上传扩展名校验
+def _validate_upload_file(file):
+    """校验上传文件扩展名，不通过则abort 400"""
+    if file and file.filename:
+        from app.utils import validate_file_extension
+        from flask import abort
+        ok, err = validate_file_extension(file.filename)
+        if not ok:
+            abort(400, err)
+    return file
+
 from app import db
 from app.models import Supplier, SupplierEvaluation, StockIn, Contract, Inventory, ProjectSupplier
 from app.decorators import editor_required, log_audit
@@ -57,8 +69,23 @@ def index():
     linked_ids = set(
         ps.supplier_id for ps in ProjectSupplier.query.filter_by(project_id=project_id).all()
     )
+    # P2: 批量查询最新评价，避免 N+1 查询
+    from sqlalchemy import func as _func
+    _supplier_ids = [s.id for s in pagination.items]
+    _latest_evals = {}
+    if _supplier_ids:
+        _sub = db.session.query(
+            SupplierEvaluation.supplier_id,
+            _func.max(SupplierEvaluation.id).label('max_id')
+        ).filter(
+            SupplierEvaluation.supplier_id.in_(_supplier_ids)
+        ).group_by(SupplierEvaluation.supplier_id).subquery()
+        _evals = db.session.query(SupplierEvaluation).join(
+            _sub, SupplierEvaluation.id == _sub.c.max_id
+        ).all()
+        _latest_evals = {e.supplier_id: e for e in _evals}
     for s in pagination.items:
-        s.latest_evaluation = SupplierEvaluation.query.filter_by(supplier_id=s.id).order_by(SupplierEvaluation.evaluate_date.desc()).first()
+        s.latest_evaluation = _latest_evals.get(s.id)
         s._is_project_common = s.id in linked_ids
 
     return render_template('supplier/index.html', pagination=pagination, keyword=keyword, level=level,
@@ -108,6 +135,7 @@ def create():
 
     if request.method == 'POST':
         file = request.files.get('license_image')
+        _validate_upload_file(file)
         license_path = None
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
@@ -149,6 +177,7 @@ def edit(id):
     supplier = Supplier.query.get_or_404(id)
     if request.method == 'POST':
         file = request.files.get('license_image')
+        _validate_upload_file(file)
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'licenses')
@@ -306,6 +335,7 @@ def api_project_suppliers():
 def ocr_license():
     """AI识别营业执照"""
     file = request.files.get('image')
+    _validate_upload_file(file)
     if not file or not allowed_file(file.filename):
         return jsonify({'success': False, 'message': '请上传有效的图片文件'})
 
@@ -431,6 +461,7 @@ def import_excel():
         return redirect(url_for('main.index'))
     
     file = request.files.get('file')
+    _validate_upload_file(file)
     if not file:
         flash('请选择文件', 'danger')
         return redirect(url_for('supplier.index'))

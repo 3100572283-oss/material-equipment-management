@@ -4,6 +4,28 @@ from flask_login import login_required, current_user
 from sqlalchemy import func
 
 from app.scrap import bp
+
+# P2: 文件上传扩展名校验
+def _validate_upload_file(file):
+    """校验上传文件扩展名，不通过则abort 400"""
+    if file and file.filename:
+        from app.utils import validate_file_extension
+        from flask import abort
+        ok, err = validate_file_extension(file.filename)
+        if not ok:
+            abort(400, err)
+    return file
+
+def _validate_upload_files(files):
+    """校验上传文件列表扩展名，不通过则abort 400"""
+    from app.utils import validate_file_extension
+    from flask import abort
+    for f in files:
+        if f and f.filename:
+            ok, err = validate_file_extension(f.filename)
+            if not ok:
+                abort(400, err)
+
 from app import db
 from app.models import (MaterialScrap, MaterialScrapItem, Material, Inventory,
                        InventoryBatch, UsageUnit, Project)
@@ -167,6 +189,7 @@ def create():
 
         # 照片上传（多张）
         photos = request.files.getlist('photos[]')
+        _validate_upload_files(photos)
         for photo in photos:
             if photo and photo.filename:
                 att, err = upload_attachment(photo, 'scrap',
@@ -394,7 +417,7 @@ def stats():
 
     # 按月份汇总
     by_month = db.session.query(
-        func.strftime('%Y-%m', MaterialScrap.scrap_date),
+        func.date_format(MaterialScrap.scrap_date, '%Y-%m'),
         func.coalesce(func.sum(MaterialScrapItem.quantity), 0),
         func.coalesce(func.sum(MaterialScrapItem.amount), 0)
     ).select_from(MaterialScrap
@@ -402,8 +425,8 @@ def stats():
     ).filter(
         MaterialScrap.project_id == project_id,
         MaterialScrap.status == 'approved'
-    ).group_by(func.strftime('%Y-%m', MaterialScrap.scrap_date)
-    ).order_by(func.strftime('%Y-%m', MaterialScrap.scrap_date).desc()).all()
+    ).group_by(func.date_format(MaterialScrap.scrap_date, '%Y-%m')
+    ).order_by(func.date_format(MaterialScrap.scrap_date, '%Y-%m').desc()).all()
 
     month_rows = []
     for ym, qty, amt in by_month:

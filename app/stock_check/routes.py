@@ -175,7 +175,7 @@ def create():
         flash('盘点单创建成功。', 'success')
         return redirect(url_for('stock_check.detail', id=stock_check.id))
 
-    categories = Category.query.filter_by(project_id=project_id, parent_id=0).order_by(Category.sort_order).all()
+    categories = Category.query.filter(Category.project_id == project_id, Category.parent_id.is_(None)).order_by(Category.sort_order).all()
     return render_template('stock_check/create.html', categories=categories,
                            default_check_no=_gen_check_no(project_id),
                            today_str=date.today().strftime('%Y-%m-%d'))
@@ -272,7 +272,57 @@ def confirm(id):
         elif diff < 0:
             _apply_inventory_sub(stock_check.project_id, item.material_id, abs(diff))
 
-    stock_check.status = 'confirmed'
+
+    # === P2: 创建审计记录 ===
+    from app.models import StockIn, StockInItem, StockOut, StockOutItem
+    from datetime import datetime as _dt
+    # 盘盈：创建入库记录
+    gain_items = [(item, diff) for item in stock_check.items for diff in [float(item.actual_qty or 0) - float(item.book_qty or 0)] if diff > 0]
+    loss_items = [(item, diff) for item in stock_check.items for diff in [float(item.actual_qty or 0) - float(item.book_qty or 0)] if diff < 0]
+    
+    if gain_items:
+        stock_in = StockIn(
+            project_id=stock_check.project_id,
+            code=f"PD-{stock_check.check_no}-IN",
+            stock_in_date=stock_check.check_date,
+            stock_in_type='盘点盘盈',
+            operator=stock_check.checker or '系统',
+            remark=f'盘点单{stock_check.check_no}盘盈调整',
+            status='approved'
+        )
+        db.session.add(stock_in)
+        db.session.flush()
+        for item, diff in gain_items:
+            si_item = StockInItem(
+                stock_in_id=stock_in.id,
+                material_id=item.material_id,
+                quantity=to_decimal(diff),
+                unit_price=0
+            )
+            db.session.add(si_item)
+    
+    if loss_items:
+        stock_out = StockOut(
+            project_id=stock_check.project_id,
+            code=f"PD-{stock_check.check_no}-OUT",
+            stock_out_date=stock_check.check_date,
+            stock_out_type='盘点盘亏',
+            operator=stock_check.checker or '系统',
+            remark=f'盘点单{stock_check.check_no}盘亏调整',
+            status='approved'
+        )
+        db.session.add(stock_out)
+        db.session.flush()
+        for item, diff in loss_items:
+            so_item = StockOutItem(
+                stock_out_id=stock_out.id,
+                material_id=item.material_id,
+                quantity=to_decimal(abs(diff)),
+                unit_price=0
+            )
+            db.session.add(so_item)
+
+        stock_check.status = 'confirmed'
     db.session.commit()
     flash('盘点确认成功，库存已更新。', 'success')
     return redirect(url_for('stock_check.detail', id=id))
@@ -354,8 +404,8 @@ def api_category_children(parent_id):
         return jsonify([])
 
     query = Category.query.filter_by(project_id=project_id)
-    if parent_id == 0:
-        query = query.filter_by(parent_id=0)
+    if parent_id is None:
+        query = query.filter_by(parent_id=None)
     else:
         query = query.filter_by(parent_id=parent_id)
 

@@ -221,7 +221,7 @@ class PermissionService:
             rms = SysRoleMenu.query.filter_by(role_id=user.role_id).all()
             allowed_menu_ids = set(rm.menu_id for rm in rms)
 
-        def build_tree(parent_id=0):
+        def build_tree(parent_id=None):
             children = []
             menus = SysMenu.query.filter_by(
                 parent_id=parent_id,
@@ -316,7 +316,7 @@ class PermissionService:
 
         parent_ids = []
         menu = SysMenu.query.get(menu_id)
-        while menu and menu.parent_id and menu.parent_id != 0:
+        while menu and menu.parent_id and menu.parent_id is not None:
             parent_ids.append(menu.parent_id)
             menu = SysMenu.query.get(menu.parent_id)
         return parent_ids

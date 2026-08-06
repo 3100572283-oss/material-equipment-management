@@ -355,7 +355,7 @@ def create_dept():
 
         # 数据权限校验：非管理员只能在有权限的部门下新增
         allowed_dept_ids = _get_allowed_dept_ids()
-        if allowed_dept_ids is not None and parent_id != 0:
+        if allowed_dept_ids is not None and parent_id is not None:
             if parent_id not in allowed_dept_ids:
                 flash('无权在此部门下新增子部门', 'error')
                 return redirect(url_for('system.depts'))
@@ -365,13 +365,13 @@ def create_dept():
 
         if sort_input is None:
             max_sort = db.session.query(db.func.max(SysDept.sort)).filter_by(
-                parent_id=parent_id if parent_id else 0).scalar() or 0
+                parent_id=parent_id if parent_id else None).scalar() or 0
             sort_input = max_sort + 1
 
         dept = SysDept(
             dept_code=dept_code,
             dept_name=dept_name,
-            parent_id=parent_id if parent_id else 0,
+            parent_id=(parent_id if parent_id else None),
             dept_type=dept_type,
             leader=leader or None,
             sort=sort_input,
@@ -406,7 +406,7 @@ def create_dept():
     def get_dept_depth(d):
         depth = 0
         current = d
-        while current.parent_id != 0:
+        while current.parent_id is not None:
             depth += 1
             if current.parent_id in dept_map:
                 current = dept_map[current.parent_id]
@@ -419,9 +419,9 @@ def create_dept():
         d._path = get_dept_path(d)
 
     default_sort = 1
-    parent_id_param = request.args.get('parent_id', type=int, default=0)
+    parent_id_param = request.args.get('parent_id', type=int)
     max_sort = db.session.query(db.func.max(SysDept.sort)).filter_by(
-        parent_id=parent_id_param if parent_id_param else 0).scalar() or 0
+        parent_id=parent_id_param if parent_id_param else None).scalar() or 0
     default_sort = max_sort + 1
 
     parent_dept = dept_map.get(parent_id_param) if parent_id_param else None
@@ -466,13 +466,13 @@ def edit_dept(id):
             return redirect(url_for('system.edit_dept', id=id))
 
         # 数据权限校验：非管理员修改父部门时，新父部门必须在权限范围内
-        if allowed_dept_ids is not None and parent_id != 0 and parent_id != dept.parent_id:
+        if allowed_dept_ids is not None and parent_id is not None and parent_id != dept.parent_id:
             if parent_id not in allowed_dept_ids:
                 flash('无权将部门移动到该父部门下', 'error')
                 return redirect(url_for('system.edit_dept', id=id))
 
         dept.dept_name = dept_name
-        dept.parent_id = parent_id if parent_id else 0
+        dept.parent_id = parent_id if parent_id else None
         dept.dept_type = dept_type
         dept.leader = leader or None
         dept.sort = sort
@@ -506,7 +506,7 @@ def edit_dept(id):
     def get_dept_depth(d):
         depth = 0
         current = d
-        while current.parent_id != 0:
+        while current.parent_id is not None:
             depth += 1
             if current.parent_id in dept_map:
                 current = dept_map[current.parent_id]
@@ -708,7 +708,7 @@ def role_permissions(id):
     """角色菜单权限配置页（统一权限中心：功能权限+数据权限）"""
     role = SysRole.query.get_or_404(id)
 
-    menus = SysMenu.query.filter(SysMenu.parent_id == 0).order_by(SysMenu.sort).all()
+    menus = SysMenu.query.filter(SysMenu.parent_id is None).order_by(SysMenu.sort).all()
 
     role_permissions = SysRoleMenu.query.filter_by(role_id=id).all()
     menu_op_map = {}
@@ -732,7 +732,7 @@ def role_permissions(id):
         'print': '打印',
     }
 
-    def build_menu_tree(items, parent_id=0, level=0):
+    def build_menu_tree(items, parent_id=None, level=0):
         tree = []
         for item in items:
             if item.parent_id == parent_id:
@@ -955,13 +955,13 @@ def create_menu():
 
         if sort_input is None:
             max_sort = db.session.query(db.func.max(SysMenu.sort)).filter_by(
-                parent_id=parent_id if parent_id else 0).scalar() or 0
+                parent_id=parent_id if parent_id else None).scalar() or 0
             sort_input = max_sort + 1
 
         menu = SysMenu(
             menu_name=menu_name,
             menu_code=menu_code or None,
-            parent_id=parent_id if parent_id else 0,
+            parent_id=(parent_id if parent_id else None),
             menu_type=menu_type,
             path=path or None,
             icon=icon or None,
@@ -975,9 +975,9 @@ def create_menu():
         return redirect(url_for('system.menus'))
 
     all_menus = SysMenu.query.order_by(SysMenu.sort).all()
-    parent_id_param = request.args.get('parent_id', type=int, default=0)
+    parent_id_param = request.args.get('parent_id', type=int)
     max_sort = db.session.query(db.func.max(SysMenu.sort)).filter_by(
-        parent_id=parent_id_param).scalar() or 0
+        parent_id=(parent_id_param if parent_id_param else None)).scalar() or 0
     default_sort = max_sort + 1
     return render_template('system/menu_form.html', menu=None, all_menus=all_menus, default_sort=default_sort)
 
@@ -1010,7 +1010,7 @@ def edit_menu(id):
 
         menu.menu_name = menu_name
         menu.menu_code = menu_code or None
-        menu.parent_id = parent_id if parent_id else 0
+        menu.parent_id = parent_id if parent_id else None
         menu.menu_type = menu_type
         menu.path = path or None
         menu.icon = icon or None
@@ -1299,7 +1299,7 @@ def api_user_menus():
         allowed_menu_ids = set(rm.menu_id for rm in rms)
 
     # 构建菜单树
-    def build_tree(parent_id=0):
+    def build_tree(parent_id=None):
         items = []
         menus = SysMenu.query.filter_by(
             parent_id=parent_id,

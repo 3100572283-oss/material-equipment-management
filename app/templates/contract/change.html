@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}合同变更 - {{ contract.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div data-breadcrumb='[{"text":"合同管理","href":"{{ url_for('contract.index') }}"},{"text":"{{ contract.name }}","href":"{{ url_for('contract.detail', id=contract.id) }}"},{"text":"合同变更"}]'></div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-file-signature me-2"></i>合同变更/补充协议</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <strong>合同编号：</strong>{{ contract.code }}<br>
+                <strong>合同名称：</strong>{{ contract.name }}<br>
+                <strong>当前金额：</strong>{{ contract.amount_with_tax or 0 }} 元
+            </div>
+            
+            <form method="POST" action="{{ url_for('contract.contract_change', id=contract.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">变更类型 <span class="text-danger">*</span></label>
+                        <select class="form-select" name="change_type" required>
+                            <option value="change">合同变更</option>
+                            <option value="supplement">补充协议</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">变更日期</label>
+                        <input type="text" class="form-control datepicker" name="change_date" value="{{ today_str }}" required>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">变更内容 <span class="text-danger">*</span></label>
+                    <textarea class="form-control" name="change_content" rows="4" required placeholder="请描述变更的具体内容..."></textarea>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">金额变动（元）</label>
+                        <input type="number" class="form-control" name="change_amount" step="0.01" value="0">
+                        <small class="text-muted">补充协议时可填写金额增量，正数增加，负数减少</small>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">变更原因</label>
+                    <textarea class="form-control" name="change_reason" rows="2" placeholder="请说明变更原因..."></textarea>
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>保存变更记录</button>
+                    <a href="{{ url_for('contract.detail', id=contract.id) }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-1"></i>返回</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

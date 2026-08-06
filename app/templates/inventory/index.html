@@ -110,6 +110,7 @@
                         <th>物资分类</th>
                         <th>单位</th>
                         <th class="text-end">当前库存</th>
+                        <th class="text-end">安全库存</th>
                         <th class="text-end">在途数量</th>
                         <th class="text-end">实际成本（不含税）</th>
                         <th class="text-end estimated-col" style="display:none;">暂估金额</th>
@@ -117,18 +118,31 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for m, c, stock, in_transit, est_amt, act_amt in inventories %}
+                    {% for m, c, stock, in_transit, est_amt, act_amt, safety_stock in inventories %}
                     {% set stock_float = stock|float %}
                     {% set in_transit_float = in_transit|float %}
                     {% set act_amt_float = act_amt|float %}
                     {% set est_amt_float = est_amt|float %}
-                    <tr {% if stock_float <= 0 %}class="table-danger"{% elif stock_float < 10 %}class="table-warning"{% endif %}>
+                    {% set safety_val = safety_stock|int %}
+                    <tr {% if safety_val > 0 and stock_float < safety_val %}class="table-danger"{% elif stock_float <= 0 %}class="table-danger"{% elif stock_float < 10 %}class="table-warning"{% endif %}>
                         <td>{{ m.code or '-' }}</td>
                         <td>{{ m.name }}</td>
                         <td>{{ m.specification or '-' }}</td>
                         <td>{{ c.name if c else '-' }}</td>
                         <td>{{ m.unit }}</td>
                         <td class="text-end fw-bold {% if stock_float <= 0 %}text-danger{% endif %}">{{ '%.4f'|format(stock_float) }}</td>
+                        <td class="text-end">
+                            {% set safety_val = safety_stock|int %}
+                            {% if safety_val > 0 %}
+                                {% if stock_float < safety_val %}
+                                <span class="badge bg-danger" title="库存低于安全库存！">{{ safety_val }}</span>
+                                {% else %}
+                                <span class="text-muted">{{ safety_val }}</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td class="text-end">
                             {% if in_transit_float > 0 %}
                             <span class="badge bg-info text-white">{{ '%.4f'|format(in_transit_float) }}</span>
@@ -155,7 +169,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="10" class="text-center text-muted">暂无数据</td></tr>
+                    <tr><td colspan="11" class="text-center text-muted">暂无数据</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

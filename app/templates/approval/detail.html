@@ -279,7 +279,7 @@
 function validateReject() {
     var reason = document.getElementById('rejectReason').value.trim();
     if (!reason) {
-        alert('驳回必须填写原因');
+        customAlert('驳回必须填写原因');
         return false;
     }
     return confirm('确定驳回此审批吗？');

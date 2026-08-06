@@ -1,11 +1,33 @@
 import csv
 import io
 from datetime import datetime, date
-from flask import render_template, request, redirect, url_for, flash, send_file
+from flask import render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_login import login_required, current_user
 from sqlalchemy import or_, func, literal
 
 from app.inventory import bp
+
+# P2: 文件上传扩展名校验
+def _validate_upload_file(file):
+    """校验上传文件扩展名，不通过则abort 400"""
+    if file and file.filename:
+        from app.utils import validate_file_extension
+        from flask import abort
+        ok, err = validate_file_extension(file.filename)
+        if not ok:
+            abort(400, err)
+    return file
+
+def _validate_upload_files(files):
+    """校验上传文件列表扩展名，不通过则abort 400"""
+    from app.utils import validate_file_extension
+    from flask import abort
+    for f in files:
+        if f and f.filename:
+            ok, err = validate_file_extension(f.filename)
+            if not ok:
+                abort(400, err)
+
 from app import db
 from app.models import Inventory, Material, Category, StockIn, StockInItem, StockOut, StockOutItem
 from app.utils import apply_data_scope
@@ -49,7 +71,8 @@ def index():
         (func.coalesce(in_subq.c.total_in, 0) - func.coalesce(out_subq.c.total_out, 0)).label('current_stock'),
         func.coalesce(Inventory.in_transit_qty, 0).label('in_transit_qty'),
         func.coalesce(Inventory.estimated_amount, 0).label('estimated_amount'),
-        func.coalesce(Inventory.actual_amount, 0).label('actual_amount')
+        func.coalesce(Inventory.actual_amount, 0).label('actual_amount'),
+        func.coalesce(Inventory.safety_stock, 0).label('safety_stock')
     ).outerjoin(Category, Category.id == Material.category_id).outerjoin(
         Inventory, Inventory.material_id == Material.id
     ).outerjoin(
@@ -346,6 +369,7 @@ def initial_batch():
         return redirect(url_for('inventory.index'))
 
     file = request.files.get('file')
+    _validate_upload_file(file)
     if not file:
         flash('请选择要上传的文件。', 'warning')
         return redirect(url_for('inventory.index'))
@@ -462,3 +486,94 @@ def initial_batch():
         flash(msg, 'success')
 
     return redirect(url_for('inventory.index'))
+
+
+@bp.route('/api/warnings')
+@login_required
+def api_warnings():
+    """库存预警接口：返回低于安全库存的物资列表"""
+    from flask import session
+    project_id = session.get('current_project_id')
+
+    in_subq = db.session.query(
+        StockInItem.material_id.label('material_id'),
+        func.sum(StockInItem.quantity).label('total_in')
+    ).join(StockIn, StockIn.id == StockInItem.stock_in_id).filter(
+        db.or_(StockIn.status == 'approved', StockIn.status == None)
+    ).group_by(StockInItem.material_id).subquery()
+
+    out_subq = db.session.query(
+        StockOutItem.material_id.label('material_id'),
+        func.sum(StockOutItem.quantity).label('total_out')
+    ).join(StockOut, StockOut.id == StockOutItem.stock_out_id).filter(
+        db.or_(StockOut.status == 'approved', StockOut.status == None)
+    ).group_by(StockOutItem.material_id).subquery()
+
+    inv_filter = Inventory.material_id == Material.id
+    if project_id:
+        inv_filter = db.and_(Inventory.material_id == Material.id, Inventory.project_id == project_id)
+
+    query = db.session.query(
+        Material,
+        Category,
+        (func.coalesce(in_subq.c.total_in, 0) - func.coalesce(out_subq.c.total_out, 0)).label('current_stock'),
+        func.coalesce(Inventory.safety_stock, 0).label('safety_stock')
+    ).outerjoin(Category, Category.id == Material.category_id).outerjoin(
+        Inventory, inv_filter
+    ).outerjoin(
+        in_subq, in_subq.c.material_id == Material.id
+    ).outerjoin(
+        out_subq, out_subq.c.material_id == Material.id
+    ).filter(
+        func.coalesce(Inventory.safety_stock, 0) > 0
+    )
+
+    if project_id:
+        query = query.filter(Material.project_id == project_id)
+    query = apply_data_scope(query, Material)
+
+    warnings = []
+    for m, c, stock, safety in query.all():
+        current = float(stock or 0)
+        safety_val = int(safety or 0)
+        if safety_val > 0 and current < safety_val:
+            warnings.append({
+                'material_id': m.id,
+                'material_code': m.code or '',
+                'material_name': m.name,
+                'specification': m.specification or '',
+                'unit': m.unit or '',
+                'category_name': c.name if c else '',
+                'current_stock': round(current, 2),
+                'safety_stock': safety_val,
+                'shortage': round(safety_val - current, 2),
+            })
+
+    return jsonify({'success': True, 'count': len(warnings), 'warnings': warnings})
+
+
+@bp.route('/update_safety_stock', methods=['POST'])
+@login_required
+def update_safety_stock():
+    """更新安全库存量"""
+    if not current_user.can_edit():
+        return jsonify({'success': False, 'message': '无权限'}), 403
+
+    from flask import session
+    project_id = session.get('current_project_id')
+    material_id = request.form.get('material_id', type=int)
+    safety_stock = request.form.get('safety_stock', 0, type=int)
+
+    if not material_id or not project_id:
+        return jsonify({'success': False, 'message': '参数缺失'}), 400
+
+    inv = Inventory.query.filter_by(
+        project_id=project_id, material_id=material_id
+    ).first()
+    if not inv:
+        inv = Inventory(project_id=project_id, material_id=material_id,
+                        quantity=0, estimated_amount=0, actual_amount=0)
+        db.session.add(inv)
+    inv.safety_stock = safety_stock
+    db.session.commit()
+    return jsonify({'success': True, 'message': '安全库存已更新'})

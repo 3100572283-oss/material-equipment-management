@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}合同实例列表{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-md-8">
+            <h3><i class="fas fa-copy"></i> 合同实例列表</h3>
+            <p class="text-muted">基于模板生成的合同文档</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('contract.contract_templates') }}" class="btn btn-outline-primary">
+                <i class="fas fa-plus"></i> 生成新合同
+            </a>
+        </div>
+    </div>
+
+    <!-- 筛选栏 -->
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <form method="get" class="d-flex flex-wrap align-items-center gap-2">
+                <div class="mb-3 me-2">
+                    <label class="me-1">状态：</label>
+                    <select name="status" class="form-control form-control-sm" onchange="this.form.submit()">
+                        <option value="">全部</option>
+                        <option value="draft" {% if current_status == 'draft' %}selected{% endif %}>草稿</option>
+                        <option value="submitted" {% if current_status == 'submitted' %}selected{% endif %}>已提交</option>
+                        <option value="approved" {% if current_status == 'approved' %}selected{% endif %}>已审批</option>
+                        <option value="rejected" {% if current_status == 'rejected' %}selected{% endif %}>已驳回</option>
+                        <option value="executed" {% if current_status == 'executed' %}selected{% endif %}>已执行</option>
+                    </select>
+                </div>
+                <div class="mb-3 me-2">
+                    <input type="text" name="keyword" class="form-control form-control-sm" 
+                           placeholder="搜索合同编号或标题..." value="{{ keyword }}">
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="fas fa-search"></i> 搜索
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 实例列表 -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>合同编号</th>
+                            <th>合同标题</th>
+                            <th>模板类型</th>
+                            <th>分类</th>
+                            <th>状态</th>
+                            <th>创建时间</th>
+                            <th style="width:120px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for inst in instances %}
+                        <tr>
+                            <td><code>{{ inst.contract_no }}</code></td>
+                            <td>{{ inst.title }}</td>
+                            <td>{{ inst.template.name if inst.template else '-' }}</td>
+                            <td>
+                                <span class="badge bg-{% if inst.template and inst.template.category == '采购类' %}primary{% elif inst.template and inst.template.category == '租赁类' %}success{% elif inst.template and inst.template.category == '买卖类' %}info{% elif inst.template and inst.template.category == '运输类' %}warning{% else %}secondary{% endif %}">
+                                    {{ inst.template.category if inst.template else '-' }}
+                                </span>
+                            </td>
+                            <td>
+                                {% set status_map = {'draft': ('草稿', 'secondary'), 'submitted': ('已提交', 'info'), 'approved': ('已审批', 'success'), 'rejected': ('已驳回', 'danger'), 'executed': ('已执行', 'primary')} %}
+                                {% set status_info = status_map.get(inst.status, (inst.status, 'secondary')) %}
+                                <span class="badge bg-{{ status_info[1] }}">{{ status_info[0] }}</span>
+                            </td>
+                            <td>{{ inst.created_at.strftime('%Y-%m-%d %H:%M') if inst.created_at else '-' }}</td>
+                            <td>
+                                <a href="{{ url_for('contract.contract_instance_detail', instance_id=inst.id) }}" 
+                                   class="btn btn-sm btn-outline-primary" title="查看">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{{ url_for('contract.contract_instance_download', instance_id=inst.id) }}" 
+                                   class="btn btn-sm btn-outline-success" title="下载Word">
+                                    <i class="fas fa-download"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="fas fa-inbox fa-2x mb-2"></i><br>暂无合同实例
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% if pagination.pages > 1 %}
+        <div class="card-footer">
+            <nav>
+                <ul class="pagination justify-content-center">
+                    {% if pagination.has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ pagination.prev_num }}&status={{ current_status }}&keyword={{ keyword }}">&laquo; 上一页</a>
+                    </li>
+                    {% endif %}
+                    {% for p in range(1, pagination.pages + 1) %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="?page={{ p }}&status={{ current_status }}&keyword={{ keyword }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                    {% if pagination.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ pagination.next_num }}&status={{ current_status }}&keyword={{ keyword }}">下一页 &raquo;</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

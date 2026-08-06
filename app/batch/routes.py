@@ -71,7 +71,7 @@ def category_config():
         return redirect(url_for('main.index'))
 
     categories = Category.query.filter_by(
-        project_id=project_id, parent_id=0
+        project_id=project_id, parent_id=None
     ).order_by(Category.sort_order.asc(), Category.created_at.asc()).all()
 
     # 关联物资数量

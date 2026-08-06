@@ -115,12 +115,12 @@ function toggleSubcontract(unitId) {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     }).then(r => r.json()).then(data => {
         if (data.success) {
-            alert(data.message);
+            customAlert(data.message);
             location.reload();
         } else {
-            alert(data.message || '操作失败');
+            customAlert(data.message || '操作失败');
         }
-    }).catch(() => alert('网络错误，请重试'));
+    }).catch(() => customAlert('网络错误，请重试'));
 }
 
 let contractModal = null;
@@ -144,12 +144,12 @@ document.getElementById('contractForm').addEventListener('submit', function(e) {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     }).then(r => r.json()).then(data => {
         if (data.success) {
-            alert(data.message);
+            customAlert(data.message);
             location.reload();
         } else {
-            alert(data.message || '保存失败');
+            customAlert(data.message || '保存失败');
         }
-    }).catch(() => alert('网络错误，请重试'));
+    }).catch(() => customAlert('网络错误，请重试'));
 });
 </script>
 {% endblock %}

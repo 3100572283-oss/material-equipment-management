@@ -160,7 +160,7 @@ function removeItemRow(btn) {
     const tbody = document.getElementById('itemsTable').querySelector('tbody');
     const rows = tbody.querySelectorAll('tr');
     if (rows.length <= 1) {
-        alert('至少保留一条明细');
+        customAlert('至少保留一条明细');
         return;
     }
     btn.closest('tr').remove();
@@ -181,7 +181,7 @@ function confirmSubmit() {
         }
     });
     if (!hasValidItem) {
-        alert('请先添加至少一条有效的申请明细');
+        customAlert('请先添加至少一条有效的申请明细');
         return false;
     }
     return confirm('确定提交审批？提交后将进入审批流程。');

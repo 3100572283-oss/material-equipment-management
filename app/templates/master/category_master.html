@@ -433,7 +433,7 @@ function updateBatchButton() {
 function batchDelete() {
     var checked = document.querySelectorAll('.cat-checkbox:checked');
     if (checked.length === 0) {
-        alert('请先选择要删除的分类。');
+        customAlert('请先选择要删除的分类。');
         return;
     }
     var ids = [];

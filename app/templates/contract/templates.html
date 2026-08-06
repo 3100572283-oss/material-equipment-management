@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}合同模板管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    
+    <div class="row mb-3">
+        
+        <div class="col-md-8">
+            
+            <h3><i class="fas fa-file-contract"></i> 合同模板管理</h3>
+            
+            <p class="text-muted">选择合同模板，填写变量信息，快速生成合同文档</p>
+        
+        </div>
+        
+        <div class="col-md-4 text-end">
+            
+            <a href="{{ url_for('contract.contract_template_new') }}" class="btn btn-success">
+                
+                <i class="fas fa-plus-circle"></i> 新增模板
+            
+            </a>
+            
+            <a href="{{ url_for('contract.contract_instances') }}" class="btn btn-outline-primary ms-2">
+                
+                <i class="fas fa-list"></i> 合同实例列表
+            
+            </a>
+        </div>
+    </div>
+
+    
+    <!-- 筛选栏 -->
+    
+    <div class="card mb-3">
+        
+        <div class="card-body py-2">
+            
+            <form method="get" class="d-flex flex-wrap align-items-center gap-2">
+                
+                <div class="mb-3 me-2">
+                    
+                    <label class="me-1">分类：</label>
+                    
+                    <select name="category" class="form-control form-control-sm" onchange="this.form.submit()">
+                        
+                        <option value="">全部</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>{{ cat }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="mb-3 me-2">
+                    
+                    <input type="text" name="keyword" class="form-control form-control-sm" 
+                           placeholder="搜索模板名称..." value="{{ keyword }}">
+                </div>
+                
+                <button type="submit" class="btn btn-sm btn-primary">
+                    
+                    <i class="fas fa-search"></i> 搜索
+                
+                </button>
+            </form>
+        </div>
+    </div>
+
+    
+    <!-- 模板卡片 -->
+    
+    <div class="row">
+        {% for tmpl in templates %}
+        <div class="col-md-4 col-sm-6 mb-4">
+            
+            <div class="card h-100 shadow-sm template-card">
+                
+                <div class="card-body">
+                    
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        
+                        <h5 class="card-title mb-0">
+                            
+                            <span class="badge bg-{% if tmpl.category == '采购类' %}primary{% elif tmpl.category == '租赁类' %}success{% elif tmpl.category == '买卖类' %}info{% elif tmpl.category == '运输类' %}warning{% else %}secondary{% endif %}">
+                                {{ tmpl.category }}
+                            </span>
+                        
+                        </h5>
+                        
+                        <div class="d-flex align-items-center gap-1">
+                            <small class="text-muted">v{{ tmpl.version }}</small>
+                            <form method="post" action="{{ url_for('contract.contract_template_delete', template_id=tmpl.id) }}" 
+                                  class="d-inline" 
+                                  onsubmit="return confirmDelete('{{ tmpl.name }}', {{ tmpl.instances.count() }});">
+                                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-1" 
+                                        title="删除模板" 
+                                        style="font-size: 0.75rem;">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <h6 class="card-subtitle mb-2 text-dark fw-bold">{{ tmpl.name }}</h6>
+                    
+                    <p class="card-text text-muted small">{{ tmpl.description or '暂无描述' }}</p>
+                    
+                    {% set schema = tmpl.to_dict().get('variables_schema', []) %}
+                    
+                    <div class="mb-2">
+                        {% set required_count = namespace(val=0) %}
+                        {% for var in schema %}
+                            {% if var.get('required') and var.get('type') != 'table' %}
+                                {% set required_count.val = required_count.val + 1 %}
+                            {% endif %}
+                        {% endfor %}
+                        
+                        <small class="text-muted">
+                            
+                            <i class="fas fa-list-ul"></i> {{ schema|length }} 个变量（{{ required_count.val }} 个必填）
+                        </small>
+                    </div>
+                </div>
+                
+                <div class="card-footer bg-transparent border-top-0 d-flex gap-2">
+                    
+                    <a href="{{ url_for('contract.contract_template_detail', template_id=tmpl.id) }}" 
+                       class="btn btn-primary btn-sm flex-grow-1">
+                        
+                        <i class="fas fa-plus-circle"></i> 生成合同
+                    </a>
+                    
+                    <a href="{{ url_for('contract.contract_template_edit', template_id=tmpl.id) }}" 
+                       class="btn btn-outline-warning btn-sm" title="编辑模板">
+                        
+                        <i class="fas fa-edit"></i> 编辑
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12">
+            
+            <div class="alert alert-info text-center">
+                
+                <i class="fas fa-info-circle"></i> 暂无合同模板
+            
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.template-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.template-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+}
+</style>
+
+<script>
+function confirmDelete(name, instanceCount) {
+    if (instanceCount > 0) {
+        alert('无法删除模板「' + name + '」，有 ' + instanceCount + ' 个合同实例正在使用此模板。');
+        return false;
+    }
+    return confirm('确定要删除模板「' + name + '」吗？此操作不可撤销。');
+}
+</script>
+{% endblock %}

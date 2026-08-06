@@ -72,7 +72,7 @@
         </div>
 
         <div class="table-responsive">
-            <table class="table table-striped table-hover align-middle">
+            <table class="table table-striped table-hover align-middle table-sortable">
                 <thead class="table-light">
                     <tr>
                         <th style="width:40px;">
@@ -203,7 +203,7 @@ function clearSelection() {
 function confirmBatchDelete() {
     var count = document.querySelectorAll('.row-checkbox:checked').length;
     if (count === 0) {
-        alert('请先选择要删除的记录');
+        customAlert('请先选择要删除的记录');
         return;
     }
     if (confirm('确定批量删除选中的 ' + count + ' 条记录？相关明细/发票/付款都将被删除。')) {

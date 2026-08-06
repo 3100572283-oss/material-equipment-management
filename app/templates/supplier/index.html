@@ -40,7 +40,7 @@
         </form>
 
         <div class="table-responsive">
-            <table class="table table-striped table-hover align-middle">
+            <table class="table table-striped table-hover align-middle table-sortable">
                 <thead class="table-light">
                     <tr>
                         <th>供应商名称</th>
@@ -104,25 +104,7 @@
             </table>
         </div>
 
-        {% if pagination.pages > 1 %}
-        <nav>
-            <ul class="pagination pagination-sm justify-content-center">
-                {% if pagination.has_prev %}
-                <li class="page-item"><a class="page-link" href="{{ url_for('supplier.index', page=pagination.prev_num, keyword=keyword, level=level) }}">上一页</a></li>
-                {% endif %}
-                {% for p in pagination.iter_pages() %}
-                    {% if p %}
-                    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('supplier.index', page=p, keyword=keyword, level=level) }}">{{ p }}</a></li>
-                    {% else %}
-                    <li class="page-item disabled"><span class="page-link">...</span></li>
-                    {% endif %}
-                {% endfor %}
-                {% if pagination.has_next %}
-                <li class="page-item"><a class="page-link" href="{{ url_for('supplier.index', page=pagination.next_num, keyword=keyword, level=level) }}">下一页</a></li>
-                {% endif %}
-            </ul>
-        </nav>
-        {% endif %}
+        {% include '_pagination.html' %}
     </div>
 </div>
 
@@ -324,7 +306,7 @@
         var boxes = tbody.querySelectorAll('input.supplier-master-check:checked:not(:disabled)');
         var ids = Array.prototype.map.call(boxes, function (cb) { return parseInt(cb.value, 10); });
         if (!ids.length) {
-            alert('请勾选要加入常用的供应商');
+            customAlert('请勾选要加入常用的供应商');
             return;
         }
         batchBtn.disabled = true;
@@ -337,15 +319,15 @@
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 if (data.success) {
-                    alert('成功加入 ' + (data.added_count || 0) + ' 个供应商到常用');
+                    customAlert('成功加入 ' + (data.added_count || 0) + ' 个供应商到常用', null, {type:'success'});
                     var modal = bootstrap.Modal.getInstance(modalEl);
                     if (modal) modal.hide();
                     window.location.reload();
                 } else {
-                    alert(data.message || '加入失败');
+                    customAlert(data.message || '加入失败', null, {type:'error'});
                 }
             })
-            .catch(function () { alert('网络错误，请重试'); })
+            .catch(function () { customAlert('网络错误，请重试', null, {type:'error'}); })
             .finally(function () {
                 batchBtn.disabled = false;
                 batchBtn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>批量加入常用';

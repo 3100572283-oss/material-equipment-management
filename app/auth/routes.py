@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 from flask import render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
@@ -8,8 +9,14 @@ from app import db
 from app.models import User, LoginLog, SysMenu, SysRoleMenu, SysRole, SysDept, Project, SysModule
 from app.utils import log_operation
 from app.decorators import log_audit
+import os
 import uuid
+import random
+import string
+import io
+import base64
 import json
+from PIL import Image, ImageDraw, ImageFont
 
 
 def _parse_user_agent(user_agent_str):
@@ -62,6 +69,77 @@ def _record_login_log(user, status, fail_reason=None):
     return log.id if status == 'success' else None
 
 
+
+
+@bp.route('/captcha')
+def captcha():
+    """生成验证码图片"""
+    # 生成4位随机验证码
+    chars = string.ascii_uppercase + string.digits
+    # 排除容易混淆的字符
+    chars = chars.replace('O', '').replace('0', '').replace('I', '').replace('1', '').replace('L', '')
+    captcha_text = ''.join(random.choices(chars, k=4))
+
+    # 存入session
+    session['captcha'] = captcha_text
+    session['captcha_time'] = datetime.now().timestamp()
+
+    # 生成图片
+    width, height = 120, 40
+    image = Image.new('RGB', (width, height), color=(248, 249, 250))
+    draw = ImageDraw.Draw(image)
+
+    # 尝试加载字体
+    font = None
+    font_paths = ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+                  '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf']
+    for fp in font_paths:
+        if os.path.exists(fp):
+            font = ImageFont.truetype(fp, 28)
+            break
+    if not font:
+        font = ImageFont.load_default()
+
+    # 绘制验证码字符（带随机偏移）
+    for i, char in enumerate(captcha_text):
+        x = 10 + i * 26 + random.randint(-3, 3)
+        y = random.randint(0, 8)
+        # 随机颜色
+        color = (random.randint(20, 100), random.randint(20, 100), random.randint(80, 150))
+        draw.text((x, y), char, fill=color, font=font)
+
+    # 绘制干扰线
+    for _ in range(4):
+        x1 = random.randint(0, width)
+        y1 = random.randint(0, height)
+        x2 = random.randint(0, width)
+        y2 = random.randint(0, height)
+        draw.line([(x1, y1), (x2, y2)], fill=(random.randint(150, 200), random.randint(150, 200), random.randint(150, 200)), width=1)
+
+    # 绘制干扰点
+    for _ in range(50):
+        x = random.randint(0, width)
+        y = random.randint(0, height)
+        draw.point((x, y), fill=(random.randint(100, 200), random.randint(100, 200), random.randint(100, 200)))
+
+    # 输出为base64
+    buf = io.BytesIO()
+    image.save(buf, format='PNG')
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode()
+
+    from flask import send_file
+    buf.seek(0)
+    return send_file(buf, mimetype='image/png')
+
+
+@bp.route('/forgot_password')
+def forgot_password():
+    """忘记密码页面"""
+    return render_template('auth/forgot_password.html')
+
+
+
 @bp.route('/login', methods=['GET', 'POST'])
 @log_audit(module='auth', operation='登录')
 def login():
@@ -71,6 +149,12 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
+        # P2: 验证码校验
+        captcha_input = request.form.get('captcha', '').strip().upper()
+        captcha_session = session.pop('captcha', '')
+        if not captcha_input or not captcha_session or captcha_input != captcha_session:
+            flash('验证码错误或已过期，请重新输入。', 'danger')
+            return render_template('auth/login.html')
         remember = bool(request.form.get('remember'))
 
         user = User.query.filter_by(username=username).first()
@@ -163,8 +247,10 @@ def change_password():
             flash('当前密码错误。', 'danger')
         elif new_password != confirm_password:
             flash('两次输入的新密码不一致。', 'danger')
-        elif len(new_password) < 6:
-            flash('新密码长度不能少于6位。', 'danger')
+        elif len(new_password) < 8:
+            flash('新密码长度不能少于8位。', 'danger')
+        elif not (re.search(r'[a-z]', new_password) and re.search(r'[A-Z]', new_password) and re.search(r'[0-9]', new_password)):
+            flash('密码必须包含大写字母、小写字母和数字。', 'danger')
         elif new_password == old_password:
             flash('新密码不能与原密码相同。', 'danger')
         else:

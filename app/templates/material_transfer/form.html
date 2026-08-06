@@ -184,7 +184,7 @@ function removeItemRow(btn) {
     const tbody = document.getElementById('itemsTable').querySelector('tbody');
     const rows = tbody.querySelectorAll('tr');
     if (rows.length <= 1) {
-        alert('至少保留一条明细');
+        customAlert('至少保留一条明细');
         return;
     }
     btn.closest('tr').remove();

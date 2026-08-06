@@ -20,7 +20,7 @@
 <div id="msgList">
     {% if messages %}
     {% for m in messages %}
-    <div class="m-msg-card {% if not m.is_read %}unread{% endif %}" data-id="{{ m.id }}" onclick="openMessage({{ m.id }})">
+    <div class="m-msg-card {% if not m.is_read %}unread{% endif %}" data-id="{{ m.id }}" data-url="{{ m.url or '' }}" onclick="openMessage({{ m.id }})">
         <div class="m-msg-header">
             <span class="m-msg-type type-{{ m.msg_type or 'info' }}">
                 {% if m.msg_type == 'approval' %}<i class="bi bi-clipboard-check"></i> 审批

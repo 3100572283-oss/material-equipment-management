@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}采购订单管理 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-cart3 me-2"></i>采购订单管理</h5>
+        <div>
+            {% if current_user.can_edit() %}
+            <a href="{{ url_for('purchase_order.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新建采购订单</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('purchase_order.index') }}">
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" name="keyword" value="{{ keyword or '' }}" placeholder="采购订单号">
+            </div>
+            <div class="col-md-3">
+                <select class="form-select form-select-sm" name="status">
+                    <option value="">全部状态</option>
+                    <option value="draft" {% if status == 'draft' %}selected{% endif %}>草稿</option>
+                    <option value="submitted" {% if status == 'submitted' %}selected{% endif %}>已提交</option>
+                    <option value="approved" {% if status == 'approved' %}selected{% endif %}>已审批</option>
+                    <option value="received" {% if status == 'received' %}selected{% endif %}>已收货</option>
+                    <option value="closed" {% if status == 'closed' %}selected{% endif %}>已关闭</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+                <a href="{{ url_for('purchase_order.index') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>采购订单号</th>
+                        <th>供应商</th>
+                        <th>状态</th>
+                        <th class="text-end">总金额</th>
+                        <th>创建时间</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for po in pagination.items %}
+                    <tr>
+                        <td><a href="{{ url_for('purchase_order.detail', id=po.id) }}" class="text-decoration-none fw-bold">{{ po.po_number }}</a></td>
+                        <td>{{ po.supplier.name if po.supplier else '-' }}</td>
+                        <td>
+                            {% if po.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                            {% elif po.status == 'submitted' %}<span class="badge bg-warning text-dark">已提交</span>
+                            {% elif po.status == 'approved' %}<span class="badge bg-success">已审批</span>
+                            {% elif po.status == 'received' %}<span class="badge bg-info">已收货</span>
+                            {% elif po.status == 'closed' %}<span class="badge bg-dark">已关闭</span>
+                            {% else %}<span class="badge bg-secondary">{{ po.status }}</span>{% endif %}
+                        </td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(po.total_amount or 0) }}</td>
+                        <td>{{ po.created_at.strftime('%Y-%m-%d %H:%M') if po.created_at else '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('purchase_order.detail', id=po.id) }}" class="btn btn-sm btn-outline-primary" title="查看详情"><i class="bi bi-eye"></i></a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include '_pagination.html' %}
+    </div>
+</div>
+{% endblock %}

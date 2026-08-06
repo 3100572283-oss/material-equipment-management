@@ -51,7 +51,7 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label">营业执照图片</label>
-                            <input type="file" class="form-control" name="license_image" id="license_image" accept="image/*">
+                            <input type="file" class="form-control" name="license_image" id="license_image" accept="image/*,application/pdf">
                             {% if supplier and supplier.license_image %}
                             <div class="mt-2">
                                 <img src="{{ url_for('static', filename=supplier.license_image) }}" class="img-thumbnail" style="max-height:120px;">
@@ -81,7 +81,7 @@
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label">上传营业执照图片</label>
-                    <input type="file" class="form-control" id="ocrImage" accept="image/*">
+                    <input type="file" class="form-control" id="ocrImage" accept="image/*,application/pdf">
                 </div>
                 <div id="ocrResult" style="display:none;">
                     <div class="alert alert-info mb-3">
@@ -155,14 +155,14 @@ document.getElementById('btnOcr').addEventListener('click', async function() {
             document.getElementById('ocr_image_path').value = data.image_path || '';
             document.getElementById('btnApply').style.display = 'inline-block';
         } else {
-            alert('识别失败：' + data.message);
+            customAlert('识别失败：' + data.message);
             if (data.image_path) {
                 document.getElementById('ocr_image_path').value = data.image_path;
             }
         }
     } catch (e) {
         document.getElementById('ocrLoading').style.display = 'none';
-        alert('识别请求失败，请稍后重试');
+        customAlert('识别请求失败，请稍后重试');
     }
 
     this.disabled = false;

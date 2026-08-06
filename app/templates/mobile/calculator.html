@@ -1,0 +1,626 @@
+{% extends "mobile/base.html" %}
+{% block title %}工程计算器{% endblock %}
+{% block nav_title %}工程计算器{% endblock %}
+
+{% block content %}
+<style>
+.calc-tabs {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background: #fff;
+    border-bottom: 1px solid #e9ecef;
+    padding: 0 4px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+.calc-tab {
+    flex-shrink: 0;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: #6c757d;
+    border: none;
+    background: none;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.calc-tab.active {
+    color: #165DFF;
+    border-bottom-color: #165DFF;
+    font-weight: 600;
+}
+.calc-panel {
+    display: none;
+    padding: 16px;
+}
+.calc-panel.active {
+    display: block;
+}
+.calc-form-group {
+    margin-bottom: 14px;
+}
+.calc-form-group label {
+    display: block;
+    font-size: 13px;
+    color: #495057;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+.calc-form-group select,
+.calc-form-group input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 15px;
+    -webkit-appearance: none;
+    background: #fff;
+}
+.calc-form-group select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236c757d' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+}
+.calc-result {
+    background: #f0f5ff;
+    border-radius: 10px;
+    padding: 14px;
+    margin-top: 8px;
+}
+.calc-result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 14px;
+}
+.calc-result-row + .calc-result-row {
+    border-top: 1px solid rgba(22,93,255,0.1);
+}
+.calc-result-row .label {
+    color: #6c757d;
+}
+.calc-result-row .value {
+    font-weight: 700;
+    color: #165DFF;
+    font-size: 16px;
+}
+.calc-btn {
+    width: 100%;
+    padding: 12px;
+    background: #165DFF;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 4px;
+}
+.calc-hint {
+    font-size: 12px;
+    color: #adb5bd;
+    margin-top: 4px;
+}
+.calc-sub-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.calc-sub-tab {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    border: 1px solid #dee2e6;
+    background: #fff;
+    color: #6c757d;
+}
+.calc-sub-tab.active {
+    background: #165DFF;
+    color: #fff;
+    border-color: #165DFF;
+}
+.steel-table {
+    width: 100%;
+    font-size: 12px;
+}
+.steel-table th {
+    background: #f8f9fa;
+    padding: 8px 6px;
+    text-align: left;
+    font-weight: 600;
+    color: #495057;
+    position: sticky;
+    top: 0;
+}
+.steel-table td {
+    padding: 8px 6px;
+    border-bottom: 1px solid #f1f3f5;
+}
+.steel-search {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+</style>
+
+<!-- 计算器标签栏 -->
+<div class="calc-tabs">
+    <button class="calc-tab active" onclick="switchTab('rebar')">钢筋重量</button>
+    <button class="calc-tab" onclick="switchTab('pipe')">钢管数量</button>
+    <button class="calc-tab" onclick="switchTab('unit')">单位换算</button>
+    <button class="calc-tab" onclick="switchTab('concrete')">混凝土</button>
+    <button class="calc-tab" onclick="switchTab('weld')">焊缝计算</button>
+    <button class="calc-tab" onclick="switchTab('steel')">钢材表</button>
+</div>
+
+<!-- ========== 钢筋重量计算 ========== -->
+<div class="calc-panel active" id="panel-rebar">
+    <div class="m-card">
+        <div class="calc-form-group">
+            <label>钢筋直径 d (mm)</label>
+            <select id="rebarDiameter" onchange="calcRebar()">
+                <option value="6">6 mm</option>
+                <option value="8">8 mm</option>
+                <option value="10">10 mm</option>
+                <option value="12" selected>12 mm</option>
+                <option value="14">14 mm</option>
+                <option value="16">16 mm</option>
+                <option value="18">18 mm</option>
+                <option value="20">20 mm</option>
+                <option value="22">22 mm</option>
+                <option value="25">25 mm</option>
+                <option value="28">28 mm</option>
+                <option value="32">32 mm</option>
+                <option value="36">36 mm</option>
+                <option value="40">40 mm</option>
+            </select>
+        </div>
+        <div class="calc-form-group">
+            <label>单根长度 L (m)</label>
+            <input type="number" id="rebarLength" value="12" step="0.1" min="0" oninput="calcRebar()">
+        </div>
+        <div class="calc-form-group">
+            <label>根数</label>
+            <input type="number" id="rebarCount" value="1" step="1" min="1" oninput="calcRebar()">
+        </div>
+        <div class="calc-hint">公式：W = 0.00617 × d² × L</div>
+        <div class="calc-result">
+            <div class="calc-result-row">
+                <span class="label">单根重量</span>
+                <span class="value" id="rebarSingle">0.888 kg</span>
+            </div>
+            <div class="calc-result-row">
+                <span class="label">总重量</span>
+                <span class="value" id="rebarTotal">10.656 kg</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 钢管数量估算 ========== -->
+<div class="calc-panel" id="panel-pipe">
+    <div class="m-card">
+        <div class="calc-form-group">
+            <label>钢管外径 (mm)</label>
+            <input type="number" id="pipeOuterD" value="48" step="0.1" oninput="calcPipe()">
+        </div>
+        <div class="calc-form-group">
+            <label>捆扎外径 (mm)</label>
+            <input type="number" id="pipeBundleD" value="800" step="1" oninput="calcPipe()">
+        </div>
+        <div class="calc-form-group">
+            <label>单根长度 (m)</label>
+            <input type="number" id="pipeLength" value="6" step="0.1" oninput="calcPipe()">
+        </div>
+        <div class="calc-hint">按圆形排列估算，实际数量可能略有偏差</div>
+        <div class="calc-result">
+            <div class="calc-result-row">
+                <span class="label">估算数量</span>
+                <span class="value" id="pipeCount">约 0 根</span>
+            </div>
+            <div class="calc-result-row">
+                <span class="label">总长度</span>
+                <span class="value" id="pipeTotalLen">0 m</span>
+            </div>
+            <div class="calc-result-row">
+                <span class="label">总重量</span>
+                <span class="value" id="pipeWeight">0 kg</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 单位换算 ========== -->
+<div class="calc-panel" id="panel-unit">
+    <div class="m-card">
+        <div class="calc-sub-tabs">
+            <button class="calc-sub-tab active" onclick="switchUnitTab('length', this)">长度</button>
+            <button class="calc-sub-tab" onclick="switchUnitTab('area', this)">面积</button>
+            <button class="calc-sub-tab" onclick="switchUnitTab('volume', this)">体积</button>
+            <button class="calc-sub-tab" onclick="switchUnitTab('weight', this)">重量</button>
+        </div>
+        <div class="calc-form-group">
+            <label>输入数值</label>
+            <input type="number" id="unitInput" value="1" step="0.01" oninput="calcUnit()">
+        </div>
+        <div class="calc-form-group">
+            <label>从</label>
+            <select id="unitFrom" onchange="calcUnit()"></select>
+        </div>
+        <div class="calc-form-group">
+            <label>到</label>
+            <select id="unitTo" onchange="calcUnit()"></select>
+        </div>
+        <div class="calc-result">
+            <div class="calc-result-row">
+                <span class="label">结果</span>
+                <span class="value" id="unitResult">1</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 混凝土配比 ========== -->
+<div class="calc-panel" id="panel-concrete">
+    <div class="m-card">
+        <div class="calc-form-group">
+            <label>长度 (m)</label>
+            <input type="number" id="conLen" value="1" step="0.01" oninput="calcConcrete()">
+        </div>
+        <div class="calc-form-group">
+            <label>宽度 (m)</label>
+            <input type="number" id="conWid" value="1" step="0.01" oninput="calcConcrete()">
+        </div>
+        <div class="calc-form-group">
+            <label>高度/厚度 (m)</label>
+            <input type="number" id="conHei" value="0.1" step="0.01" oninput="calcConcrete()">
+        </div>
+        <div class="calc-form-group">
+            <label>强度等级</label>
+            <select id="conGrade" onchange="calcConcrete()">
+                <option value="C20">C20</option>
+                <option value="C25">C25</option>
+                <option value="C30" selected>C30</option>
+                <option value="C35">C35</option>
+                <option value="C40">C40</option>
+            </select>
+        </div>
+        <div class="calc-hint">参考配合比：每m³材料用量(kg)</div>
+        <div class="calc-result">
+            <div class="calc-result-row">
+                <span class="label">混凝土体积</span>
+                <span class="value" id="conVolume">0.10 m³</span>
+            </div>
+            <div class="calc-result-row">
+                <span class="label">水泥</span>
+                <span class="value" id="conCement">0 kg</span>
+            </div>
+            <div class="calc-result-row">
+                <span class="label">砂</span>
+                <span class="value" id="conSand">0 kg</span>
+            </div>
+            <div class="calc-result-row">
+                <span class="label">碎石</span>
+                <span class="value" id="conStone">0 kg</span>
+            </div>
+            <div class="calc-result-row">
+                <span class="label">水</span>
+                <span class="value" id="conWater">0 kg</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 焊缝计算 ========== -->
+<div class="calc-panel" id="panel-weld">
+    <div class="m-card">
+        <div class="calc-form-group">
+            <label>焊缝类型</label>
+            <select id="weldType" onchange="calcWeld()">
+                <option value="fillet">角焊缝</option>
+                <option value="butt">对接焊缝</option>
+                <option value="plug">塞焊缝</option>
+            </select>
+        </div>
+        <div class="calc-form-group">
+            <label>焊缝长度 L (m)</label>
+            <input type="number" id="weldLength" value="1" step="0.1" oninput="calcWeld()">
+        </div>
+        <div class="calc-form-group">
+            <label>焊脚尺寸 hf (mm)</label>
+            <input type="number" id="weldSize" value="6" step="0.5" oninput="calcWeld()">
+        </div>
+        <div class="calc-form-group">
+            <label>利用率 (%)</label>
+            <input type="number" id="weldEfficiency" value="60" step="5" oninput="calcWeld()">
+        </div>
+        <div class="calc-hint">熔敷金属密度 7.85 g/cm³</div>
+        <div class="calc-result">
+            <div class="calc-result-row">
+                <span class="label">焊缝截面积</span>
+                <span class="value" id="weldArea">0 mm²</span>
+            </div>
+            <div class="calc-result-row">
+                <span class="label">熔敷金属量</span>
+                <span class="value" id="weldMetal">0 kg</span>
+            </div>
+            <div class="calc-result-row">
+                <span class="label">焊条消耗量</span>
+                <span class="value" id="weldRod">0 kg</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 钢材重量表 ========== -->
+<div class="calc-panel" id="panel-steel">
+    <div class="m-card">
+        <input type="text" class="steel-search" id="steelSearch" placeholder="搜索规格..." oninput="filterSteelTable()">
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table class="steel-table">
+                <thead>
+                    <tr><th>类型</th><th>规格</th><th style="text-align:right;">重量</th><th style="text-align:right;">单位</th></tr>
+                </thead>
+                <tbody id="steelTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(name) {
+    document.querySelectorAll('.calc-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.calc-panel').forEach(function(p) { p.classList.remove('active'); });
+    event.target.classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+}
+
+function val(id) {
+    var el = document.getElementById(id);
+    if (!el) return NaN;
+    var v = parseFloat(el.value);
+    return isNaN(v) ? NaN : v;
+}
+
+function fmt(n, d) {
+    if (d === undefined) d = 3;
+    if (isNaN(n)) return '--';
+    return Number(n).toFixed(d);
+}
+
+/* ========== 钢筋重量 ========== */
+function calcRebar() {
+    var d = val('rebarDiameter'), L = val('rebarLength'), n = val('rebarCount');
+    if (isNaN(d) || isNaN(L) || isNaN(n)) return;
+    var single = 0.00617 * d * d * L;
+    var total = single * n;
+    document.getElementById('rebarSingle').textContent = fmt(single) + ' kg';
+    document.getElementById('rebarTotal').textContent = fmt(total) + ' kg';
+}
+
+/* ========== 钢管数量 ========== */
+function calcPipe() {
+    var outerD = val('pipeOuterD'), bundleD = val('pipeBundleD'), len = val('pipeLength');
+    if (isNaN(outerD) || isNaN(bundleD) || isNaN(len)) return;
+    if (outerD <= 0 || bundleD <= 0) return;
+    var r = bundleD / 2 - outerD / 2;
+    if (r <= 0) {
+        document.getElementById('pipeCount').textContent = '约 0 根';
+        document.getElementById('pipeTotalLen').textContent = '0 m';
+        document.getElementById('pipeWeight').textContent = '0 kg';
+        return;
+    }
+    // 估算数量：圆形截面上能排列的管数（经验公式）
+    var area = Math.PI * r * r;
+    var unitArea = outerD * outerD;
+    var count = Math.floor(area / unitArea * 0.78);
+    var totalLen = count * len;
+    // 估算重量：kg/m ≈ 0.02466 × (D - t) × t, 假设壁厚3mm
+    var t = 3;
+    var kgPerM = 0.02466 * (outerD - t) * t / 1000;
+    var weight = totalLen * kgPerM;
+    document.getElementById('pipeCount').textContent = '约 ' + count + ' 根';
+    document.getElementById('pipeTotalLen').textContent = fmt(totalLen, 1) + ' m';
+    document.getElementById('pipeWeight').textContent = fmt(weight, 1) + ' kg';
+}
+
+/* ========== 单位换算 ========== */
+var unitData = {
+    length: {base: 'm', units: {'mm': 0.001, 'cm': 0.01, 'm': 1, 'km': 1000, 'in': 0.0254, 'ft': 0.3048, 'yd': 0.9144}},
+    area: {base: 'm²', units: {'mm²': 0.000001, 'cm²': 0.0001, 'm²': 1, 'km²': 1000000, 'ha': 10000, '亩': 666.67, 'ft²': 0.0929}},
+    volume: {base: 'm³', units: {'cm³': 0.000001, 'L': 0.001, 'm³': 1, 'ft³': 0.0283, 'gal(US)': 0.003785}},
+    weight: {base: 'kg', units: {'g': 0.001, 'kg': 1, 't': 1000, 'lb': 0.4536, 'kN': 100}}
+};
+var currentUnitType = 'length';
+
+function switchUnitTab(type, btn) {
+    currentUnitType = type;
+    document.querySelectorAll('.calc-sub-tab').forEach(function(t) { t.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+    var fromSel = document.getElementById('unitFrom');
+    var toSel = document.getElementById('unitTo');
+    fromSel.innerHTML = '';
+    toSel.innerHTML = '';
+    var units = unitData[type].units;
+    var keys = Object.keys(units);
+    keys.forEach(function(k, i) {
+        fromSel.add(new Option(k, k));
+        toSel.add(new Option(k, k));
+    });
+    if (keys.length > 1) toSel.selectedIndex = 1;
+    calcUnit();
+}
+
+function calcUnit() {
+    var input = val('unitInput');
+    var from = document.getElementById('unitFrom').value;
+    var to = document.getElementById('unitTo').value;
+    if (isNaN(input) || !from || !to) return;
+    var units = unitData[currentUnitType].units;
+    var baseValue = input * units[from];
+    var result = baseValue / units[to];
+    document.getElementById('unitResult').textContent = fmt(result, 6);
+}
+
+/* ========== 混凝土配比 ========== */
+var concreteMix = {
+    'C20': [370, 664, 1225, 196],
+    'C25': [390, 640, 1230, 195],
+    'C30': [430, 590, 1240, 195],
+    'C35': [460, 560, 1250, 194],
+    'C40': [490, 530, 1260, 193]
+};
+
+function calcConcrete() {
+    var l = val('conLen'), w = val('conWid'), h = val('conHei');
+    if (isNaN(l) || isNaN(w) || isNaN(h)) return;
+    var vol = l * w * h;
+    var grade = document.getElementById('conGrade').value;
+    var mix = concreteMix[grade];
+    document.getElementById('conVolume').textContent = fmt(vol, 2) + ' m³';
+    document.getElementById('conCement').textContent = fmt(vol * mix[0], 0) + ' kg';
+    document.getElementById('conSand').textContent = fmt(vol * mix[1], 0) + ' kg';
+    document.getElementById('conStone').textContent = fmt(vol * mix[2], 0) + ' kg';
+    document.getElementById('conWater').textContent = fmt(vol * mix[3], 0) + ' kg';
+}
+
+/* ========== 焊缝计算 ========== */
+function calcWeld() {
+    var L = val('weldLength'), hf = val('weldSize'), eff = val('weldEfficiency');
+    var weldType = document.getElementById('weldType').value;
+    if (isNaN(L) || isNaN(hf) || isNaN(eff)) return;
+    var area = 0;
+    if (weldType === 'fillet') {
+        area = 0.707 * hf * hf;
+    } else if (weldType === 'butt') {
+        area = hf * hf * 0.5;
+    } else if (weldType === 'plug') {
+        area = Math.PI * (hf / 2) * (hf / 2);
+    }
+    var density = 7.85;
+    var Lmm = L * 1000;
+    var volumeCm3 = (area * Lmm) / 1000;
+    var metalWeight = volumeCm3 * density / 1000;
+    var rodWeight = metalWeight / (eff / 100);
+    document.getElementById('weldArea').textContent = fmt(area, 2) + ' mm²';
+    document.getElementById('weldMetal').textContent = fmt(metalWeight, 3) + ' kg';
+    document.getElementById('weldRod').textContent = fmt(rodWeight, 3) + ' kg';
+}
+
+/* ========== 钢材重量表 ========== */
+var steelData = [
+    {type:'钢筋', spec:'Φ6', weight:0.222, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ8', weight:0.395, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ10', weight:0.617, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ12', weight:0.888, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ14', weight:1.210, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ16', weight:1.580, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ18', weight:2.000, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ20', weight:2.470, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ22', weight:2.980, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ25', weight:3.850, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ28', weight:4.830, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ32', weight:6.310, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ36', weight:7.990, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ40', weight:9.870, unit:'kg/m'},
+    {type:'钢板', spec:'δ1.0', weight:7.85, unit:'kg/m²'},
+    {type:'钢板', spec:'δ2.0', weight:15.70, unit:'kg/m²'},
+    {type:'钢板', spec:'δ3.0', weight:23.55, unit:'kg/m²'},
+    {type:'钢板', spec:'δ4.0', weight:31.40, unit:'kg/m²'},
+    {type:'钢板', spec:'δ5.0', weight:39.25, unit:'kg/m²'},
+    {type:'钢板', spec:'δ6.0', weight:47.10, unit:'kg/m²'},
+    {type:'钢板', spec:'δ8.0', weight:62.80, unit:'kg/m²'},
+    {type:'钢板', spec:'δ10', weight:78.50, unit:'kg/m²'},
+    {type:'钢板', spec:'δ12', weight:94.20, unit:'kg/m²'},
+    {type:'钢板', spec:'δ16', weight:125.60, unit:'kg/m²'},
+    {type:'钢板', spec:'δ20', weight:157.00, unit:'kg/m²'},
+    {type:'角钢', spec:'25×25×3', weight:1.124, unit:'kg/m'},
+    {type:'角钢', spec:'40×40×4', weight:2.422, unit:'kg/m'},
+    {type:'角钢', spec:'50×50×5', weight:3.770, unit:'kg/m'},
+    {type:'角钢', spec:'63×63×6', weight:5.721, unit:'kg/m'},
+    {type:'角钢', spec:'80×80×8', weight:9.658, unit:'kg/m'},
+    {type:'角钢', spec:'100×100×10', weight:15.120, unit:'kg/m'},
+    {type:'槽钢', spec:'[8', weight:8.045, unit:'kg/m'},
+    {type:'槽钢', spec:'[10', weight:10.007, unit:'kg/m'},
+    {type:'槽钢', spec:'[12', weight:12.059, unit:'kg/m'},
+    {type:'槽钢', spec:'[14a', weight:14.535, unit:'kg/m'},
+    {type:'槽钢', spec:'[16a', weight:17.240, unit:'kg/m'},
+    {type:'槽钢', spec:'[20a', weight:22.637, unit:'kg/m'},
+    {type:'工字钢', spec:'I10', weight:11.261, unit:'kg/m'},
+    {type:'工字钢', spec:'I12', weight:13.987, unit:'kg/m'},
+    {type:'工字钢', spec:'I16', weight:20.513, unit:'kg/m'},
+    {type:'工字钢', spec:'I20a', weight:27.929, unit:'kg/m'},
+    {type:'工字钢', spec:'I25a', weight:38.105, unit:'kg/m'},
+    {type:'H型钢', spec:'100×100×6×8', weight:17.2, unit:'kg/m'},
+    {type:'H型钢', spec:'150×150×7×10', weight:31.9, unit:'kg/m'},
+    {type:'H型钢', spec:'200×200×8×12', weight:50.5, unit:'kg/m'},
+    {type:'H型钢', spec:'300×300×10×15', weight:94.5, unit:'kg/m'},
+    {type:'钢管', spec:'Φ48×3.0', weight:3.329, unit:'kg/m'},
+    {type:'钢管', spec:'Φ48×3.5', weight:3.840, unit:'kg/m'},
+    {type:'钢管', spec:'Φ57×3.5', weight:4.618, unit:'kg/m'},
+    {type:'钢管', spec:'Φ76×4.0', weight:7.105, unit:'kg/m'},
+    {type:'钢管', spec:'Φ89×4.0', weight:8.385, unit:'kg/m'},
+    {type:'钢管', spec:'Φ108×4.0', weight:10.260, unit:'kg/m'},
+    {type:'钢管', spec:'Φ159×5.0', weight:18.990, unit:'kg/m'},
+    {type:'钢管', spec:'Φ219×6.0', weight:31.520, unit:'kg/m'},
+    {type:'方管', spec:'40×40×2.0', weight:2.35, unit:'kg/m'},
+    {type:'方管', spec:'50×50×2.5', weight:3.62, unit:'kg/m'},
+    {type:'方管', spec:'60×60×3.0', weight:5.22, unit:'kg/m'},
+    {type:'方管', spec:'80×80×3.0', weight:7.07, unit:'kg/m'},
+    {type:'方管', spec:'100×100×4.0', weight:11.73, unit:'kg/m'},
+    {type:'扁钢', spec:'20×3', weight:0.471, unit:'kg/m'},
+    {type:'扁钢', spec:'40×3', weight:0.942, unit:'kg/m'},
+    {type:'扁钢', spec:'50×4', weight:1.570, unit:'kg/m'},
+    {type:'扁钢', spec:'60×5', weight:2.355, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ10', weight:0.617, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ12', weight:0.888, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ16', weight:1.580, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ20', weight:2.470, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ25', weight:3.850, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ30', weight:5.550, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ40', weight:9.860, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ50', weight:15.410, unit:'kg/m'}
+];
+
+function renderSteelTable(data) {
+    var tbody = document.getElementById('steelTableBody');
+    tbody.innerHTML = '';
+    data.forEach(function(item) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + item.type + '</td><td>' + item.spec + '</td>' +
+            '<td style="text-align:right;">' + item.weight.toFixed(3) + '</td>' +
+            '<td style="text-align:right;">' + item.unit + '</td>';
+        tbody.appendChild(tr);
+    });
+}
+
+function filterSteelTable() {
+    var kw = document.getElementById('steelSearch').value.toLowerCase().trim();
+    if (!kw) { renderSteelTable(steelData); return; }
+    var filtered = steelData.filter(function(item) {
+        return item.type.toLowerCase().indexOf(kw) >= 0 || item.spec.toLowerCase().indexOf(kw) >= 0;
+    });
+    renderSteelTable(filtered);
+}
+
+/* ========== 初始化 ========== */
+document.addEventListener('DOMContentLoaded', function() {
+    switchUnitTab('length', document.querySelector('.calc-sub-tab'));
+    renderSteelTable(steelData);
+    calcRebar();
+    calcPipe();
+    calcConcrete();
+    calcWeld();
+});
+</script>
+{% endblock %}

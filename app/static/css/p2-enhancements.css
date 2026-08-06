@@ -1,0 +1,255 @@
+/* ============================================
+   P2 体验增强 - 全局组件样式
+   ============================================ */
+
+/* === 1. 面包屑导航 === */
+.global-breadcrumb {
+    padding: 8px 0;
+    margin-bottom: 0;
+    font-size: 13px;
+    background: transparent;
+}
+.global-breadcrumb .breadcrumb-item a {
+    color: #606266;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.global-breadcrumb .breadcrumb-item a:hover {
+    color: #409eff;
+}
+.global-breadcrumb .breadcrumb-item.active {
+    color: #303133;
+    font-weight: 500;
+}
+.global-breadcrumb .breadcrumb-separator {
+    color: #c0c4cc;
+    margin: 0 6px;
+}
+
+/* === 2. 空状态组件 === */
+.empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: #909399;
+}
+.empty-state .empty-icon {
+    font-size: 48px;
+    color: #dcdfe6;
+    margin-bottom: 12px;
+    display: block;
+}
+.empty-state .empty-text {
+    font-size: 14px;
+    color: #909399;
+    margin-bottom: 12px;
+}
+.empty-state .empty-action {
+    margin-top: 8px;
+}
+.empty-state .btn {
+    font-size: 13px;
+    padding: 4px 16px;
+}
+
+/* === 3. 每页条数选择器 === */
+.per-page-selector {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #606266;
+}
+.per-page-selector select {
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 13px;
+    color: #606266;
+    cursor: pointer;
+    background: #fff;
+    outline: none;
+}
+.per-page-selector select:focus {
+    border-color: #409eff;
+}
+
+/* === 4. 表格列固定 === */
+.table-sticky-cols thead th.col-sticky-left,
+.table-sticky-cols tbody td.col-sticky-left {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #fff;
+    box-shadow: 2px 0 4px rgba(0,0,0,0.06);
+}
+.table-sticky-cols thead th.col-sticky-right,
+.table-sticky-cols tbody td.col-sticky-right {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background: #fff;
+    box-shadow: -2px 0 4px rgba(0,0,0,0.06);
+}
+.table-sticky-cols thead th.col-sticky-left,
+.table-sticky-cols thead th.col-sticky-right {
+    z-index: 3;
+}
+[data-theme="dark"] .table-sticky-cols thead th.col-sticky-left,
+[data-theme="dark"] .table-sticky-cols tbody td.col-sticky-left,
+[data-theme="dark"] .table-sticky-cols thead th.col-sticky-right,
+[data-theme="dark"] .table-sticky-cols tbody td.col-sticky-right {
+    background: #1e1e2e;
+}
+
+/* === 5. 骨架屏 === */
+.skeleton-overlay {
+    position: fixed;
+    inset: 0;
+    background: #f5f7fa;
+    z-index: 9990;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    opacity: 1;
+    transition: opacity 0.3s;
+}
+.skeleton-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+.skeleton-line {
+    height: 16px;
+    background: linear-gradient(90deg, #e8e8e8 25%, #f0f0f0 50%, #e8e8e8 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s infinite;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+.skeleton-line.short { width: 40%; }
+.skeleton-line.medium { width: 70%; }
+.skeleton-line.long { width: 100%; }
+.skeleton-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.skeleton-table-row {
+    display: flex;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+@keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* === 6. 全局Toast === */
+.toast-container-global {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+.toast-item {
+    min-width: 280px;
+    max-width: 400px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #fff;
+    animation: toast-slide-in 0.3s ease;
+    pointer-events: auto;
+    cursor: default;
+}
+.toast-item.toast-success { background: #67c23a; }
+.toast-item.toast-error { background: #f56c6c; }
+.toast-item.toast-warning { background: #e6a23c; }
+.toast-item.toast-info { background: #409eff; }
+.toast-item.toast-fade-out {
+    animation: toast-slide-out 0.3s ease forwards;
+}
+@keyframes toast-slide-in {
+    from { transform: translateX(120%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+@keyframes toast-slide-out {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(120%); opacity: 0; }
+}
+
+/* === 7. Dashboard 快捷操作入口 === */
+.quick-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.quick-action-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 8px;
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #ebeef5;
+    text-decoration: none;
+    color: #606266;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.quick-action-card:hover {
+    border-color: #409eff;
+    color: #409eff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(64,158,255,0.1);
+}
+.quick-action-card i {
+    font-size: 24px;
+    margin-bottom: 6px;
+    color: #409eff;
+}
+.quick-action-card span {
+    font-size: 12px;
+    text-align: center;
+}
+[data-theme="dark"] .quick-action-card {
+    background: #1e1e2e;
+    border-color: #3a3a4a;
+    color: #c0c4cc;
+}
+
+/* === 8. 合同到期提醒标记 === */
+.contract-expiry-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+}
+.contract-expiry-badge.urgent {
+    background: #fef0f0;
+    color: #f56c6c;
+    border: 1px solid #fbc4c4;
+}
+.contract-expiry-badge.warning {
+    background: #fdf6ec;
+    color: #e6a23c;
+    border: 1px solid #f5dab1;
+}
+.contract-expiry-badge.normal {
+    background: #f0f9eb;
+    color: #67c23a;
+    border: 1px solid #c2e7b0;
+}

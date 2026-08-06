@@ -378,6 +378,93 @@ def _get_node_approvers(node):
     return approvers
 
 
+
+
+def notify_inventory_warning(project_id=None):
+    """库存预警通知
+
+    检查所有项目（或指定项目）的库存量是否低于安全库存，
+    如果低于安全库存则发送钉钉/企业微信/飞书/邮件通知，
+    同时给相关项目的管理员发送站内消息。
+
+    :param project_id: 指定项目ID，None则检查所有项目
+    :return: 预警数量
+    """
+    from app.models import Inventory, Material, Project, User
+    from app.utils import get_config
+
+    warning_threshold = int(get_config('stock_warning_threshold', '0'))
+    warnings = []
+
+    # 查询库存
+    q = Inventory.query.join(Material, Inventory.material_id == Material.id)
+    if project_id:
+        q = q.filter(Inventory.project_id == project_id)
+    if hasattr(Material, 'is_deleted'):
+        q = q.filter(Material.is_deleted == False)
+
+    inventories = q.all()
+
+    for inv in inventories:
+        qty = float(inv.quantity or 0)
+        safety = int(inv.safety_stock or 0)
+        # 使用安全库存和全局阈值中的较大值
+        threshold = max(safety, warning_threshold)
+        if threshold > 0 and qty <= threshold:
+            material_name = inv.material.name if inv.material else f'物资ID:{inv.material_id}'
+            spec = inv.material.specification if inv.material and inv.material.specification else ''
+            project = Project.query.get(inv.project_id)
+            project_name = project.name if project else f'项目ID:{inv.project_id}'
+            unit = inv.material.unit if inv.material else ''
+
+            warnings.append({
+                'project_name': project_name,
+                'material_name': material_name,
+                'spec': spec,
+                'quantity': qty,
+                'safety_stock': safety,
+                'unit': unit,
+            })
+
+    if not warnings:
+        return 0
+
+    # 构建通知内容
+    title = f'库存预警 ({len(warnings)}项)'
+    lines = ['**库存预警通知**\n']
+    for w in warnings:
+        status = '已缺货' if w['quantity'] <= 0 else '低于安全库存'
+        lines.append(f"- **项目**: {w['project_name']}")
+        lines.append(f"  **物资**: {w['material_name']} {w['spec']}")
+        lines.append(f"  **当前库存**: {w['quantity']} {w['unit']}")
+        lines.append(f"  **安全库存**: {w['safety_stock']} {w['unit']}")
+        lines.append(f"  **状态**: {status}\n")
+
+    content_text = '\n'.join(lines)
+
+    # 发送外部通知（钉钉/企业微信/飞书/邮件）
+    push_notification(title, content_text)
+
+    # 发送站内消息给项目管理员
+    try:
+        project_ids = set(w['project_name'] for w in warnings)
+        # 给所有active状态的管理员发站内消息
+        admins = User.query.filter(User.status == 'active').all()
+        for admin in admins:
+            send_message(
+                user_id=admin.id,
+                msg_type=MSG_TYPE_WARNING,
+                title=title,
+                content=content_text[:500],
+                biz_type='inventory_warning',
+                url='/mobile/inventory'
+            )
+    except Exception as e:
+        current_app.logger.error(f'发送库存预警站内消息失败: {e}')
+
+    return len(warnings)
+
+
 def notify_daily_warnings():
     """每日定时推送预警信息"""
     from app.models import Supplier, Equipment, EquipmentMaintenance

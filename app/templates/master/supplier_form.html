@@ -16,11 +16,11 @@
                 {% if ai_vision_enabled %}
                 <div class="alert alert-info d-flex align-items-center">
                     <i class="bi bi-camera-fill me-2"></i>
-                    <div class="flex-grow-1">支持上传营业执照自动识别企业信息</div>
+                    <div class="flex-grow-1">支持上传营业执照（图片或PDF）自动识别企业信息</div>
                     <button type="button" id="licenseRecognizeBtn" class="btn btn-sm btn-info text-white">
                         <i class="bi bi-camera me-1"></i>识别营业执照
                     </button>
-                    <input type="file" id="licenseInput" accept="image/jpeg,image/png" style="display:none">
+                    <input type="file" id="licenseInput" accept="image/jpeg,image/png,application/pdf" style="display:none">
                 </div>
                 {% endif %}
                 <form method="POST" id="supplierForm">

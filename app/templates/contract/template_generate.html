@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+
+{% block title %}生成合同 - {{ template.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-md-8">
+            <h3><i class="fas fa-file-signature"></i> {{ template.name }}</h3>
+            <p class="text-muted">{{ template.description }}</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('contract.contract_templates') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> 返回模板列表
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 左侧：表单 -->
+        <div class="col-lg-7">
+            <form method="post" action="{{ url_for('contract.contract_template_generate') }}" id="generateForm">
+                <input type="hidden" name="template_id" value="{{ template.id }}">
+
+                {% if projects %}
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <strong><i class="fas fa-folder"></i> 关联项目</strong>
+                    </div>
+                    <div class="card-body">
+                        <select name="project_id" class="form-control" id="projectSelect">
+                            <option value="">-- 不关联项目 --</option>
+                            {% for p in projects %}
+                            <option value="{{ p.id }}">{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">选择关联项目后，合同编号将包含项目ID</small>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <strong><i class="fas fa-edit"></i> 合同信息填写</strong>
+                        <span class="text-danger ms-2">* 为必填项</span>
+                    </div>
+                    <div class="card-body" id="variablesContainer">
+                        {% for var in variables_schema %}
+                        {% if var.type == 'table' %}
+                        <!-- 表格型变量 -->
+                        <div class="mb-3 table-var-group" data-var-name="{{ var.name }}" data-columns='{{ var.columns | tojson }}'>
+                            <label class="fw-bold">
+                                {{ var.label }}
+                                {% if var.required %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm dynamic-table" id="table_{{ var.name }}">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:40px;">#</th>
+                                            {% for col in var.columns %}
+                                            <th>{{ col.label }}</th>
+                                            {% endfor %}
+                                            <th style="width:60px;">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr class="table-row">
+                                            <td class="row-num">1</td>
+                                            {% for col in var.columns %}
+                                            <td><input type="text" class="form-control form-control-sm table-cell" data-col="{{ col.name }}" data-type="{{ col.type }}" placeholder="{{ col.label }}"></td>
+                                            {% endfor %}
+                                            <td><button type="button" class="btn btn-danger btn-sm btn-remove-row"><i class="fas fa-trash"></i></button></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-outline-success btn-sm btn-add-row" data-target="table_{{ var.name }}">
+                                <i class="fas fa-plus"></i> 添加行
+                            </button>
+                            <input type="hidden" name="{{ var.name }}" value="[]">
+                        </div>
+                        {% else %}
+                        <!-- 普通变量 -->
+                        <div class="mb-3 row var-field" data-var-name="{{ var.name }}">
+                            <label class="col-sm-3 col-form-label text-end">
+                                {{ var.label }}
+                                {% if var.required %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <div class="col-sm-9">
+                                {% if var.type == 'select' %}
+                                <select name="{{ var.name }}" class="form-control var-input" data-var-name="{{ var.name }}">
+                                    <option value="">-- 请选择 --</option>
+                                    {% for opt in var.get('options', []) %}
+                                    <option value="{{ opt }}" {% if var.get('default') == opt %}selected{% endif %}>{{ opt }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% elif var.type == 'date' %}
+                                <input type="date" name="{{ var.name }}" class="form-control var-input" data-var-name="{{ var.name }}"
+                                       value="{{ var.get('default', '') }}"
+                                       {% if var.get('placeholder') %}placeholder="{{ var.placeholder }}"{% endif %}>
+                                {% elif var.type == 'number' %}
+                                <input type="number" step="any" name="{{ var.name }}" class="form-control var-input" data-var-name="{{ var.name }}"
+                                       value="{{ var.get('default', '') }}"
+                                       {% if var.get('placeholder') %}placeholder="{{ var.placeholder }}"{% endif %}>
+                                {% elif var.type == 'textarea' %}
+                                <textarea name="{{ var.name }}" class="form-control var-input" data-var-name="{{ var.name }}" rows="3"
+                                          {% if var.get('placeholder') %}placeholder="{{ var.placeholder }}"{% endif %}>{{ var.get('default', '') }}</textarea>
+                                {% else %}
+                                <input type="text" name="{{ var.name }}" class="form-control var-input" data-var-name="{{ var.name }}"
+                                       value="{{ var.get('default', '') }}"
+                                       {% if var.get('placeholder') %}placeholder="{{ var.placeholder }}"{% endif %}>
+                                {% endif %}
+                                {% if var.get('placeholder') and not var.get('default') %}
+                                <small class="text-muted">{{ var.placeholder }}</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+
+                        {% if not variables_schema %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> 此模板没有定义变量，直接点击"生成合同"即可。
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="text-center mb-4">
+                    <button type="button" class="btn btn-info btn-lg" id="previewBtn">
+                        <i class="fas fa-eye"></i> 预览合同
+                    </button>
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-file-export"></i> 生成合同
+                    </button>
+                    <a href="{{ url_for('contract.contract_templates') }}" class="btn btn-outline-secondary btn-lg ms-2">
+                        取消
+                    </a>
+                </div>
+            </form>
+        </div>
+
+        <!-- 右侧：预览面板 -->
+        <div class="col-lg-5">
+            <div class="card" style="position: sticky; top: 10px;">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <strong><i class="fas fa-file-contract"></i> 合同预览</strong>
+                    <span class="badge bg-secondary" id="previewStatus">未预览</span>
+                </div>
+                <div class="card-body" style="max-height: 80vh; overflow-y: auto;">
+                    <div id="previewContent" class="contract-preview" style="font-family: '宋体', SimSun, serif; line-height: 1.8; font-size: 14px;">
+                        <div class="text-center text-muted py-5">
+                            <i class="fas fa-file-alt" style="font-size: 48px; opacity: 0.3;"></i>
+                            <p class="mt-3">点击"预览合同"按钮查看实时预览</p>
+                            <p class="small">填写变量后预览效果更佳</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 预览模态框（全屏） -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-file-contract"></i> 合同预览</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="max-height: 75vh; overflow-y: auto;">
+                <div id="previewModalContent" class="contract-preview" style="font-family: '宋体', SimSun, serif; line-height: 1.8; font-size: 14px; max-width: 800px; margin: 0 auto; padding: 20px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.contract-preview h1 { text-align: center; font-size: 20px; font-weight: bold; margin: 20px 0; }
+.contract-preview h2 { font-size: 16px; font-weight: bold; margin: 15px 0 10px; }
+.contract-preview h3 { font-size: 14px; font-weight: bold; margin: 10px 0 5px; }
+.contract-preview p { margin: 5px 0; font-size: 14px; }
+.contract-preview table { margin: 10px 0; font-size: 12px; width: 100%; border-collapse: collapse; }
+.contract-preview table td, .contract-preview table th { border: 1px solid #ddd; padding: 4px 8px; }
+.dynamic-table input { min-width: 60px; }
+</style>
+
+<script>
+// 使用原生JS，不依赖jQuery加载顺序
+(function() {
+    function init() {
+        // 添加行
+        document.querySelectorAll('.btn-add-row').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var targetId = this.getAttribute('data-target');
+                var table = document.getElementById(targetId);
+                if (!table) return;
+                var tbody = table.querySelector('tbody');
+                var firstRow = tbody.querySelector('tr:first-child');
+                if (!firstRow) return;
+                var newRow = firstRow.cloneNode(true);
+                // 清空输入框
+                newRow.querySelectorAll('input').forEach(function(inp) {
+                    inp.value = '';
+                });
+                // 更新行号
+                var rowNums = tbody.querySelectorAll('.row-num');
+                newRow.querySelector('.row-num').textContent = rowNums.length + 1;
+                tbody.appendChild(newRow);
+                updateRowNumbers(tbody);
+            });
+        });
+
+        // 删除行（事件委托）
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.btn-remove-row')) {
+                var tbody = e.target.closest('tbody');
+                if (tbody.querySelectorAll('tr').length > 1) {
+                    e.target.closest('tr').remove();
+                    updateRowNumbers(tbody);
+                }
+            }
+        });
+
+        function updateRowNumbers(tbody) {
+            tbody.querySelectorAll('.row-num').forEach(function(el, i) {
+                el.textContent = i + 1;
+            });
+        }
+
+        // 表单提交前收集表格数据
+        var form = document.getElementById('generateForm');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                document.querySelectorAll('.table-var-group').forEach(function(group) {
+                    var varName = group.getAttribute('data-var-name');
+                    var rows = [];
+                    group.querySelectorAll('tbody tr').forEach(function(tr) {
+                        var row = {};
+                        tr.querySelectorAll('.table-cell').forEach(function(cell) {
+                            var colName = cell.getAttribute('data-col');
+                            row[colName] = cell.value;
+                        });
+                        rows.push(row);
+                    });
+                    var hiddenInput = group.querySelector('input[name="' + varName + '"]');
+                    if (hiddenInput) {
+                        hiddenInput.value = JSON.stringify(rows);
+                    }
+                });
+            });
+        }
+
+        // 预览功能
+        var previewBtn = document.getElementById('previewBtn');
+        if (previewBtn) {
+            previewBtn.addEventListener('click', function() {
+                var btn = this;
+                var originalHtml = btn.innerHTML;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 预览中...';
+                btn.disabled = true;
+
+                // 收集表单数据
+                var formData = new FormData(form);
+                // 确保表格数据已收集
+                document.querySelectorAll('.table-var-group').forEach(function(group) {
+                    var varName = group.getAttribute('data-var-name');
+                    var rows = [];
+                    group.querySelectorAll('tbody tr').forEach(function(tr) {
+                        var row = {};
+                        tr.querySelectorAll('.table-cell').forEach(function(cell) {
+                            row[cell.getAttribute('data-col')] = cell.value;
+                        });
+                        rows.push(row);
+                    });
+                    formData.set(varName, JSON.stringify(rows));
+                });
+
+                // 发送预览请求
+                // 添加CSRF token
+                var csrfToken = '';
+                var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                if (csrfMeta) { csrfToken = csrfMeta.getAttribute('content'); }
+                var csrfInput = form.querySelector('input[name="csrf_token"]');
+                if (csrfInput) { formData.append('csrf_token', csrfInput.value); }
+                if (csrfToken && !formData.has('csrf_token')) { formData.append('csrf_token', csrfToken); }
+
+                fetch('{{ url_for("contract.contract_template_preview") }}', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrfToken }
+                })
+                .then(function(resp) { return resp.json(); })
+                .then(function(data) {
+                    if (data.success) {
+                        var previewHtml = data.html;
+                        // 更新侧边预览
+                        document.getElementById('previewContent').innerHTML = previewHtml;
+                        document.getElementById('previewStatus').textContent = '已预览';
+                        document.getElementById('previewStatus').className = 'badge bg-success';
+                        // 更新模态框预览
+                        document.getElementById('previewModalContent').innerHTML = previewHtml;
+                    } else {
+                        customAlert('预览失败: ' + (data.message || '未知错误'));
+                    }
+                })
+                .catch(function(err) {
+                    customAlert('预览请求失败: ' + err.message);
+                })
+                .finally(function() {
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                });
+            });
+        }
+
+        // 实时预览（变量变化时自动更新）
+        var debounceTimer = null;
+        function schedulePreview() {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(function() {
+                // 仅当已经预览过时才自动更新
+                var status = document.getElementById('previewStatus');
+                if (status.textContent === '已预览') {
+                    document.getElementById('previewBtn').click();
+                }
+            }, 1000);
+        }
+
+        document.querySelectorAll('.var-input').forEach(function(inp) {
+            inp.addEventListener('input', schedulePreview);
+            inp.addEventListener('change', schedulePreview);
+        });
+        document.addEventListener('input', function(e) {
+            if (e.target.classList.contains('table-cell')) {
+                schedulePreview();
+            }
+        });
+    }
+
+    // 确保DOM加载完成
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
+{% endblock %}

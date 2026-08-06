@@ -27,6 +27,13 @@ from app.utils import (
 )
 from flask import current_app
 
+@master_bp.route("/")
+@login_required
+@admin_required
+def index():
+    return redirect(url_for("master.material_index"))
+
+
 
 def _ai_vision_enabled():
     """判断AI视觉识别是否启用"""
@@ -450,7 +457,7 @@ def _find_category_by_path(path_parts, source='company'):
     if not path_parts:
         return None
 
-    parent_id = 0
+    parent_id = None
     current_category = None
     matched_path = []
 
@@ -495,6 +502,7 @@ def material_import():
     - 编码未填写时按分类名称匹配，支持多级路径（用/分隔）
     """
     file = request.files.get('file')
+    _validate_upload_file(file)
     if not file:
         flash('请选择要导入的Excel文件。', 'danger')
         return redirect(url_for('master.material_index'))
@@ -999,6 +1007,7 @@ def supplier_import():
     - 用户未填写编码：系统自动生成（SUP + 4位流水号）
     """
     file = request.files.get('file')
+    _validate_upload_file(file)
     if not file:
         flash('请选择要导入的Excel文件。', 'danger')
         return redirect(url_for('master.supplier_index'))
@@ -1098,11 +1107,11 @@ def _gen_master_category_code(parent_id):
     二级分类：父级编码 + 2位序号（MC0106）
     三级分类：父级编码 + 2位序号（MC010601）
     """
-    if parent_id == 0:
+    if parent_id is None:
         prefix = 'MC'
         existing = Category.query.filter(
             Category.source == 'company',
-            Category.parent_id == 0
+            Category.parent_id is None
         ).all()
         seq = len(existing) + 1
         return f'{prefix}{seq:02d}'
@@ -1163,7 +1172,7 @@ def category_create():
         return redirect(url_for('master.category_index'))
 
     # 根据父级计算层级
-    if parent_id == 0:
+    if parent_id is None:
         level = 1
         parent_name_for_error = '顶级分类'
     else:
@@ -1226,7 +1235,7 @@ def category_batch_create():
         flash('请输入分类名称。', 'danger')
         return redirect(url_for('master.category_index'))
 
-    if parent_id != 0:
+    if parent_id is not None:
         parent = Category.query.get(parent_id)
         if not parent:
             flash('父级分类不存在。', 'danger')
@@ -1253,7 +1262,7 @@ def category_batch_create():
     sort_order = start_sort
     for name in lines:
         level = 1
-        if parent_id != 0:
+        if parent_id is not None:
             level = parent.level + 1
 
         category_code = _gen_master_category_code(parent_id)
@@ -1360,8 +1369,8 @@ def category_api_tree():
 def category_api_children(parent_id):
     """返回指定父级的公司级子分类列表 JSON"""
     query = Category.query.filter_by(source='company')
-    if parent_id == 0:
-        query = query.filter_by(parent_id=0)
+    if parent_id is None:
+        query = query.filter_by(parent_id=None)
     else:
         query = query.filter_by(parent_id=parent_id)
 
@@ -1458,6 +1467,7 @@ def category_import():
         return redirect(url_for('master.category_index'))
 
     file = request.files['file']
+    _validate_upload_file(file)
     if not file.filename:
         flash('请选择要导入的Excel文件。', 'danger')
         return redirect(url_for('master.category_index'))
@@ -1517,7 +1527,7 @@ def category_import():
             errors.append(f'第{idx}行：分类编码"{code}"在导入文件中重复')
             continue
 
-        parent_id = 0
+        parent_id = None
         level = 1
         parent_name_for_error = '顶级分类'
         if parent_code:
@@ -1551,7 +1561,7 @@ def category_import():
         name_key_parent = parent_code if parent_code else 'ROOT'
         name_key = f"{name_key_parent}_{name}"
 
-        if parent_id and parent_id != 0:
+        if parent_id and parent_id is not None:
             db_key = f"{parent_id}_{name}"
             if db_key in existing_name_keys:
                 errors.append(f'第{idx}行：在[{parent_name_for_error}]下已存在同名分类"{name}"')
@@ -1592,11 +1602,11 @@ def category_import():
 
         code = data['code']
         if not code:
-            if parent_id == 0:
+            if parent_id is None:
                 prefix = 'MC'
                 existing = Category.query.filter(
                     Category.source == 'company',
-                    Category.parent_id == 0
+                    Category.parent_id is None
                 ).all()
                 existing_codes_same_level = [c.category_code for c in existing if c.category_code]
                 existing_codes_same_level += [d['code'] for d in import_data if d['code'] and d['parent_id'] == 0]

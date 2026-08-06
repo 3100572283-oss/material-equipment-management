@@ -582,6 +582,16 @@ def _on_approval_passed(instance):
     obj.approval_status = 'passed'
     obj.status = 'approved'
 
+    # P2-FIX: 出库单审批通过后扣减库存（之前草稿状态就扣减，存在并发风险）
+    if instance.biz_type == 'stockout':
+        from app.stock_out.routes import _apply_stock, _process_transfer_in
+        for item in obj.items:
+            _apply_stock(obj.project_id, item.material_id, -float(item.quantity))
+        # P2: 调拨出库审批通过后自动创建入库单
+        if obj.stock_out_type == '调拨出库' and obj.destination_project_id:
+            success, msg = _process_transfer_in(obj)
+            # Note: transfer_in creation is logged but doesn't block approval
+
     if instance.biz_type == 'stockin':
         from app.stock_in.routes import _apply_inventory, _update_contract_total_in
         if obj.stock_in_type == '退货入库':
@@ -602,6 +612,15 @@ def _on_approval_passed(instance):
         # 自动生成付款台账记录
         from app.payment_application.routes import _generate_payment
         _generate_payment(obj)
+
+    elif instance.biz_type == 'contract_instance':
+        # 合同实例审批通过：同步到传统合同台账
+        try:
+            from app.contract.routes import _sync_instance_to_contract
+            _sync_instance_to_contract(obj)
+        except Exception as e:
+            import logging
+            logging.error(f'合同实例同步到台账失败: {e}')
 
     elif instance.biz_type == 'scrap':
         # 报废通过：扣减库存（加权平均成本）并生成报废出库单

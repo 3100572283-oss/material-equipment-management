@@ -100,7 +100,7 @@
 function doCheck() {
     const period = document.getElementById('periodInput').value;
     if (!period) {
-        alert('请选择期间');
+        customAlert('请选择期间');
         return;
     }
     window.location.href = '{{ url_for("period_close.check") }}?period=' + period;

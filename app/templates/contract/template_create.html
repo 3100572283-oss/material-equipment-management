@@ -1,0 +1,479 @@
+{% extends "base.html" %}
+
+{% block title %}新增合同模板{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    
+    <div class="row mb-3">
+        
+        <div class="col-md-8">
+            
+            <h3><i class="fas fa-plus-circle"></i> 新增合同模板</h3>
+            
+            <p class="text-muted">创建合同模板，定义变量，支持快速生成合同文档</p>
+        
+        </div>
+        
+        <div class="col-md-4 text-end">
+            
+            <a href="{{ url_for('contract.contract_templates') }}" class="btn btn-outline-secondary">
+                
+                <i class="fas fa-arrow-left"></i> 返回模板列表
+            
+            </a>
+        </div>
+    </div>
+
+    
+    <form method="post" action="{{ url_for('contract.contract_template_create') }}" id="templateForm">
+        
+        <!-- 基本信息 -->
+        
+        <div class="card mb-3">
+            
+            <div class="card-header bg-light">
+                
+                <strong><i class="fas fa-info-circle"></i> 基本信息</strong>
+            </div>
+            
+            <div class="card-body">
+                
+                <div class="mb-3 row">
+                    
+                    <label class="col-sm-2 col-form-label text-end">模板名称 <span class="text-danger">*</span></label>
+                    
+                    <div class="col-sm-6">
+                        
+                        <input type="text" name="name" class="form-control" required placeholder="如：物资采购合同">
+                    </div>
+                    
+                    <label class="col-sm-2 col-form-label text-end">模板编号 <span class="text-danger">*</span></label>
+                    
+                    <div class="col-sm-2">
+                        
+                        <input type="text" name="code" class="form-control" required placeholder="如：purchase_001">
+                    </div>
+                </div>
+                
+                <div class="mb-3 row">
+                    
+                    <label class="col-sm-2 col-form-label text-end">分类</label>
+                    
+                    <div class="col-sm-4">
+                        
+                        <input type="text" name="category" class="form-control" list="categoryList" placeholder="如：采购类">
+                        
+                        <datalist id="categoryList">
+                            <option value="采购类">
+                            <option value="租赁类">
+                            <option value="买卖类">
+                            <option value="运输类">
+                            <option value="服务类">
+                            <option value="其他">
+                        </datalist>
+                    </div>
+                    
+                    <label class="col-sm-2 col-form-label text-end">版本</label>
+                    
+                    <div class="col-sm-2">
+                        
+                        <input type="text" name="version" class="form-control" value="1.0" placeholder="如：1.0">
+                    </div>
+                </div>
+                
+                <div class="mb-3 row">
+                    
+                    <label class="col-sm-2 col-form-label text-end">描述</label>
+                    
+                    <div class="col-sm-10">
+                        
+                        <textarea name="description" class="form-control" rows="2" placeholder="简要描述此模板的用途"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <!-- 导入Word模板 -->
+        
+        <div class="card mb-3">
+            
+            <div class="card-header bg-light">
+                
+                <strong><i class="fas fa-file-word"></i> 导入Word模板（可选）</strong>
+                
+                <span class="text-muted ms-2 small">上传 .docx 文件，自动解析内容填入下方编辑框</span>
+            </div>
+            
+            <div class="card-body">
+                
+                <div class="d-flex align-items-center gap-2">
+                    
+                    <input type="file" id="wordFile" accept=".docx" class="form-control" style="max-width: 400px;">
+                    
+                    <button type="button" class="btn btn-outline-primary" id="importWordBtn">
+                        
+                        <i class="fas fa-upload"></i> 导入
+                    </button>
+                    
+                    <span id="importStatus" class="small text-muted"></span>
+                </div>
+                
+                <small class="text-muted d-block mt-1">
+                    <i class="fas fa-info-circle"></i> 导入后将自动提取文档中的 <code>{{变量名}}</code> 占位符作为变量
+                </small>
+            </div>
+        </div>
+
+        
+        <!-- 模板内容 -->
+        
+        <div class="card mb-3">
+            
+            <div class="card-header bg-light">
+                
+                <strong><i class="fas fa-file-alt"></i> 模板内容</strong>
+                
+                <span class="text-muted ms-2 small">使用 <code>{{变量名}}</code> 作为变量占位符，支持Markdown格式</span>
+            </div>
+            
+            <div class="card-body">
+                
+                <textarea name="template_content" class="form-control" rows="15" id="templateContent"
+                          placeholder="# 合同标题&#10;&#10;甲方：{{party_a_name}}&#10;乙方：{{party_b_name}}&#10;&#10;根据相关法律法规，双方经协商一致，达成以下协议：&#10;&#10;## 第一条 合同标的&#10;&#10;...&#10;&#10;## 明细表&#10;&#10;{{detail_table}}&#10;&#10;## 合同金额&#10;&#10;本合同总金额为：{{total_amount}}元"
+                          style="font-family: monospace; font-size: 13px;"></textarea>
+                
+                <small class="text-muted">
+                    提示：甲方固定信息（公司名称、地址、税号等）会自动填充，无需手动定义变量。<br>
+                    可用占位符：<code>{{party_b_name}}</code> 乙方名称, <code>{{contract_no}}</code> 合同编号, <code>{{sign_date}}</code> 签订日期, <code>{{total_amount}}</code> 合同金额, <code>{{detail_table}}</code> 明细表
+                </small>
+            </div>
+        </div>
+
+        
+        <!-- 变量定义 -->
+        
+        <div class="card mb-3">
+            
+            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                
+                <strong><i class="fas fa-edit"></i> 变量定义</strong>
+                
+                <div>
+                    
+                    <button type="button" class="btn btn-outline-success btn-sm" id="addVarBtn">
+                        
+                        <i class="fas fa-plus"></i> 添加普通变量
+                    </button>
+                    
+                    <button type="button" class="btn btn-outline-info btn-sm" id="addTableVarBtn">
+                        
+                        <i class="fas fa-table"></i> 添加表格变量
+                    </button>
+                </div>
+            </div>
+            
+            <div class="card-body">
+                
+                <div id="variablesList">
+                    
+                    <div class="text-muted text-center py-3" id="noVarsHint">
+                        
+                        <i class="fas fa-info-circle"></i> 点击上方按钮添加变量。变量名需与模板内容中的 <code>{{占位符}}</code> 对应。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <!-- 提交 -->
+        
+        <div class="text-center mb-4">
+            
+            <button type="submit" class="btn btn-primary btn-lg">
+                
+                <i class="fas fa-save"></i> 保存模板
+            </button>
+            
+            <a href="{{ url_for('contract.contract_templates') }}" class="btn btn-outline-secondary btn-lg ms-2">
+                取消
+            </a>
+        </div>
+    </form>
+</div>
+
+<style>
+.var-item {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+.col-config {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 5px;
+    align-items: center;
+}
+.col-config input {
+    font-size: 13px;
+}
+</style>
+
+<script>
+(function() {
+    var varIndex = 0;
+
+    function createVarItem(type) {
+        var idx = varIndex++;
+        var div = document.createElement('div');
+        div.className = 'var-item';
+
+        if (type === 'table') {
+            div.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong class="text-info"><i class="fas fa-table"></i> 表格变量</strong>
+                    <button type="button" class="btn btn-outline-danger btn-sm btn-remove-var"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="small">变量名 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm var-name" placeholder="如：detail_table" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small">显示名称</label>
+                        <input type="text" class="form-control form-control-sm var-label" placeholder="如：明细表">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small">是否必填</label>
+                        <select class="form-control form-control-sm var-required">
+                            <option value="false">否</option>
+                            <option value="true">是</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <label class="small">列定义</label>
+                    <div class="col-config-list">
+                        <div class="col-config">
+                            <input type="text" class="form-control form-control-sm col-name" placeholder="列名(英文)" style="width:120px;">
+                            <input type="text" class="form-control form-control-sm col-label" placeholder="列显示名" style="width:120px;">
+                            <select class="form-control form-control-sm col-type" style="width:90px;">
+                                <option value="text">文本</option>
+                                <option value="number">数字</option>
+                                <option value="date">日期</option>
+                            </select>
+                            <button type="button" class="btn btn-outline-danger btn-sm btn-remove-col"><i class="fas fa-minus"></i></button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-outline-success btn-sm btn-add-col mt-1"><i class="fas fa-plus"></i> 添加列</button>
+                </div>
+                <input type="hidden" class="var-type" value="table">
+            `;
+        } else {
+            div.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong class="text-primary"><i class="fas fa-edit"></i> 普通变量</strong>
+                    <button type="button" class="btn btn-outline-danger btn-sm btn-remove-var"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="small">变量名 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm var-name" placeholder="如：party_b_name" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small">显示名称</label>
+                        <input type="text" class="form-control form-control-sm var-label" placeholder="如：乙方名称">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small">类型</label>
+                        <select class="form-control form-control-sm var-type">
+                            <option value="text">文本</option>
+                            <option value="number">数字</option>
+                            <option value="date">日期</option>
+                            <option value="textarea">长文本</option>
+                            <option value="select">下拉选择</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small">是否必填</label>
+                        <select class="form-control form-control-sm var-required">
+                            <option value="false">否</option>
+                            <option value="true">是</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small">默认值</label>
+                        <input type="text" class="form-control form-control-sm var-default" placeholder="可选">
+                    </div>
+                </div>
+                <div class="row mt-1">
+                    <div class="col-md-4">
+                        <label class="small">提示文字</label>
+                        <input type="text" class="form-control form-control-sm var-placeholder" placeholder="如：请输入乙方全称">
+                    </div>
+                    <div class="col-md-4 var-options-group" style="display:none;">
+                        <label class="small">选项（逗号分隔）</label>
+                        <input type="text" class="form-control form-control-sm var-options" placeholder="如：选项1,选项2,选项3">
+                    </div>
+                </div>
+            `;
+        }
+        return div;
+    }
+
+    function addVar(type) {
+        var hint = document.getElementById('noVarsHint');
+        if (hint) hint.remove();
+        var item = createVarItem(type);
+        document.getElementById('variablesList').appendChild(item);
+        return item;
+    }
+
+    function init() {
+        document.getElementById('addVarBtn').addEventListener('click', function() { addVar('text'); });
+        document.getElementById('addTableVarBtn').addEventListener('click', function() { addVar('table'); });
+
+        // Word import
+        document.getElementById('importWordBtn').addEventListener('click', function() {
+            var fileInput = document.getElementById('wordFile');
+            if (!fileInput.files.length) {
+                alert('请先选择Word文件');
+                return;
+            }
+            var formData = new FormData();
+            formData.append('word_file', fileInput.files[0]);
+            
+            var statusEl = document.getElementById('importStatus');
+            statusEl.textContent = '正在导入...';
+            statusEl.className = 'small text-warning';
+            
+            fetch('{{ url_for("contract.contract_template_import_word") }}', {
+                method: 'POST',
+                body: formData
+            }).then(function(resp) { return resp.json(); }).then(function(data) {
+                if (data.success) {
+                    document.getElementById('templateContent').value = data.content;
+                    statusEl.textContent = '导入成功，提取到 ' + data.variables.length + ' 个变量';
+                    statusEl.className = 'small text-success';
+                    
+                    // Auto-add variables
+                    if (data.variables.length > 0) {
+                        data.variables.forEach(function(varName) {
+                            // Check if variable already exists
+                            var existing = false;
+                            document.querySelectorAll('.var-name').forEach(function(inp) {
+                                if (inp.value === varName) existing = true;
+                            });
+                            if (!existing) {
+                                var item = addVar('text');
+                                item.querySelector('.var-name').value = varName;
+                                item.querySelector('.var-label').value = varName;
+                            }
+                        });
+                    }
+                } else {
+                    statusEl.textContent = '导入失败：' + data.message;
+                    statusEl.className = 'small text-danger';
+                }
+            }).catch(function(err) {
+                statusEl.textContent = '导入失败：网络错误';
+                statusEl.className = 'small text-danger';
+            });
+        });
+
+        // Delete variable
+        document.getElementById('variablesList').addEventListener('click', function(e) {
+            if (e.target.closest('.btn-remove-var')) {
+                e.target.closest('.var-item').remove();
+                if (document.querySelectorAll('.var-item').length === 0) {
+                    document.getElementById('variablesList').innerHTML = '<div class="text-muted text-center py-3" id="noVarsHint"><i class="fas fa-info-circle"></i> 点击上方按钮添加变量。</div>';
+                }
+            }
+            if (e.target.closest('.btn-remove-col')) {
+                var list = e.target.closest('.col-config-list');
+                if (list.querySelectorAll('.col-config').length > 1) {
+                    e.target.closest('.col-config').remove();
+                }
+            }
+            if (e.target.closest('.btn-add-col')) {
+                var list = e.target.closest('.var-item').querySelector('.col-config-list');
+                var first = list.querySelector('.col-config:first-child');
+                var newCol = first.cloneNode(true);
+                newCol.querySelectorAll('input').forEach(function(inp) { inp.value = ''; });
+                list.appendChild(newCol);
+            }
+        });
+
+        // Type change
+        document.getElementById('variablesList').addEventListener('change', function(e) {
+            if (e.target.classList.contains('var-type') && e.target.value === 'select') {
+                var group = e.target.closest('.var-item').querySelector('.var-options-group');
+                if (group) group.style.display = '';
+            } else if (e.target.classList.contains('var-type')) {
+                var group = e.target.closest('.var-item').querySelector('.var-options-group');
+                if (group) group.style.display = 'none';
+            }
+        });
+
+        // Form submit - collect variables
+        document.getElementById('templateForm').addEventListener('submit', function(e) {
+            var variables = [];
+            document.querySelectorAll('.var-item').forEach(function(item) {
+                var varTypeEl = item.querySelector('.var-type');
+                var varType = varTypeEl.tagName === 'SELECT' ? varTypeEl.value : varTypeEl.value;
+                var varName = item.querySelector('.var-name').value;
+                if (!varName) return;
+
+                var varObj = {
+                    name: varName,
+                    label: item.querySelector('.var-label').value || varName,
+                    type: varType,
+                    required: item.querySelector('.var-required').value === 'true'
+                };
+
+                var defaultInput = item.querySelector('.var-default');
+                if (defaultInput) varObj.default = defaultInput.value;
+                var placeholderInput = item.querySelector('.var-placeholder');
+                if (placeholderInput) varObj.placeholder = placeholderInput.value;
+                var optionsInput = item.querySelector('.var-options');
+                if (optionsInput && optionsInput.value) {
+                    varObj.options = optionsInput.value.split(',').map(function(s) { return s.trim(); });
+                }
+
+                if (varType === 'table') {
+                    var columns = [];
+                    item.querySelectorAll('.col-config').forEach(function(col) {
+                        var colName = col.querySelector('.col-name').value;
+                        if (colName) {
+                            columns.push({
+                                name: colName,
+                                label: col.querySelector('.col-label').value || colName,
+                                type: col.querySelector('.col-type').value
+                            });
+                        }
+                    });
+                    varObj.columns = columns;
+                }
+
+                variables.push(varObj);
+            });
+
+            var hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'variables_schema';
+            hiddenInput.value = JSON.stringify(variables);
+            this.appendChild(hiddenInput);
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
+{% endblock %}

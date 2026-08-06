@@ -178,6 +178,39 @@
             filter: invert(1) grayscale(100%) brightness(200%);
         }
     </style>
+    <!-- P1-7: CSRF保护 -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+    (function() {
+        var originalOpen = XMLHttpRequest.prototype.open;
+        var originalSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this._method = method;
+            return originalOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function(body) {
+            if (this._method && this._method.toUpperCase() === 'POST') {
+                var token = document.querySelector('meta[name="csrf-token"]');
+                if (token) { this.setRequestHeader('X-CSRFToken', token.getAttribute('content')); }
+            }
+            return originalSend.apply(this, arguments);
+        };
+        document.addEventListener('DOMContentLoaded', function() {
+            var token = document.querySelector('meta[name="csrf-token"]');
+            if (token) {
+                document.querySelectorAll('form').forEach(function(form) {
+                    if (form.method && form.method.toUpperCase() === 'POST' && !form.querySelector('input[name="csrf_token"]')) {
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'csrf_token';
+                        input.value = token.getAttribute('content');
+                        form.appendChild(input);
+                    }
+                });
+            }
+        });
+    })();
+    </script>
 </head>
 <body>
     <div class="login-wrapper">
@@ -215,9 +248,24 @@
                             <input type="password" class="form-control" id="password" name="password" placeholder="请输入密码" required>
                         </div>
                     </div>
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="remember" name="remember">
-                        <label class="form-check-label" for="remember">记住我</label>
+                    
+                    <div class="mb-3">
+                        <label for="captcha" class="form-label">验证码</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-shield-check"></i></span>
+                            <input type="text" class="form-control" id="captcha" name="captcha" placeholder="请输入验证码" required maxlength="4" style="text-transform: uppercase;">
+                            <span class="input-group-text p-0" style="background: transparent; border: 1px solid #e5e6eb; border-left: none; overflow: hidden;">
+                                <img id="captchaImg" src="/auth/captcha" alt="验证码" style="height: 38px; cursor: pointer;" title="点击刷新验证码" onclick="refreshCaptcha()">
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3 d-flex justify-content-between align-items-center">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="remember" name="remember">
+                            <label class="form-check-label" for="remember">记住我</label>
+                        </div>
+                        <a href="{{ url_for('auth.forgot_password') }}" style="font-size: 13px; color: #165DFF; text-decoration: none;">忘记密码？</a>
                     </div>
                     <button type="submit" class="btn btn-primary w-100">登 录</button>
                 </form>
@@ -231,5 +279,18 @@
     <script>
         document.getElementById('currentYear').textContent = new Date().getFullYear();
     </script>
-</body>
+
+    <script>
+    function refreshCaptcha() {
+        var img = document.getElementById('captchaImg');
+        if (img) {
+            img.src = '/auth/captcha?t=' + Date.now();
+        }
+    }
+    // 页面加载时自动刷新验证码
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshCaptcha();
+    });
+    </script>
+    </body>
 </html>

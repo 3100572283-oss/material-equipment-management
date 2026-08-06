@@ -1,7 +1,8 @@
 {% extends "mobile/base.html" %}
 {% block title %}{{ '编辑' if invoice else '新增' }}发票{% endblock %}
 {% block nav_title %}{{ '编辑' if invoice else '新增' }}发票{% endblock %}
-{% block hide_tab %}true{% endblock %}
+{% block content_class %}no-tab{% endblock %}
+{% block mobile_tabbar %}{% endblock %}
 
 {% block content %}
 <form method="POST" id="invoiceForm" enctype="multipart/form-data"

@@ -2,6 +2,19 @@
 {% block title %}首页 - 物资设备管理系统{% endblock %}
 {% block content %}
 <style>
+.chart-container { position: relative; min-height: 320px; }
+.chart-loading-overlay {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: #f8f9fa; border-radius: 4px; z-index: 1;
+    transition: opacity 0.4s ease;
+}
+.chart-loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.chart-loading-overlay .spinner-border { width: 2rem; height: 2rem; color: #409eff; }
+.chart-loading-overlay .chart-loading-text { margin-top: 10px; font-size: 13px; color: #909399; }
+</style>
+<style>
 /* 首页统计卡片图标统一为正圆形 */
 .card-body.d-flex.align-items-center > .rounded-circle {
     width: 48px !important;
@@ -79,6 +92,19 @@
                     <div>
                         <h3 class="mb-0 fw-bold">¥{{ stats.contract_total }}</h3>
                         <small class="text-muted">合同总金额（万元）</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-danger bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-box-arrow-up text-danger fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">¥{{ stats.stock_out_total }}</h3>
+                        <small class="text-muted">出库总额（万元）</small>
                     </div>
                 </div>
             </div>
@@ -222,6 +248,19 @@
                     <div>
                         <h3 class="mb-0 fw-bold">{{ stats.stock_in_total }}</h3>
                         <small class="text-muted">入库总金额（万元）<span class="text-primary ms-1">含税</span></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-4 col-sm-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-danger bg-opacity-10 p-3 me-3">
+                        <i class="bi bi-box-arrow-up text-danger fs-3"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0 fw-bold">{{ stats.stock_out_total }}</h3>
+                        <small class="text-muted">出库总金额（万元）</small>
                     </div>
                 </div>
             </div>
@@ -393,7 +432,89 @@
     </div>
     {% endif %}
 
-    <!-- 图表区域 -->
+
+    <!-- P2: 快捷操作入口 -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h6 class="mb-0"><i class="bi bi-lightning-charge me-2"></i>快捷操作</h6>
+        </div>
+        <div class="card-body">
+            <div class="quick-actions-grid">
+                <a href="{{ url_for('stock_in.create') }}" class="quick-action-card">
+                    <i class="bi bi-box-arrow-in-down"></i><span>物资入库</span>
+                </a>
+                <a href="{{ url_for('stock_out.create') }}" class="quick-action-card">
+                    <i class="bi bi-box-arrow-up"></i><span>物资出库</span>
+                </a>
+                <a href="{{ url_for('contract.index') }}" class="quick-action-card">
+                    <i class="bi bi-file-earmark-text"></i><span>合同管理</span>
+                </a>
+                <a href="{{ url_for('supplier.index') }}" class="quick-action-card">
+                    <i class="bi bi-truck"></i><span>供应商管理</span>
+                </a>
+                <a href="{{ url_for('stock_check.create') }}" class="quick-action-card">
+                    <i class="bi bi-clipboard-check"></i><span>库存盘点</span>
+                </a>
+                <a href="{{ url_for('material.index') }}" class="quick-action-card">
+                    <i class="bi bi-list-ul"></i><span>物资目录</span>
+                </a>
+                <a href="{{ url_for('report.index') }}" class="quick-action-card">
+                    <i class="bi bi-graph-up"></i><span>统计报表</span>
+                </a>
+                <a href="{{ url_for('ai.assistant') }}" class="quick-action-card">
+                    <i class="bi bi-robot"></i><span>AI助手</span>
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- P2: 趋势对比卡片 -->
+    <div class="row g-3 mb-4" id="trendComparisonRow" style="display:none;">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">本月入库 vs 上月入库</span>
+                        <span id="inChangeBadge" class="badge bg-secondary">-</span>
+                    </div>
+                    <div class="d-flex align-items-baseline gap-3">
+                        <div>
+                            <small class="text-muted d-block">本月</small>
+                            <span class="fs-5 fw-bold" id="thisMonthIn">¥0</span>
+                        </div>
+                        <i class="bi bi-arrow-right text-muted"></i>
+                        <div>
+                            <small class="text-muted d-block">上月</small>
+                            <span class="fs-5 text-muted" id="lastMonthIn">¥0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">本月出库 vs 上月出库</span>
+                        <span id="outChangeBadge" class="badge bg-secondary">-</span>
+                    </div>
+                    <div class="d-flex align-items-baseline gap-3">
+                        <div>
+                            <small class="text-muted d-block">本月</small>
+                            <span class="fs-5 fw-bold" id="thisMonthOut">¥0</span>
+                        </div>
+                        <i class="bi bi-arrow-right text-muted"></i>
+                        <div>
+                            <small class="text-muted d-block">上月</small>
+                            <span class="fs-5 text-muted" id="lastMonthOut">¥0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+        <!-- 图表区域 -->
     <div class="row g-3 mb-4">
         <div class="col-lg-6">
             <div class="card shadow-sm">
@@ -401,7 +522,8 @@
                     <h6 class="mb-0"><i class="bi bi-pie-chart me-2"></i>物资分类库存分布</h6>
                 </div>
                 <div class="card-body">
-                    <div id="categoryChart" style="width:100%;height:320px;"></div>
+                    <div id="categoryChart" style="width:100%;height:320px;" class="chart-container"></div>
+                    <div class="chart-loading-overlay" id="categoryChartLoading"><div class="spinner-border" role="status"></div><div class="chart-loading-text">图表加载中...</div></div>
                 </div>
             </div>
         </div>
@@ -411,7 +533,8 @@
                     <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>月度出入库趋势（万元）</h6>
                 </div>
                 <div class="card-body">
-                    <div id="trendChart" style="width:100%;height:320px;"></div>
+                    <div id="trendChart" style="width:100%;height:320px;" class="chart-container"></div>
+                    <div class="chart-loading-overlay" id="trendChartLoading"><div class="spinner-border" role="status"></div><div class="chart-loading-text">图表加载中...</div></div>
                 </div>
             </div>
         </div>
@@ -424,7 +547,34 @@
                     <h6 class="mb-0"><i class="bi bi-graph-down me-2"></i>消耗量 Top 10</h6>
                 </div>
                 <div class="card-body">
-                    <div id="topConsumeChart" style="width:100%;height:320px;"></div>
+                    <div id="topConsumeChart" style="width:100%;height:320px;" class="chart-container"></div>
+                    <div class="chart-loading-overlay" id="topConsumeChartLoading"><div class="spinner-border" role="status"></div><div class="chart-loading-text">图表加载中...</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 合同统计 + 付款趋势 -->
+    <div class="row g-3 mt-0">
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>合同金额统计（按状态，万元）</h6>
+                </div>
+                <div class="card-body">
+                    <div id="contractChart" style="width:100%;height:320px;" class="chart-container"></div>
+                    <div class="chart-loading-overlay" id="contractChartLoading"><div class="spinner-border" role="status"></div><div class="chart-loading-text">图表加载中...</div></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-cash-stack me-2"></i>付款趋势统计（万元）</h6>
+                </div>
+                <div class="card-body">
+                    <div id="paymentChart" style="width:100%;height:320px;" class="chart-container"></div>
+                    <div class="chart-loading-overlay" id="paymentChartLoading"><div class="spinner-border" role="status"></div><div class="chart-loading-text">图表加载中...</div></div>
                 </div>
             </div>
         </div>
@@ -443,9 +593,36 @@ document.addEventListener('DOMContentLoaded', function() {
             initCategoryChart(data.category_distribution);
             initTrendChart(data.monthly_trend);
             initTopConsumeChart(data.top_consumption);
+            if (data.contract_stats) initContractChart(data.contract_stats);
+            if (data.payment_trend) initPaymentChart(data.payment_trend);
+            if (data.trend_comparison) initTrendComparison(data.trend_comparison);
         });
     {% endif %}
 });
+
+function initTrendComparison(data) {
+    var row = document.getElementById('trendComparisonRow');
+    if (!row || !data) return;
+    row.style.display = '';
+    
+    function fmt(yuan) {
+        if (yuan >= 10000) return '¥' + (yuan / 10000).toFixed(2) + '万';
+        return '¥' + yuan.toFixed(2);
+    }
+    function badge(pct) {
+        if (pct > 0) return '<span class="badge bg-danger">↑' + pct + '%</span>';
+        if (pct < 0) return '<span class="badge bg-success">↓' + Math.abs(pct) + '%</span>';
+        return '<span class="badge bg-secondary">持平</span>';
+    }
+    
+    document.getElementById('thisMonthIn').textContent = fmt(data.this_month_in);
+    document.getElementById('lastMonthIn').textContent = fmt(data.last_month_in);
+    document.getElementById('inChangeBadge').innerHTML = badge(data.in_change_pct);
+    
+    document.getElementById('thisMonthOut').textContent = fmt(data.this_month_out);
+    document.getElementById('lastMonthOut').textContent = fmt(data.last_month_out);
+    document.getElementById('outChangeBadge').innerHTML = badge(data.out_change_pct);
+}
 
 function initCategoryChart(data) {
     const chart = echarts.init(document.getElementById('categoryChart'));
@@ -527,6 +704,8 @@ function initTrendChart(data) {
         ]
     };
     chart.setOption(option);
+    var loadingEl = document.getElementById('trendChartLoading');
+    if (loadingEl) loadingEl.classList.add('hidden');
     window.addEventListener('resize', () => chart.resize());
 }
 
@@ -544,6 +723,111 @@ function initTopConsumeChart(data) {
             data: values.reverse(),
             itemStyle: { color: '#0d6efd', borderRadius: [0, 4, 4, 0] },
             label: { show: true, position: 'right' }
+        }]
+    };
+    chart.setOption(option);
+    var loadingEl = document.getElementById('topConsumeChartLoading');
+    if (loadingEl) loadingEl.classList.add('hidden');
+    window.addEventListener('resize', () => chart.resize());
+}
+
+function initContractChart(data) {
+    const chart = echarts.init(document.getElementById('contractChart'));
+    var loadingEl = document.getElementById('contractChartLoading');
+    if (loadingEl) loadingEl.classList.add('hidden');
+
+    if (!data || data.length === 0) {
+        chart.setOption({
+            title: { text: '暂无合同数据', left: 'center', top: 'center', textStyle: { color: '#999', fontSize: 14 } }
+        });
+        window.addEventListener('resize', () => chart.resize());
+        return;
+    }
+
+    const statusMap = {
+        'draft': '草稿', 'pending': '待审批', 'approving': '审批中',
+        'approved': '已审批', 'executing': '执行中', 'completed': '已完成',
+        '履约中': '履约中', '履约异常': '履约异常', '已终止': '已终止', '已关闭': '已关闭'
+    };
+
+    const labels = data.map(d => statusMap[d.status] || d.status);
+    const amounts = data.map(d => d.amount);
+    const counts = data.map(d => d.count);
+
+    const option = {
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+                var idx = params[0].dataIndex;
+                return params[0].name + '<br/>合同金额: ' + amounts[idx] + ' 万元<br/>合同数量: ' + counts[idx] + ' 份';
+            }
+        },
+        legend: { data: ['合同金额'], bottom: '0%' },
+        grid: { left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true },
+        xAxis: { type: 'category', data: labels, axisLabel: { interval: 0, rotate: labels.length > 4 ? 20 : 0 } },
+        yAxis: { type: 'value', name: '万元' },
+        series: [{
+            name: '合同金额',
+            type: 'bar',
+            data: amounts,
+            itemStyle: {
+                color: function(params) {
+                    var colorList = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'];
+                    return colorList[params.dataIndex % colorList.length];
+                },
+                borderRadius: [4, 4, 0, 0]
+            },
+            label: { show: true, position: 'top', formatter: '{c}' }
+        }]
+    };
+    chart.setOption(option);
+    window.addEventListener('resize', () => chart.resize());
+}
+
+function initPaymentChart(data) {
+    const chart = echarts.init(document.getElementById('paymentChart'));
+    var loadingEl = document.getElementById('paymentChartLoading');
+    if (loadingEl) loadingEl.classList.add('hidden');
+
+    if (!data || !data.data || data.data.length === 0) {
+        chart.setOption({
+            title: { text: '暂无付款数据', left: 'center', top: 'center', textStyle: { color: '#999', fontSize: 14 } }
+        });
+        window.addEventListener('resize', () => chart.resize());
+        return;
+    }
+
+    const option = {
+        tooltip: {
+            trigger: 'axis',
+            formatter: function(params) {
+                return params[0].name + '<br/>付款金额: ' + params[0].value + ' 万元';
+            }
+        },
+        legend: { data: ['付款金额'], bottom: '0%' },
+        grid: { left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true },
+        xAxis: { type: 'category', data: data.months, boundaryGap: false },
+        yAxis: { type: 'value', name: '万元' },
+        series: [{
+            name: '付款金额',
+            type: 'line',
+            data: data.data,
+            smooth: true,
+            symbol: 'circle',
+            symbolSize: 8,
+            lineStyle: { width: 3, color: '#ee6666' },
+            itemStyle: { color: '#ee6666' },
+            areaStyle: {
+                color: {
+                    type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                    colorStops: [
+                        { offset: 0, color: 'rgba(238,102,102,0.3)' },
+                        { offset: 1, color: 'rgba(238,102,102,0.02)' }
+                    ]
+                }
+            },
+            label: { show: true, position: 'top' }
         }]
     };
     chart.setOption(option);

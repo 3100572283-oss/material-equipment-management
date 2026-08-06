@@ -1,25 +1,32 @@
 import json
 import os
 from flask import Flask
+from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from flask_wtf import CSRFProtect
 from config import Config
 
 db = SQLAlchemy()
 login_manager = LoginManager()
+csrf = CSRFProtect()
 login_manager.login_view = 'auth.login'
 login_manager.login_message = '请先登录以访问此页面。'
 login_manager.login_message_category = 'warning'
 
 
 def _add_column_if_missing(table_name, col_name, col_def):
-    """幂等添加列"""
-    from sqlalchemy import text
+    """幂等添加列（兼容SQLite和MySQL）"""
+    from sqlalchemy import text, inspect, inspect as sa_inspect
     try:
-        cols = db.session.execute(text(f"PRAGMA table_info('{table_name}')")).fetchall()
-        col_names = [c[1] for c in cols]
+        inspector = sa_inspect(db.engine)
+        if table_name not in inspector.get_table_names():
+            return
+        columns = inspector.get_columns(table_name)
+        col_names = [c['name'] for c in columns]
         if col_name not in col_names:
-            db.session.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
+            mysql_def = col_def.replace('BOOLEAN', 'TINYINT(1)')
+            db.session.execute(text(f"ALTER TABLE `{table_name}` ADD COLUMN `{col_name}` {mysql_def}"))
             db.session.commit()
             print(f"Added column: {table_name}.{col_name}")
     except Exception as e:
@@ -29,14 +36,12 @@ def _add_column_if_missing(table_name, col_name, col_def):
 
 def _migrate_price_formula_fields():
     """迁移价格方案表字段：discount_type -> float_type, discount_value -> float_value"""
-    from sqlalchemy import text
+    from sqlalchemy import text, inspect
     try:
-        cols = db.session.execute(text("PRAGMA table_info('price_formula')")).fetchall()
-        col_names = [c[1] for c in cols]
-
-        # 表不存在，跳过
-        if not col_names:
+        inspector = inspect(db.engine)
+        if 'price_formula' not in inspector.get_table_names():
             return
+        col_names = [c['name'] for c in inspector.get_columns('price_formula')]
 
         # 添加新字段（如果不存在）
         if 'float_type' not in col_names:
@@ -77,10 +82,17 @@ def _migrate_price_formula_fields():
 
 def _migrate_sys_role_menu_constraint():
     """迁移 sys_role_menu 表约束：从 (role_id, menu_id) 改为 (role_id, menu_id, operation)"""
-    from sqlalchemy import text
+    from sqlalchemy import text, inspect
     try:
+        # 此迁移仅适用于SQLite旧数据库
+        if db.engine.dialect.name != 'sqlite':
+            return
         # 检查当前约束
-        result = db.session.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='sys_role_menu'")).fetchone()
+        inspector = inspect(db.engine)
+        result = None
+        if 'sys_role_menu' in inspector.get_table_names():
+            # MySQL/PostgreSQL: 使用 inspector 检查约束
+            pass  # 约束迁移仅在 SQLite 时执行，MySQL 跳过
         if result:
             sql = result[0]
             # 如果旧约束存在，需要重建表
@@ -136,7 +148,7 @@ def init_db_schema():
     _add_column_if_missing('stock_ins', 'is_reconciled', 'BOOLEAN DEFAULT 0')
     _add_column_if_missing('stock_outs', 'is_reconciled', 'BOOLEAN DEFAULT 0')
     _add_column_if_missing('stock_outs', 'team_id', 'INTEGER')
-    _add_column_if_missing('categories', 'parent_id', 'INTEGER DEFAULT 0')
+    _add_column_if_missing('categories', 'parent_id', 'INTEGER')
     _add_column_if_missing('categories', 'level', 'INTEGER DEFAULT 1')
     _add_column_if_missing('categories', 'category_code', 'VARCHAR(32)')
     # 审批状态字段（默认 passed 保持已有数据兼容）
@@ -164,8 +176,10 @@ def init_db_schema():
     _add_column_if_missing('users', 'per_page', 'INTEGER DEFAULT 10')
     # 项目归档字段
     _add_column_if_missing('projects', 'is_archived', 'BOOLEAN DEFAULT 0')
-    # 软删除字段（核心业务表）
-    for tbl in ['contracts', 'stock_ins', 'stock_outs', 'suppliers', 'materials', 'payments', 'reconciliations', 'equipment', 'turnover_material']:
+    # 软删除字段（核心业务表 + 扩展业务表）
+    for tbl in ['contracts', 'stock_ins', 'stock_outs', 'suppliers', 'materials', 'payments', 'reconciliations', 'equipment', 'turnover_material',
+                'concrete_ticket', 'material_transfer', 'material_scrap', 'purchase_requisition', 'stock_check',
+                'equipment_maintenance', 'equipment_rent_settle', 'equipment_inspection', 'turnover_record']:
         _add_column_if_missing(tbl, 'is_deleted', 'BOOLEAN DEFAULT 0')
         _add_column_if_missing(tbl, 'deleted_at', 'DATETIME')
 
@@ -359,14 +373,13 @@ def _migrate_role_data_scope_table():
     """迁移/创建统一数据权限配置表 sys_role_data_scope
     整合原 sys_role.data_scope 和 sys_role_dept 数据
     """
-    from sqlalchemy import text
+    from sqlalchemy import text, inspect
     try:
         # 检查表是否存在
-        result = db.session.execute(
-            text("SELECT name FROM sqlite_master WHERE type='table' AND name='sys_role_data_scope'")
-        ).fetchone()
+        inspector = inspect(db.engine)
+        table_exists = 'sys_role_data_scope' in inspector.get_table_names()
 
-        if not result:
+        if not table_exists:
             print("Creating sys_role_data_scope table...")
             db.session.execute(text("""
                 CREATE TABLE sys_role_data_scope (
@@ -631,7 +644,7 @@ def init_rbac_data():
         groups = menu_data.get('groups', [])
 
         # 检测是否有旧格式数据（目录没有menu_code），有则清空重建
-        old_catalogs = SysMenu.query.filter_by(menu_type='catalog', parent_id=0).filter(
+        old_catalogs = SysMenu.query.filter_by(menu_type='catalog', parent_id=None).filter(
             (SysMenu.menu_code.is_(None)) | (SysMenu.menu_code == '')
         ).all()
         if old_catalogs:
@@ -658,7 +671,7 @@ def init_rbac_data():
                     menu_type='catalog',
                     icon=group.get('icon', ''),
                     sort=catalog_sort,
-                    parent_id=0,
+                    parent_id=None,
                     status=True,
                     module_key=group_module or None,
                     remark=catalog_remark
@@ -769,7 +782,7 @@ def init_rbac_data():
 
     # ===== 3. 初始化部门（升级为树形组织架构）=====
     depts_data = [
-        {'code': 'HQ', 'name': '总公司', 'parent_id': 0, 'dept_type': 'company', 'sort': 1},
+        {'code': 'HQ', 'name': '总公司', 'parent_id': None, 'dept_type': 'company', 'sort': 1},
         {'code': 'MATERIAL', 'name': '物资部', 'parent_id': 1, 'dept_type': 'dept', 'sort': 1},
         {'code': 'FINANCE', 'name': '财务部', 'parent_id': 1, 'dept_type': 'dept', 'sort': 2},
         {'code': 'ENGINEERING', 'name': '工程部', 'parent_id': 1, 'dept_type': 'dept', 'sort': 3},
@@ -1058,7 +1071,11 @@ def create_app(config_class=Config):
     biz_logger.addHandler(biz_handler)
 
     db.init_app(app)
+    Migrate(app, db)
     login_manager.init_app(app)
+    
+    # P1-7: 启用CSRF保护
+    csrf.init_app(app)
 
     from app.auth import bp as auth_bp
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -1174,8 +1191,25 @@ def create_app(config_class=Config):
     from app.org_sync import bp as org_sync_bp
     app.register_blueprint(org_sync_bp, url_prefix='/org_sync')
 
+    from app.purchase_order import bp as purchase_order_bp
+    app.register_blueprint(purchase_order_bp, url_prefix='/purchase_order')
+
+    from app.material_return import bp as material_return_bp
+    app.register_blueprint(material_return_bp, url_prefix='/material_return')
+
+    from app.tools import bp as tools_bp
+    app.register_blueprint(tools_bp, url_prefix="/tools")
+
     from app.message import bp as message_bp
     app.register_blueprint(message_bp, url_prefix='/message')
+
+    # P1-7: 豁免移动端和AI路由的CSRF保护（这些路由使用AJAX/API调用）
+    from app.mobile import bp as _mobile_bp_for_csrf
+    from app.ai import bp as _ai_bp_for_csrf
+    from app.auth import bp as _auth_bp_for_csrf
+    csrf.exempt(_mobile_bp_for_csrf)
+    csrf.exempt(_ai_bp_for_csrf)
+    csrf.exempt(_auth_bp_for_csrf)  # 登录/登出是入口，豁免CSRF
 
     @app.context_processor
     def inject_projects():
@@ -1190,7 +1224,7 @@ def create_app(config_class=Config):
         is_all_projects_mode = False
         main_project_id = None
         can_switch_project = True
-        if current_user.is_authenticated:
+        if current_user and hasattr(current_user, "is_authenticated") and current_user.is_authenticated:
             # 按用户数据权限过滤可见项目
             can_view_all_projects = (current_user.get_data_scope() == 'all' or current_user.is_admin())
             if can_view_all_projects:
@@ -1477,7 +1511,7 @@ def create_app(config_class=Config):
                                'windows phone', 'blackberry', 'opera mini')
             if any(kw in ua for kw in mobile_keywords):
                 # 用户已登录则进移动端首页，否则进移动端登录页
-                if current_user.is_authenticated:
+                if current_user and hasattr(current_user, "is_authenticated") and current_user.is_authenticated:
                     return redirect(url_for('mobile.portal_home'))
                 return redirect(url_for('mobile.login'))
 
@@ -1496,8 +1530,22 @@ def create_app(config_class=Config):
                 except Exception:
                     pass
 
+        # P1-5: 项目数据隔离强制验证 — 验证当前用户是否有权访问选中的项目
+        if current_user and hasattr(current_user, "is_authenticated") and current_user.is_authenticated:
+            _pid = session.get('current_project_id')
+            if _pid:
+                try:
+                    if not current_user.can_access_project(_pid):
+                        session.pop('current_project_id', None)
+                        if request.path.startswith('/api/') or request.is_json:
+                            return jsonify({'code': 403, 'message': '无权限访问该项目'}), 403
+                        flash('您无权限访问该项目，已自动切换。', 'warning')
+                        return redirect(url_for('main.index'))
+                except Exception:
+                    pass  # 权限检查异常时不阻断请求，避免影响系统可用性
+
         # 更新用户最后活跃时间（60秒更新一次，减轻数据库压力）
-        if current_user.is_authenticated:
+        if current_user and hasattr(current_user, "is_authenticated") and current_user.is_authenticated:
             last_update = session.get('_last_active_update')
             now = datetime.now()
             if not last_update or (now - datetime.fromisoformat(last_update)).total_seconds() > 60:
@@ -1552,7 +1600,7 @@ def create_app(config_class=Config):
 
         # 检查项目模块开关（使用数据库module_key）
         try:
-            if current_user.is_authenticated:
+            if current_user and hasattr(current_user, "is_authenticated") and current_user.is_authenticated:
                 project_id = session.get('current_project_id')
                 # 从数据库查询当前端点对应的菜单及其模块标识
                 menu = SysMenu.query.filter_by(menu_code=endpoint, menu_type='menu').first()

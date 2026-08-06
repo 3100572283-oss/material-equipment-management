@@ -6,6 +6,28 @@ from werkzeug.utils import secure_filename
 from flask import session
 
 from app.payment_application import bp
+
+# P2: 文件上传扩展名校验
+def _validate_upload_file(file):
+    """校验上传文件扩展名，不通过则abort 400"""
+    if file and file.filename:
+        from app.utils import validate_file_extension
+        from flask import abort
+        ok, err = validate_file_extension(file.filename)
+        if not ok:
+            abort(400, err)
+    return file
+
+def _validate_upload_files(files):
+    """校验上传文件列表扩展名，不通过则abort 400"""
+    from app.utils import validate_file_extension
+    from flask import abort
+    for f in files:
+        if f and f.filename:
+            ok, err = validate_file_extension(f.filename)
+            if not ok:
+                abort(400, err)
+
 from app import db
 from app.models import (PaymentApplication, Payment, Reconciliation, Supplier,
                        Contract, User)
@@ -151,6 +173,7 @@ def create():
         )
 
         file = request.files.get('attachment')
+        _validate_upload_file(file)
         if file and file.filename:
             application.attachment = _save_file(file, 'payment_application')
 
@@ -243,6 +266,7 @@ def edit(id):
         application.apply_date = _parse_date(request.form.get('apply_date')) or application.apply_date
 
         file = request.files.get('attachment')
+        _validate_upload_file(file)
         if file and file.filename:
             new_path = _save_file(file, 'payment_application')
             if new_path:

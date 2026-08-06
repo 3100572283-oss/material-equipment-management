@@ -65,6 +65,18 @@
     </div>
 </div>
 
+
+<!-- Calculation History -->
+<div class="m-card">
+    <div class="m-card-title d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-clock-history"></i> 计算历史</span>
+        <button class="btn btn-sm btn-outline-danger" onclick="clearHistory()" style="font-size:11px;">清空</button>
+    </div>
+    <div id="historyList" style="font-size:12px;">
+        <div class="text-center text-muted py-3" id="noHistory">暂无计算记录</div>
+    </div>
+</div>
+
 <!-- 快速参考 -->
 <div class="m-card">
     <div class="m-card-title"><i class="bi bi-table"></i>常用规格参考</div>
@@ -205,6 +217,66 @@ function quickPick(type, name){
     M.toast('已选用 ' + name, 'success');
     document.getElementById('inputLength').focus();
 }
+
+
+// === P2: Calculation History ===
+function saveToHistory(){
+    var sel = document.getElementById('specName');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt) { M.toast('请先选择规格', 'warning'); return; }
+    var result = document.getElementById('resultValue').textContent;
+    if (result === '0.000') { M.toast('请先输入计算参数', 'warning'); return; }
+
+    var record = {
+        time: new Date().toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}),
+        type: document.getElementById('specType').selectedOptions[0].text,
+        spec: opt.value,
+        weight: opt.dataset.weight,
+        result: result,
+        ton: document.getElementById('resultTon').textContent
+    };
+
+    var history = JSON.parse(localStorage.getItem('steelCalcHistory') || '[]');
+    history.unshift(record);
+    if (history.length > 20) history = history.slice(0, 20);
+    localStorage.setItem('steelCalcHistory', JSON.stringify(history));
+    renderHistory();
+    M.toast('已保存到历史记录', 'success');
+}
+
+function renderHistory(){
+    var history = JSON.parse(localStorage.getItem('steelCalcHistory') || '[]');
+    var container = document.getElementById('historyList');
+    if (history.length === 0){
+        container.innerHTML = '<div class="text-center text-muted py-3" id="noHistory">暂无计算记录</div>';
+        return;
+    }
+    var html = '';
+    history.forEach(function(r, i){
+        html += '<div class="d-flex justify-content-between align-items-center py-2 border-bottom">';
+        html += '<div>';
+        html += '<div style="font-weight:600;color:#212529;">' + r.spec + '</div>';
+        html += '<div style="color:#6c757d;font-size:11px;">' + r.time + ' | ' + r.type + '</div>';
+        html += '</div>';
+        html += '<div class="text-end">';
+        html += '<div style="font-weight:700;color:#165DFF;">' + r.result + ' kg</div>';
+        html += '<div style="color:#6c757d;font-size:11px;">' + r.ton + ' 吨</div>';
+        html += '</div>';
+        html += '</div>';
+    });
+    container.innerHTML = html;
+}
+
+function clearHistory(){
+    if (confirm('确认清空所有计算历史？')){
+        localStorage.removeItem('steelCalcHistory');
+        renderHistory();
+        M.toast('已清空', 'success');
+    }
+}
+
+// Initialize history on load
+renderHistory();
 
 // 初始化
 onTypeChange();

@@ -1,3 +1,4 @@
+import re
 import os
 import shutil
 from datetime import datetime
@@ -6,6 +7,28 @@ from flask import (render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.admin import bp
+
+# P2: 文件上传扩展名校验
+def _validate_upload_file(file):
+    """校验上传文件扩展名，不通过则abort 400"""
+    if file and file.filename:
+        from app.utils import validate_file_extension
+        from flask import abort
+        ok, err = validate_file_extension(file.filename)
+        if not ok:
+            abort(400, err)
+    return file
+
+def _validate_upload_files(files):
+    """校验上传文件列表扩展名，不通过则abort 400"""
+    from app.utils import validate_file_extension
+    from flask import abort
+    for f in files:
+        if f and f.filename:
+            ok, err = validate_file_extension(f.filename)
+            if not ok:
+                abort(400, err)
+
 from app.decorators import admin_required, log_audit
 from app.models import User, SystemConfig, OperationLog, SysDept, SysRole, Project, SysUserProject, SysRoleDataScope
 from app import db
@@ -155,6 +178,11 @@ def create_user():
             flash('用户名和密码不能为空', 'error')
             return redirect(url_for('admin.create_user'))
 
+        # P1安全加固: 密码复杂度验证
+        if len(password) < 8 or not (re.search(r'[a-z]', password) and re.search(r'[A-Z]', password) and re.search(r'[0-9]', password)):
+            flash('密码必须至少8位，且包含大写字母、小写字母和数字', 'error')
+            return redirect(url_for('admin.create_user'))
+
         if User.query.filter_by(username=username).first():
             flash('用户名已存在', 'error')
             return redirect(url_for('admin.create_user'))
@@ -251,6 +279,10 @@ def edit_user(id):
         # 重置密码
         new_password = request.form.get('new_password', '')
         if new_password:
+            # P1安全加固: 密码复杂度验证
+            if len(new_password) < 8 or not (re.search(r'[a-z]', new_password) and re.search(r'[A-Z]', new_password) and re.search(r'[0-9]', new_password)):
+                flash('密码必须至少8位，且包含大写字母、小写字母和数字', 'error')
+                return redirect(url_for('admin.edit_user', id=user.id))
             from werkzeug.security import generate_password_hash
             user.password_hash = generate_password_hash(new_password, method='pbkdf2:sha256')
 
@@ -334,8 +366,8 @@ def reset_password(id):
         if new_password != confirm_password:
             flash('两次输入的密码不一致', 'error')
             return redirect(url_for('admin.reset_password', id=id))
-        if len(new_password) < 6:
-            flash('密码长度不能少于6位', 'error')
+        if len(new_password) < 8 or not (re.search(r'[a-z]', new_password) and re.search(r'[A-Z]', new_password) and re.search(r'[0-9]', new_password)):
+            flash('密码必须至少8位，且包含大写字母、小写字母和数字', 'error')
             return redirect(url_for('admin.reset_password', id=id))
 
         from werkzeug.security import generate_password_hash
@@ -433,6 +465,7 @@ def import_users():
         import os
 
         file = request.files.get('file')
+        _validate_upload_file(file)
         if not file or not file.filename:
             flash('请选择要导入的Excel文件', 'error')
             return redirect(url_for('admin.import_users'))
@@ -653,6 +686,7 @@ def delete_backup(filename):
 @log_audit(module='admin', operation='还原')
 def restore_backup():
     file = request.files.get('backup_file')
+    _validate_upload_file(file)
     if not file or not file.filename.endswith('.db'):
         flash('请上传有效的 .db 备份文件', 'error')
         return redirect(url_for('admin.backup_index'))
@@ -815,6 +849,12 @@ def audit_log_detail(id):
     from app.models import SysOperationLog, DataChangeLog
     log = SysOperationLog.query.get_or_404(id)
     import json
+
+@bp.route("/")
+@login_required
+@admin_required
+def index():
+    return redirect(url_for("admin.users"))
     params = json.loads(log.params) if log.params else {}
     changes = json.loads(log.changes) if log.changes else {}
     change_logs = DataChangeLog.query.filter_by(record_id=log.biz_id).all() if log.biz_id else []
@@ -1289,7 +1329,7 @@ def online_users():
         LoginLog.user_id != None,
         LoginLog.logout_time == None,
         db.or_(LoginLog.last_active_at >= cutoff, LoginLog.login_time >= cutoff)
-    ).order_by(LoginLog.last_active_at.desc().nullslast(), LoginLog.login_time.desc())
+    ).order_by(LoginLog.last_active_at.desc(), LoginLog.login_time.desc())
 
     all_logins = query.all()
 

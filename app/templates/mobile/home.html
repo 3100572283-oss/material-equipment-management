@@ -76,16 +76,62 @@
         {% if pending_qc > 0 %}<span class="count">{{ pending_qc }}</span>{% endif %}
         <i class="bi bi-chevron-right arrow"></i>
     </a>
-    {% if pending_qc == 0 and pending_approval_count == 0 and today_in_count == 0 and today_out_count == 0 %}
+    <a href="{{ url_for('mobile.messages') }}" class="m-todo-item">
+        <div class="icon"><i class="bi bi-chat-dots"></i></div>
+        <div class="text">站内消息</div>
+        {% if unread_message_count > 0 %}<span class="count">{{ unread_message_count }}</span>{% endif %}
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    <a href="{{ url_for('mobile.purchase_request') }}" class="m-todo-item">
+        <div class="icon"><i class="bi bi-cart-plus"></i></div>
+        <div class="text">采购申请</div>
+        <i class="bi bi-chevron-right arrow"></i>
+    </a>
+    {% if pending_qc == 0 and pending_approval_count == 0 and today_in_count == 0 and today_out_count == 0 and unread_message_count == 0 %}
     <div style="text-align:center; padding:20px; color:#adb5bd; font-size:13px;">
         <i class="bi bi-check-circle" style="font-size:32px;display:block;margin-bottom:6px;"></i>
         暂无待办事项
     </div>
     {% endif %}
 </div>
+
+<!-- 快捷功能由 MobileQuickEdit 动态渲染，合同/调拨/计算器已纳入可选池 -->
 {% endblock %}
 
 {% block extra_js %}
+
+<script>
+// P2: Mobile Geolocation
+function getLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            function(pos) {
+                var lat = pos.coords.latitude.toFixed(6);
+                var lng = pos.coords.longitude.toFixed(6);
+                var acc = pos.coords.accuracy.toFixed(1);
+                fetch('/mobile/api/location', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({lat: lat, lng: lng, accuracy: acc})
+                }).then(r => r.json()).then(data => {
+                    if (data.success) {
+                        console.log('Location updated:', lat, lng);
+                    }
+                }).catch(e => console.log('Location update failed:', e));
+            },
+            function(err) {
+                console.log('Geolocation error:', err.message);
+            },
+            {enableHighAccuracy: true, timeout: 10000, maximumAge: 300000}
+        );
+    }
+}
+document.addEventListener('DOMContentLoaded', function() {
+    getLocation();
+    setInterval(getLocation, 300000);
+});
+</script>
+
 <script>
 function quickScan(){
     MobileScanner.open(function(code){
@@ -93,7 +139,6 @@ function quickScan(){
     });
 }
 
-// 快捷功能自定义（功能池由 Jinja 渲染 Flask 路由 URL）
 var quickAvailable = [
     { key: 'stock_in', label: '入库登记', icon: 'bi-box-arrow-in-down', color: 'blue', url: "{{ url_for('mobile.stock_in_new') }}" },
     { key: 'stock_out', label: '出库登记', icon: 'bi-box-arrow-up', color: 'green', url: "{{ url_for('mobile.stock_out_new') }}" },
@@ -105,8 +150,14 @@ var quickAvailable = [
     { key: 'turnover_borrow', label: '周转材领用', icon: 'bi-box-seam', color: 'amber', url: "{{ url_for('mobile.turnover_borrow') }}" },
     { key: 'turnover_return', label: '周转材归还', icon: 'bi-arrow-counterclockwise', color: 'teal', url: "{{ url_for('mobile.turnover_list') }}" },
     { key: 'pr', label: '领料申请', icon: 'bi-file-earmark-text', color: 'warning', url: "{{ url_for('mobile.pr_list') }}" },
+    { key: 'purchase_request', label: '采购申请', icon: 'bi-cart-plus', color: 'info', url: "{{ url_for('mobile.purchase_request') }}" },
+    { key: 'messages', label: '消息中心', icon: 'bi-chat-dots', color: 'purple', url: "{{ url_for('mobile.messages') }}" },
+    { key: 'ai_assistant', label: 'AI助手', icon: 'bi-robot', color: 'blue', url: "javascript:void(0)" },
     { key: 'scrap', label: '报废申请', icon: 'bi-trash', color: 'danger', url: "{{ url_for('mobile.scrap_list') }}" },
-    { key: 'scan', label: '扫码查询', icon: 'bi-qr-code-scan', color: 'pink', url: 'javascript:quickScan()' }
+    { key: 'scan', label: '扫码查询', icon: 'bi-qr-code-scan', color: 'pink', url: 'javascript:quickScan()' },
+    { key: 'contract_list', label: '合同查看', icon: 'bi-file-earmark-text', color: 'blue', url: "{{ url_for('mobile.m_contract_list') }}" },
+    { key: 'transfer_list', label: '调拨申请', icon: 'bi-arrow-left-right', color: 'orange', url: "{{ url_for('mobile.m_transfer_list') }}" },
+    { key: 'calculator', label: '工程计算器', icon: 'bi-calculator', color: 'purple', url: "{{ url_for('mobile.m_calculator') }}" }
 ];
 MobileQuickEdit.init({
     available: quickAvailable,
@@ -115,7 +166,6 @@ MobileQuickEdit.init({
 });
 MobileQuickEdit.render(document.getElementById('quickGrid'));
 
-// 红点提示：待审批 / 设备巡检（若用户将这些功能加入首页则显示）
 (function(){
     var approvalCount = {{ pending_approval_count }};
     var inspectionCount = {{ pending_inspection_count }};
@@ -137,11 +187,20 @@ MobileQuickEdit.render(document.getElementById('quickGrid'));
             btn.appendChild(badge);
         }
     }
+    var msgCount = {{ unread_message_count }};
+    if (msgCount > 0) {
+        var msgBtn = document.querySelector('#quickGrid .m-quick-btn[data-key="messages"]');
+        if (msgBtn) {
+            var badge = document.createElement('span');
+            badge.className = 'm-badge-dot';
+            badge.textContent = msgCount;
+            msgBtn.appendChild(badge);
+        }
+    }
 })();
 
 window.openQuickEditor = function() { MobileQuickEdit.openEditor(); };
 
-// 下拉刷新
 if (window.MobilePullRefresh) {
     MobilePullRefresh.bindRefresh({
         onRefresh: function(done){

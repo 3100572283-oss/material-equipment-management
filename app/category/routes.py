@@ -106,8 +106,8 @@ def api_tree():
 def api_children(parent_id):
     """返回指定父级的子分类列表JSON（公司级统一分类）。"""
     query = Category.query.filter_by(source='company')
-    if parent_id == 0:
-        query = query.filter_by(parent_id=0)
+    if parent_id is None:
+        query = query.filter_by(parent_id=None)
     else:
         query = query.filter_by(parent_id=parent_id)
 

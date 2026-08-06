@@ -1,0 +1,114 @@
+{% extends "mobile/base.html" %}
+{% block title %}合同详情{% endblock %}
+{% block nav_title %}合同详情{% endblock %}
+
+{% block content %}
+<!-- 合同基本信息 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-file-earmark-text" style="color:#165DFF;"></i> {{ contract.code }}</div>
+    <div style="font-size:15px; font-weight:600; color:#212529; margin-bottom:10px;">{{ contract.name }}</div>
+    <div style="border-top:1px solid #e9ecef; padding-top:10px;">
+        <div style="display:flex; margin-bottom:8px;">
+            <span style="width:80px; font-size:13px; color:#6c757d; flex-shrink:0;">合同类型</span>
+            <span style="font-size:13px; color:#212529;">{{ contract.contract_type or '-' }}</span>
+        </div>
+        <div style="display:flex; margin-bottom:8px;">
+            <span style="width:80px; font-size:13px; color:#6c757d; flex-shrink:0;">供应商</span>
+            <span style="font-size:13px; color:#212529;">{{ contract.supplier.name if contract.supplier else '-' }}</span>
+        </div>
+        <div style="display:flex; margin-bottom:8px;">
+            <span style="width:80px; font-size:13px; color:#6c757d; flex-shrink:0;">签订日期</span>
+            <span style="font-size:13px; color:#212529;">{{ contract.sign_date.strftime('%Y-%m-%d') if contract.sign_date else '-' }}</span>
+        </div>
+        <div style="display:flex; margin-bottom:8px;">
+            <span style="width:80px; font-size:13px; color:#6c757d; flex-shrink:0;">合同金额</span>
+            <span style="font-size:14px; font-weight:600; color:#165DFF;">{{ '%.2f'|format(contract.amount_with_tax or 0) }} 元</span>
+        </div>
+        <div style="display:flex; margin-bottom:8px;">
+            <span style="width:80px; font-size:13px; color:#6c757d; flex-shrink:0;">税率</span>
+            <span style="font-size:13px; color:#212529;">{{ contract.tax_rate or 0 }}%</span>
+        </div>
+        <div style="display:flex;">
+            <span style="width:80px; font-size:13px; color:#6c757d; flex-shrink:0;">状态</span>
+            <span style="font-size:12px; padding:2px 8px; border-radius:10px;
+                {% if contract.status == '正常履约' %}background:#d1e7dd; color:#0f5132;
+                {% elif contract.status == '已结算' %}background:#e2e3e5; color:#6c757d;
+                {% else %}background:#fff3cd; color:#664d03;{% endif %}">{{ contract.status }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- 付款概览 -->
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-cash-coin" style="color:#198754;"></i> 付款概览</div>
+    <div style="display:flex; text-align:center;">
+        <div style="flex:1;">
+            <div style="font-size:12px; color:#6c757d;">合同金额</div>
+            <div style="font-size:15px; font-weight:600; margin-top:4px;">{{ '%.2f'|format(contract.amount_with_tax or 0) }}</div>
+        </div>
+        <div style="flex:1; border-left:1px solid #e9ecef; border-right:1px solid #e9ecef;">
+            <div style="font-size:12px; color:#6c757d;">已付款</div>
+            <div style="font-size:15px; font-weight:600; color:#198754; margin-top:4px;">{{ '%.2f'|format(paid_amount) }}</div>
+        </div>
+        <div style="flex:1;">
+            <div style="font-size:12px; color:#6c757d;">已开票</div>
+            <div style="font-size:15px; font-weight:600; color:#0dcaf0; margin-top:4px;">{{ '%.2f'|format(invoiced_amount) }}</div>
+        </div>
+    </div>
+    {% if contract.amount_with_tax and contract.amount_with_tax > 0 %}
+    <div style="margin-top:12px;">
+        <div style="height:6px; background:#e9ecef; border-radius:3px; overflow:hidden;">
+            <div style="height:100%; background:#198754; border-radius:3px; width:{{ (paid_amount / contract.amount_with_tax * 100)|round(1) }}%;"></div>
+        </div>
+        <div style="text-align:center; font-size:12px; color:#6c757d; margin-top:4px;">已付 {{ (paid_amount / contract.amount_with_tax * 100)|round(1) }}%</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 合同明细 -->
+{% if items %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-list-ul" style="color:#165DFF;"></i> 合同明细</div>
+    {% for item in items %}
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; {% if not loop.last %}border-bottom:1px solid #f1f3f5;{% endif %}">
+        <div>
+            <div style="font-size:14px; font-weight:500; color:#212529;">{{ item.material_name }}</div>
+            <div style="font-size:12px; color:#adb5bd; margin-top:2px;">{{ item.specification or '' }} {{ item.unit or '' }}</div>
+        </div>
+        <div style="text-align:right;">
+            <div style="font-size:14px; font-weight:600;">{{ '%.2f'|format(item.quantity or 0) }}</div>
+            <div style="font-size:12px; color:#adb5bd;">{{ '%.2f'|format(item.unit_price or 0) }}/单位</div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- 付款记录 -->
+{% if payments %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-credit-card" style="color:#198754;"></i> 付款记录</div>
+    {% for p in payments %}
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; {% if not loop.last %}border-bottom:1px solid #f1f3f5;{% endif %}">
+        <div>
+            <div style="font-size:14px; font-weight:600; color:#198754;">{{ '%.2f'|format(p.amount or 0) }} 元</div>
+            <div style="font-size:12px; color:#adb5bd; margin-top:2px;">{{ p.payment_date.strftime('%Y-%m-%d') if p.payment_date else '' }}</div>
+        </div>
+        <span style="font-size:12px; padding:2px 8px; border-radius:10px; background:#cff4fc; color:#055160;">{{ p.payment_method or '' }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- 备注 -->
+{% if contract.remark %}
+<div class="m-card">
+    <div class="m-card-title"><i class="bi bi-chat-square-text" style="color:#6c757d;"></i> 备注</div>
+    <div style="font-size:13px; color:#495057; line-height:1.6;">{{ contract.remark }}</div>
+</div>
+{% endif %}
+
+<a href="{{ url_for('mobile.m_contract_list') }}" class="m-btn m-btn-outline m-btn-block" style="margin-top:4px;">
+    <i class="bi bi-arrow-left" style="margin-right:6px;"></i>返回列表
+</a>
+{% endblock %}

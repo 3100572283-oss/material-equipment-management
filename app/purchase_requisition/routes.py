@@ -189,7 +189,7 @@ def create():
 
     from app.approval.service import is_approval_enabled
     approval_enabled = is_approval_enabled('purchase_requisition', project_id)
-    categories = Category.query.filter_by(project_id=project_id, parent_id=0).order_by(Category.sort_order).all()
+    categories = Category.query.filter(Category.project_id == project_id, Category.parent_id.is_(None)).order_by(Category.sort_order).all()
     materials_raw = get_project_materials(project_id, common_only=True).all()
     materials = [{'id': m.id, 'name': m.name, 'specification': m.specification or '', 'unit': m.unit or ''} for m in materials_raw]
 
@@ -305,7 +305,7 @@ def edit(id):
 
     from app.approval.service import is_approval_enabled
     approval_enabled = is_approval_enabled('purchase_requisition', pr.project_id)
-    categories = Category.query.filter_by(project_id=pr.project_id, parent_id=0).order_by(Category.sort_order).all()
+    categories = Category.query.filter(Category.project_id == pr.project_id, Category.parent_id.is_(None)).order_by(Category.sort_order).all()
     materials_raw = get_project_materials(pr.project_id, common_only=True).all()
     materials = [{'id': m.id, 'name': m.name, 'specification': m.specification or '', 'unit': m.unit or ''} for m in materials_raw]
     return render_template('purchase_requisition/form.html', pr=pr,

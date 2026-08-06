@@ -82,12 +82,12 @@ function toggleBatch(categoryId) {
                 showToast('已关闭批次管理', 'secondary');
             }
         } else {
-            alert('操作失败：' + (data.message || '未知错误'));
+            customAlert('操作失败：' + (data.message || '未知错误'));
             location.reload();
         }
     }).catch(function(err) {
         console.error(err);
-        alert('请求失败，请稍后重试');
+        customAlert('请求失败，请稍后重试');
         location.reload();
     });
 }

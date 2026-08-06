@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}采购订单详情 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-cart3 me-2"></i>采购订单详情</h5>
+        <div>
+            <a href="{{ url_for('purchase_order.index') }}" class="btn btn-sm btn-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+            {% if current_user.can_edit() and po.status == 'draft' %}
+            <a href="{{ url_for('purchase_order.edit', id=po.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>编辑</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <table class="table table-bordered">
+            <tr>
+                <th style="width:120px">采购订单号</th>
+                <td>{{ po.po_number }}</td>
+                <th style="width:120px">状态</th>
+                <td>
+                    {% if po.status == 'draft' %}<span class="badge bg-secondary">草稿</span>
+                    {% elif po.status == 'submitted' %}<span class="badge bg-warning text-dark">已提交</span>
+                    {% elif po.status == 'approved' %}<span class="badge bg-success">已审批</span>
+                    {% elif po.status == 'received' %}<span class="badge bg-info">已收货</span>
+                    {% elif po.status == 'closed' %}<span class="badge bg-dark">已关闭</span>{% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th>供应商</th>
+                <td>{{ po.supplier.name if po.supplier else '-' }}</td>
+                <th>创建人</th>
+                <td>{{ po.creator.name if po.creator else '-' }}</td>
+            </tr>
+            <tr>
+                <th>创建时间</th>
+                <td>{{ po.created_at.strftime('%Y-%m-%d %H:%M') if po.created_at else '-' }}</td>
+                <th>总金额</th>
+                <td class="fw-bold text-danger">{{ '%.2f'|format(po.total_amount or 0) }}</td>
+            </tr>
+            {% if po.remark %}
+            <tr>
+                <th>备注</th>
+                <td colspan="3">{{ po.remark }}</td>
+            </tr>
+            {% endif %}
+        </table>
+
+        <h6 class="mt-4 mb-2">采购明细</h6>
+        <div class="table-responsive">
+            <table class="table table-striped table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>物资名称</th>
+                        <th class="text-end">数量</th>
+                        <th class="text-end">单价</th>
+                        <th class="text-end">小计</th>
+                        <th>备注</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>{{ item.material.name if item.material else '-' }}</td>
+                        <td class="text-end">{{ item.quantity }}</td>
+                        <td class="text-end">{{ item.unit_price }}</td>
+                        <td class="text-end fw-bold">{{ '%.2f'|format(item.total_price or 0) }}</td>
+                        <td>{{ item.remark or '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted">暂无明细</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <td colspan="3" class="text-end fw-bold">合计：</td>
+                        <td class="text-end fw-bold text-danger">{{ '%.2f'|format(po.total_amount or 0) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        {% if current_user.can_edit() %}
+        <div class="mt-4">
+            {% if po.status == 'draft' %}
+            <form method="POST" action="{{ url_for('purchase_order.submit', id=po.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-warning btn-sm"><i class="bi bi-send me-1"></i>提交</button>
+            </form>
+            <form method="POST" action="{{ url_for('purchase_order.delete', id=po.id) }}" style="display:inline" onsubmit="return confirm('确认删除？')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-trash me-1"></i>删除</button>
+            </form>
+            {% elif po.status == 'submitted' %}
+            <form method="POST" action="{{ url_for('purchase_order.approve', id=po.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-check-lg me-1"></i>审批通过</button>
+            </form>
+            {% elif po.status == 'approved' %}
+            <form method="POST" action="{{ url_for('purchase_order.receive', id=po.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-info btn-sm"><i class="bi bi-box me-1"></i>标记收货</button>
+            </form>
+            {% elif po.status == 'received' %}
+            <form method="POST" action="{{ url_for('purchase_order.close', id=po.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-dark btn-sm"><i class="bi bi-x-circle me-1"></i>关闭订单</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -17,7 +17,7 @@ from flask import request
 from flask_login import current_user
 from app import db
 from app.models import AICallLog, AIScenePrompt
-from app.utils import get_config
+from app.utils import get_config, decrypt_secret, encrypt_secret
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ class AIService:
     def __init__(self):
         self.enabled = False
         self.api_key = ''
+        self.provider = 'doubao'
         self.model = 'doubao-1.5-pro-32k'
         self.base_url = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
         self.max_tokens = 2000
@@ -58,7 +59,8 @@ class AIService:
         """加载配置"""
         try:
             self.enabled = str(get_config('ai_enabled', 'false')).lower() == 'true'
-            self.api_key = get_config('ai_api_key', '')
+            self.provider = get_config('ai_provider', 'doubao')
+            self.api_key = decrypt_secret(get_config('ai_api_key', ''))
             self.model = get_config('ai_model', 'doubao-1.5-pro-32k')
             self.base_url = get_config('ai_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')
             try:
@@ -159,7 +161,19 @@ class AIService:
             return None, f'场景已禁用: {scene.scene_name}'
 
         if not self.enabled:
-            return None, 'AI助手未启用'
+            # P2: Degradation when AI is disabled
+            degraded = self._degrade_response(scene_code, user_message, extra_context)
+            if degraded:
+                return degraded, None
+            return None, 'AI assistant not enabled'
+
+        # P2: Monthly budget check
+        budget_ok, budget_msg = self._check_monthly_budget()
+        if not budget_ok:
+            degraded = self._degrade_response(scene_code, user_message, extra_context)
+            if degraded:
+                return degraded, None
+            return None, budget_msg
 
         messages = []
         messages.append({'role': 'system', 'content': scene.system_prompt})
@@ -178,6 +192,10 @@ class AIService:
         response_text, error = self._call_text_api(messages, scene_code)
 
         if error or not response_text:
+            # P2: Degradation on AI call failure
+            degraded = self._degrade_response(scene_code, user_message, extra_context)
+            if degraded:
+                return degraded, None
             return None, error
 
         if parse_json:
@@ -545,6 +563,135 @@ class AIService:
         """通用图片文字提取"""
         return self.recognize_with_scene('vision:ocr', image_base64, parse_json=False)
 
+
+    # ================= P2: Monthly Budget Control =================
+
+    def _check_monthly_budget(self):
+        """Check if monthly AI budget is exceeded"""
+        try:
+            budget_enabled = str(get_config('ai_monthly_budget_enabled', 'false')).lower() == 'true'
+            if not budget_enabled:
+                return True, None
+
+            budget_amount = float(get_config('ai_monthly_budget_amount', '100'))
+
+            from datetime import datetime
+            now = datetime.now()
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+            from app.models import AICallLog
+            from sqlalchemy import func
+            total_cost = db.session.query(
+                func.sum(AICallLog.cost_amount)
+            ).filter(
+                AICallLog.created_at >= month_start
+            ).scalar() or 0
+
+            if total_cost >= budget_amount:
+                msg = 'Monthly AI budget exhausted (%.2f/%.2f CNY), please contact admin' % (total_cost, budget_amount)
+                return False, msg
+
+            return True, None
+        except Exception as e:
+            logger.warning('Monthly budget check failed: %s' % e)
+            return True, None
+
+    # ================= P2: Failure Degradation Strategy =================
+
+    def _degrade_response(self, scene_code, user_message, extra_context):
+        """Provide rule-based fallback when AI is unavailable"""
+        try:
+            if scene_code == 'text:inventory_analysis' and extra_context:
+                ctx = extra_context if isinstance(extra_context, dict) else {}
+                inventory = ctx.get('inventory', [])
+                warnings = []
+                for item in inventory[:20]:
+                    name = item.get('material', item.get('name', 'N/A'))
+                    qty = float(item.get('quantity', 0))
+                    safety = float(item.get('safety_stock', 0))
+                    if safety > 0 and qty < safety:
+                        warnings.append('- **%s**: current %s, below safety stock %s, restock recommended' % (name, qty, safety))
+                    if qty == 0:
+                        warnings.append('- **%s**: zero stock, please confirm restock needed' % name)
+
+                result = '## \u5e93\u5b58\u5206\u6790\u62a5\u544a\uff08\u964d\u7ea7\u6a21\u5f0f-\u57fa\u4e8e\u89c4\u5219\uff09\n\n'
+                result += '> \u26a0\ufe0f AI\u670d\u52a1\u6682\u4e0d\u53ef\u7528\uff0c\u4ee5\u4e0b\u4e3a\u7cfb\u7edf\u89c4\u5219\u5206\u6790\u7ed3\u679c\n\n'
+                if warnings:
+                    result += '### \u4e00\u3001\u8865\u8d27\u5efa\u8bae\n' + '\n'.join(warnings) + '\n\n'
+                else:
+                    result += '### \u4e00\u3001\u8865\u8d27\u5efa\u8bae\n\u5f53\u524d\u5e93\u5b58\u5747\u5728\u5b89\u5168\u6c34\u4f4d\u4ee5\u4e0a\u3002\n\n'
+                result += '### \u4e8c\u3001\u5e93\u5b58\u6982\u89c8\n\u5171 %d \u79cd\u7269\u8d44\u5728\u5e93\u3002\n\n' % len(inventory)
+                result += '### \u4e09\u3001\u7efc\u5408\u5efa\u8bae\n\u5efa\u8bae\u8054\u7cfb\u7ba1\u7406\u5458\u6062\u590dAI\u670d\u52a1\u4ee5\u83b7\u53d6\u5b8c\u6574\u5206\u6790\u3002'
+                return result
+
+            elif scene_code == 'text:approval_opinion' and extra_context:
+                ctx = extra_context if isinstance(extra_context, dict) else {}
+                action_val = str(ctx.get('action', ''))
+                action = '\u540c\u610f' if 'approve' in action_val else '\u9a73\u56de'
+                biz_type = ctx.get('biz_type', '\u7533\u8bf7')
+                result = '## \u5ba1\u6279\u610f\u89c1\uff08\u964d\u7ea7\u6a21\u5f0f-\u6a21\u677f\u751f\u6210\uff09\n\n'
+                result += '> \u26a0\ufe0f AI\u670d\u52a1\u6682\u4e0d\u53ef\u7528\uff0c\u4ee5\u4e0b\u4e3a\u6a21\u677f\u610f\u89c1\n\n'
+                result += '\u7ecf\u5ba1\u6838\uff0c\u8be5%s\u7b26\u5408\u76f8\u5173\u7ba1\u7406\u89c4\u5b9a\uff0c' % biz_type
+                if 'approve' in action_val:
+                    result += '\u6750\u6599\u9f50\u5168\u3001\u6d41\u7a0b\u5408\u89c4\uff0c**\u540c\u610f**\u3002'
+                else:
+                    result += '\u5b58\u5728\u9700\u8865\u5145\u7684\u6750\u6599\uff0c\u5efa\u8bae**\u9a73\u56de**\u5e76\u8865\u5145\u540e\u91cd\u65b0\u63d0\u4ea4\u3002'
+                return result
+
+            elif scene_code == 'text:supplier_evaluation' and extra_context:
+                ctx = extra_context if isinstance(extra_context, dict) else {}
+                suppliers = ctx.get('suppliers', [])
+                result = '## \u4f9b\u5e94\u5546\u8bc4\u4f30\u62a5\u544a\uff08\u964d\u7ea7\u6a21\u5f0f-\u57fa\u7840\u8bc4\u4f30\uff09\n\n'
+                result += '> \u26a0\ufe0f AI\u670d\u52a1\u6682\u4e0d\u53ef\u7528\uff0c\u4ee5\u4e0b\u4e3a\u57fa\u7840\u8bc4\u4f30\n\n'
+                for s in suppliers[:10]:
+                    name = s.get('name', 'N/A')[:4] + '***'
+                    result += '- **%s**: code %s\n' % (name, s.get('code', ''))
+                result += '\n\u5efa\u8bae\u8054\u7cfb\u7ba1\u7406\u5458\u6062\u590dAI\u670d\u52a1\u4ee5\u83b7\u53d6\u5b8c\u6574\u8bc4\u4f30\u62a5\u544a\u3002'
+                return result
+
+            elif scene_code == 'text:contract_review' and extra_context:
+                ctx = extra_context if isinstance(extra_context, dict) else {}
+                contracts = ctx.get('contracts', [])
+                result = '## \u5408\u540c\u5ba1\u67e5\u62a5\u544a\uff08\u964d\u7ea7\u6a21\u5f0f-\u57fa\u7840\u68c0\u67e5\uff09\n\n'
+                result += '> \u26a0\ufe0f AI\u670d\u52a1\u6682\u4e0d\u53ef\u7528\uff0c\u4ee5\u4e0b\u4e3a\u57fa\u7840\u68c0\u67e5\n\n'
+                for c in contracts[:10]:
+                    result += '- **%s** %s: amount %s, paid %s\n' % (
+                        c.get('code', ''), c.get('name', ''),
+                        c.get('amount_with_tax', 0), c.get('paid_amount', 0))
+                result += '\n\u5efa\u8bae\u8054\u7cfb\u7ba1\u7406\u5458\u6062\u590dAI\u670d\u52a1\u4ee5\u83b7\u53d6\u5b8c\u6574\u5ba1\u67e5\u62a5\u544a\u3002'
+                return result
+
+            return None
+        except Exception as e:
+            logger.warning('Degradation strategy failed: %s' % e)
+            return 'AI service temporarily unavailable, please retry later or contact admin.'
+
+    # ================= P2: New Convenience Methods =================
+
+    def analyze_inventory(self, inventory_data):
+        """Inventory analysis (stale materials / restock suggestions)"""
+        return self.call_with_scene(
+            'text:inventory_analysis',
+            'Please analyze current inventory data for stale materials, restock suggestions and turnover analysis',
+            extra_context=inventory_data,
+        )
+
+    def evaluate_supplier(self, supplier_data):
+        """Supplier evaluation"""
+        return self.call_with_scene(
+            'text:supplier_evaluation',
+            'Please evaluate suppliers based on transaction data',
+            extra_context=supplier_data,
+        )
+
+    def review_contract(self, contract_data):
+        """Contract review"""
+        return self.call_with_scene(
+            'text:contract_review',
+            'Please review contract information',
+            extra_context=contract_data,
+        )
+
     # ================= 工具方法 =================
 
     @staticmethod
@@ -627,11 +774,20 @@ def get_ai_service():
     return ai_service
 
 
+
+
+def _mask_key(key):
+    """脱敏显示API Key"""
+    if not key or len(key) < 8:
+        return key or ''
+    return key[:4] + '*' * (len(key) - 8) + key[-4:]
+
 def get_ai_config():
     """获取AI配置"""
     return {
         'enabled': get_config('ai_enabled', 'false') == 'true',
-        'api_key': get_config('ai_api_key', ''),
+        'provider': get_config('ai_provider', 'doubao'),
+        'api_key': _mask_key(decrypt_secret(get_config('ai_api_key', ''))),
         'model': get_config('ai_model', 'doubao-1.5-pro-32k'),
         'base_url': get_config('ai_base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'),
         'max_tokens': int(get_config('ai_max_tokens', '2000')),
@@ -653,7 +809,8 @@ def save_ai_config(config):
 
     configs = [
         ('ai_enabled', config.get('enabled', 'false')),
-        ('ai_api_key', config.get('api_key', '')),
+        ('ai_provider', config.get('provider', 'doubao')),
+        ('ai_api_key', encrypt_secret(config.get('api_key', '')) if config.get('api_key', '') and not config.get('api_key', '').startswith('ENC:') else config.get('api_key', '')),
         ('ai_model', config.get('model', 'doubao-1.5-pro-32k')),
         ('ai_base_url', config.get('base_url', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions')),
         ('ai_max_tokens', str(config.get('max_tokens', 2000))),

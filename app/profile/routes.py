@@ -6,6 +6,12 @@ from app.models import User
 import json
 from app.decorators import log_audit
 
+@bp.route("/")
+@login_required
+def index():
+    return redirect(url_for("profile.settings"))
+
+
 @bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 @log_audit(module='profile', operation='保存个人设置')

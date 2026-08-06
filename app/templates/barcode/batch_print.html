@@ -111,7 +111,7 @@
 
     document.getElementById('batchPreviewBtn').addEventListener('click', function() {
         var ids = getSelectedIds();
-        if (ids.length === 0) { alert('请至少选择一个物资'); return; }
+        if (ids.length === 0) { customAlert('请至少选择一个物资'); return; }
         var params = new URLSearchParams();
         ids.forEach(function(id) { params.append('material_id', id); });
         params.append('label_size', document.getElementById('batchLabelSize').value);
@@ -122,7 +122,7 @@
 
     document.getElementById('batchGenerateBtn').addEventListener('click', function() {
         var ids = getSelectedIds();
-        if (ids.length === 0) { alert('请至少选择一个物资'); return; }
+        if (ids.length === 0) { customAlert('请至少选择一个物资'); return; }
         var formData = new FormData();
         ids.forEach(function(id) { formData.append('material_ids', id); });
         formData.append('label_size', document.getElementById('batchLabelSize').value);
@@ -160,7 +160,7 @@
                 msg.textContent = data.message || '生成失败';
                 area.style.display = '';
             }
-        }).catch(function(err) { alert('请求失败：' + err); });
+        }).catch(function(err) { customAlert('请求失败：' + err); });
     });
 })();
 </script>

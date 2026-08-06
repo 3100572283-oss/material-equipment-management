@@ -64,7 +64,7 @@ def check():
     # 1. 未审核的入库单
     unchecked = StockIn.query.filter(
         StockIn.project_id == project_id,
-        func.strftime('%Y-%m', StockIn.stock_in_date) == period,
+        func.date_format(StockIn.stock_in_date, '%Y-%m') == period,
         StockIn.approval_status != 'passed'
     ).count()
     if unchecked > 0:
@@ -73,7 +73,7 @@ def check():
     # 2. 未对账的入库单
     unreconciled = StockIn.query.filter(
         StockIn.project_id == project_id,
-        func.strftime('%Y-%m', StockIn.stock_in_date) == period,
+        func.date_format(StockIn.stock_in_date, '%Y-%m') == period,
         StockIn.is_reconciled == False
     ).count()
     if unreconciled > 0:
@@ -82,7 +82,7 @@ def check():
     # 3. 未审批的出库单
     unapproved_out = StockOut.query.filter(
         StockOut.project_id == project_id,
-        func.strftime('%Y-%m', StockOut.stock_out_date) == period,
+        func.date_format(StockOut.stock_out_date, '%Y-%m') == period,
         StockOut.approval_status != 'passed'
     ).count()
     if unapproved_out > 0:

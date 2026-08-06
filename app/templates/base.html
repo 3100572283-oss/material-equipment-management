@@ -9,7 +9,12 @@
     <title>{% block title %}物资设备管理系统{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}?v=20260721b">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}?v=20260806p2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/p2-enhancements.css') }}?v=20260806p2">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/datepicker.css') }}?v=20260721b">
     <script>
         // 提前加载主题，防止页面闪烁
@@ -167,6 +172,43 @@
     {% endif %}
     </style>
     {% block extra_css %}{% endblock %}
+    <!-- P1-7: CSRF保护 - 自动注入token到所有表单 -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+    (function() {
+        // AJAX请求自动携带CSRF token
+        var originalOpen = XMLHttpRequest.prototype.open;
+        var originalSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this._method = method;
+            return originalOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function(body) {
+            if (this._method && this._method.toUpperCase() === 'POST') {
+                var token = document.querySelector('meta[name="csrf-token"]');
+                if (token) {
+                    this.setRequestHeader('X-CSRFToken', token.getAttribute('content'));
+                }
+            }
+            return originalSend.apply(this, arguments);
+        };
+        // 页面加载后自动为所有表单添加CSRF token
+        document.addEventListener('DOMContentLoaded', function() {
+            var token = document.querySelector('meta[name="csrf-token"]');
+            if (token) {
+                document.querySelectorAll('form').forEach(function(form) {
+                    if (form.method && form.method.toUpperCase() === 'POST' && !form.querySelector('input[name="csrf_token"]')) {
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'csrf_token';
+                        input.value = token.getAttribute('content');
+                        form.appendChild(input);
+                    }
+                });
+            }
+        });
+    })();
+    </script>
 </head>
 <body>
     <div class="d-flex" id="wrapper">
@@ -607,7 +649,7 @@
     </div>
 
     <!-- AI助手悬浮球 -->
-    <button id="aiFloatButton" class="ai-float-btn" style="display:none;" aria-label="AI助手">
+    <button id="aiFloatButton" class="ai-float-btn" style="display:none;" aria-label="AI助手" draggable="false" ondragstart="return false;">
         <i class="bi bi-robot"></i>
     </button>
 
@@ -1212,5 +1254,730 @@
         pollTimer = setInterval(updateUnreadCount, 30000);
     })();
     </script>
+
+<!-- AI助手浮动按钮 + 聊天面板 JS -->
+<script>
+(function() {
+    var aiBtn = document.getElementById('aiFloatButton');
+    var aiPanel = document.getElementById('aiChatPanel');
+    var aiOverlay = document.getElementById('aiChatOverlay');
+    var aiClose = document.getElementById('aiCloseBtn');
+    var aiInput = document.getElementById('aiInput');
+    var aiSend = document.getElementById('aiSendBtn');
+    var aiMessages = document.getElementById('aiChatMessages');
+    var aiQuickBtns = document.querySelectorAll('.ai-quick-btn');
+    var csrfToken = '';
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    if (csrfMeta) csrfToken = csrfMeta.getAttribute('content');
+    
+    if (!aiBtn || !aiPanel) return;
+    
+    // 检查AI是否启用
+    fetch('/ai/is_enabled').then(function(r) { return r.json(); }).then(function(data) {
+        if (data.enabled) {
+            aiBtn.style.display = '';
+            // 欢迎消息
+            if (aiMessages && aiMessages.children.length === 0) {
+                var welcome = document.createElement('div');
+                welcome.className = 'ai-msg ai-msg-bot';
+                welcome.innerHTML = '<div class="ai-bubble">您好！我是AI智能助手，可以帮您查询库存、分析数据、总结记录等。请问有什么可以帮您的？</div>';
+                aiMessages.appendChild(welcome);
+            }
+        }
+    }).catch(function() {});
+    
+    // ========== AI按钮拖拽功能 ==========
+    var dragData = {
+        isDragging: false,
+        startX: 0,
+        startY: 0,
+        startLeft: 0,
+        startTop: 0,
+        hasMoved: false
+    };
+    var DRAG_THRESHOLD = 5;
+    var POSITION_KEY = 'aiFloatBtnPos';
+
+    // 恢复保存的位置
+    function restoreAIPosition() {
+        try {
+            var saved = JSON.parse(localStorage.getItem(POSITION_KEY));
+            if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+                var maxLeft = window.innerWidth - aiBtn.offsetWidth;
+                var maxTop = window.innerHeight - aiBtn.offsetHeight;
+                var left = Math.max(0, Math.min(saved.left, maxLeft));
+                var top = Math.max(0, Math.min(saved.top, maxTop));
+                aiBtn.style.left = left + 'px';
+                aiBtn.style.top = top + 'px';
+                aiBtn.style.right = 'auto';
+                aiBtn.style.bottom = 'auto';
+            }
+        } catch(e) {}
+    }
+    restoreAIPosition();
+
+    // 保存位置
+    function saveAIPosition() {
+        var rect = aiBtn.getBoundingClientRect();
+        try {
+            localStorage.setItem(POSITION_KEY, JSON.stringify({
+                left: rect.left,
+                top: rect.top
+            }));
+        } catch(e) {}
+    }
+
+    // 获取事件坐标（兼容鼠标和触摸）
+    function getEventPoint(e) {
+        if (e.touches && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    // 拖拽开始
+    function onAIDragStart(e) {
+        // 阻止默认行为和事件传播，防止浏览器原生拖拽/文本选中等干扰
+        if (e.type === 'mousedown') {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        var point = getEventPoint(e);
+        var rect = aiBtn.getBoundingClientRect();
+        dragData.isDragging = false;
+        dragData.hasMoved = false;
+        dragData.startX = point.x;
+        dragData.startY = point.y;
+        dragData.startLeft = rect.left;
+        dragData.startTop = rect.top;
+        // 立即清除right/bottom，准备用left/top定位
+        aiBtn.style.right = 'auto';
+        aiBtn.style.bottom = 'auto';
+        // 视觉反馈
+        aiBtn.style.cursor = 'grabbing';
+        document.addEventListener('mousemove', onAIDragMove);
+        document.addEventListener('mouseup', onAIDragEnd);
+        document.addEventListener('touchmove', onAIDragMove, { passive: false });
+        document.addEventListener('touchend', onAIDragEnd);
+    }
+
+    // 拖拽移动
+    function onAIDragMove(e) {
+        var point = getEventPoint(e);
+        var dx = point.x - dragData.startX;
+        var dy = point.y - dragData.startY;
+        if (!dragData.isDragging) {
+            if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) {
+                return;
+            }
+            dragData.isDragging = true;
+            dragData.hasMoved = true;
+            aiBtn.classList.add('dragging');
+            // 确保清除right/bottom，使用left/top定位
+            aiBtn.style.right = 'auto';
+            aiBtn.style.bottom = 'auto';
+            aiBtn.style.cursor = 'grabbing';
+        }
+        if (e.cancelable) e.preventDefault();
+        var newLeft = dragData.startLeft + dx;
+        var newTop = dragData.startTop + dy;
+        var maxLeft = window.innerWidth - aiBtn.offsetWidth;
+        var maxTop = window.innerHeight - aiBtn.offsetHeight;
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+        aiBtn.style.left = newLeft + 'px';
+        aiBtn.style.top = newTop + 'px';
+    }
+
+    // 拖拽结束
+    function onAIDragEnd() {
+        document.removeEventListener('mousemove', onAIDragMove);
+        document.removeEventListener('mouseup', onAIDragEnd);
+        document.removeEventListener('touchmove', onAIDragMove);
+        document.removeEventListener('touchend', onAIDragEnd);
+        aiBtn.classList.remove('dragging');
+        // 恢复cursor
+        aiBtn.style.cursor = '';
+        if (dragData.isDragging) {
+            saveAIPosition();
+        }
+    }
+
+    // 注册拖拽事件
+    aiBtn.addEventListener('mousedown', onAIDragStart);
+    aiBtn.addEventListener('touchstart', onAIDragStart, { passive: true });
+
+    // 打开聊天面板（区分点击和拖拽）
+    aiBtn.addEventListener('click', function(e) {
+        if (dragData.hasMoved) {
+            dragData.hasMoved = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        aiPanel.classList.add('show');
+        if (aiOverlay) aiOverlay.style.display = '';
+        if (aiInput) setTimeout(function() { aiInput.focus(); }, 300);
+    });
+    
+    // 关闭聊天面板
+    if (aiClose) {
+        aiClose.addEventListener('click', function() {
+            aiPanel.classList.remove('show');
+            if (aiOverlay) aiOverlay.style.display = 'none';
+        });
+    }
+    if (aiOverlay) {
+        aiOverlay.addEventListener('click', function() {
+            aiPanel.classList.remove('show');
+            aiOverlay.style.display = 'none';
+        });
+    }
+    
+    // 发送消息
+    function sendMsg(msg) {
+        if (!msg || !msg.trim()) return;
+        msg = msg.trim();
+        
+        // 添加用户消息
+        var userDiv = document.createElement('div');
+        userDiv.className = 'ai-msg ai-msg-user';
+        userDiv.innerHTML = '<div class="ai-bubble">' + escapeHtml(msg) + '</div>';
+        aiMessages.appendChild(userDiv);
+        aiMessages.scrollTop = aiMessages.scrollHeight;
+        
+        // 清空输入
+        if (aiInput) aiInput.value = '';
+        
+        // 显示typing
+        var typingDiv = document.createElement('div');
+        typingDiv.className = 'ai-msg ai-msg-bot';
+        typingDiv.id = 'aiTyping';
+        typingDiv.innerHTML = '<div class="ai-bubble"><span class="ai-typing"><span></span><span></span><span></span></span></div>';
+        aiMessages.appendChild(typingDiv);
+        aiMessages.scrollTop = aiMessages.scrollHeight;
+        
+        // 发送请求
+        var formData = new FormData();
+        formData.append('message', msg);
+        if (csrfToken) formData.append('csrf_token', csrfToken);
+        
+        fetch('/ai/chat', {
+            method: 'POST',
+            body: formData,
+            headers: csrfToken ? { 'X-CSRFToken': csrfToken } : {}
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            var t = document.getElementById('aiTyping');
+            if (t) t.remove();
+            
+            var botDiv = document.createElement('div');
+            botDiv.className = 'ai-msg ai-msg-bot';
+            if (data.success) {
+                botDiv.innerHTML = '<div class="ai-bubble">' + formatMsg(data.response || data.message || '收到') + '</div>';
+            } else {
+                botDiv.innerHTML = '<div class="ai-bubble ai-error">' + escapeHtml(data.message || '请求失败，请稍后重试') + '</div>';
+            }
+            aiMessages.appendChild(botDiv);
+            aiMessages.scrollTop = aiMessages.scrollHeight;
+        }).catch(function(err) {
+            var t = document.getElementById('aiTyping');
+            if (t) t.remove();
+            var botDiv = document.createElement('div');
+            botDiv.className = 'ai-msg ai-msg-bot';
+            botDiv.innerHTML = '<div class="ai-bubble ai-error">网络错误：' + escapeHtml(err.message) + '</div>';
+            aiMessages.appendChild(botDiv);
+            aiMessages.scrollTop = aiMessages.scrollHeight;
+        });
+    }
+    
+    // 发送按钮
+    if (aiSend) {
+        aiSend.addEventListener('click', function() {
+            sendMsg(aiInput ? aiInput.value : '');
+        });
+    }
+    
+    // 回车发送
+    if (aiInput) {
+        aiInput.addEventListener('keypress', function(e) {
+            if (e.keyCode === 13) {
+                e.preventDefault();
+                sendMsg(aiInput.value);
+            }
+        });
+    }
+    
+    // 快捷按钮
+    aiQuickBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            sendMsg(this.getAttribute('data-msg'));
+        });
+    });
+    
+    // 工具函数
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function formatMsg(text) {
+        if (!text) return '';
+        // Use marked.js if available for full markdown rendering
+        if (typeof marked !== 'undefined') {
+            try {
+                marked.setOptions({
+                    breaks: true,
+                    gfm: true,
+                    highlight: function(code, lang) {
+                        if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
+                            return hljs.highlight(code, { language: lang }).value;
+                        }
+                        if (typeof hljs !== 'undefined') {
+                            return hljs.highlightAuto(code).value;
+                        }
+                        return code;
+                    }
+                });
+                var html = marked.parse(text);
+                return html;
+            } catch(e) {
+                console.error('Markdown render error:', e);
+            }
+        }
+        // Fallback: basic markdown
+        var html = escapeHtml(text);
+        html = html.replace(/
+/g, '<br>');
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong></strong>');
+        html = html.replace(//g, '<code></code>');
+        return html;
+    }
+})();
+</script>
+<!-- AI助手样式 -->
+<style>
+.ai-float-btn {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #409eff, #1e6fd9);
+    color: white;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 9998;
+    box-shadow: 0 4px 15px rgba(64, 158, 255, 0.4);
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+}
+.ai-float-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(64, 158, 255, 0.6);
+}
+.ai-float-btn.dragging {
+    opacity: 0.7;
+    cursor: grabbing !important;
+    transform: scale(1.05);
+    transition: none !important;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.ai-float-btn:active {
+    cursor: grab;
+}
+.ai-chat-panel {
+    position: fixed;
+    bottom: 0;
+    right: -400px;
+    width: 380px;
+    max-width: 100vw;
+    height: 500px;
+    max-height: 80vh;
+    background: white;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -4px 30px rgba(0,0,0,0.15);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    transition: right 0.3s ease;
+}
+.ai-chat-panel.show {
+    right: 0;
+}
+.ai-chat-header {
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #409eff, #1e6fd9);
+    color: white;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.ai-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.ai-title { font-weight: 600; font-size: 15px; }
+.ai-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    background: #f5f7fa;
+}
+.ai-msg { margin-bottom: 10px; }
+.ai-msg-user { text-align: right; }
+.ai-msg-bot { text-align: left; }
+.ai-bubble {
+    display: inline-block;
+    max-width: 85%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    text-align: left;
+}
+.ai-msg-user .ai-bubble {
+    background: #409eff;
+    color: white;
+    border-radius: 12px 12px 0 12px;
+}
+.ai-msg-bot .ai-bubble {
+    background: white;
+    color: #333;
+    border-radius: 12px 12px 12px 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.ai-bubble.ai-error { color: #dc3545; }
+.ai-quick-buttons {
+    padding: 8px 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    background: #f5f7fa;
+    border-top: 1px solid #e9ecef;
+}
+.ai-quick-btn {
+    padding: 4px 10px;
+    border-radius: 14px;
+    background: white;
+    border: 1px solid #dee2e6;
+    font-size: 12px;
+    color: #409eff;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.ai-quick-btn:hover {
+    background: #409eff;
+    color: white;
+    border-color: #409eff;
+}
+.ai-chat-input-area {
+    padding: 10px 12px;
+    display: flex;
+    gap: 8px;
+    background: white;
+    border-top: 1px solid #e9ecef;
+    border-radius: 0 0 0 0;
+}
+.ai-input {
+    flex: 1;
+    border: 1px solid #dee2e6;
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-size: 14px;
+    outline: none;
+}
+.ai-input:focus { border-color: #409eff; }
+.ai-send-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #409eff;
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.ai-send-btn:hover { background: #1e6fd9; }
+.ai-chat-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 9997;
+}
+.ai-typing span {
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: #999;
+    border-radius: 50%;
+    margin: 0 2px;
+    animation: aiTyping 1.4s infinite;
+}
+.ai-typing span:nth-child(2) { animation-delay: 0.2s; }
+.ai-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes aiTyping {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-4px); }
+}
+
+/* AI聊天面板深色模式 */
+[data-theme="dark"] .ai-chat-panel { background: var(--bg-card); }
+[data-theme="dark"] .ai-chat-messages { background: var(--bg-body); }
+[data-theme="dark"] .ai-msg-bot .ai-bubble { background: var(--bg-input); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+[data-theme="dark"] .ai-msg-user .ai-bubble { background: #2d7dd2; }
+[data-theme="dark"] .ai-quick-buttons { background: var(--bg-body); border-top-color: var(--border-table); }
+[data-theme="dark"] .ai-quick-btn { background: var(--bg-input); border-color: var(--border-table); color: var(--primary-color); }
+[data-theme="dark"] .ai-quick-btn:hover { background: var(--primary-color); color: #fff; border-color: var(--primary-color); }
+[data-theme="dark"] .ai-chat-input-area { background: var(--bg-card); border-top-color: var(--border-table); }
+[data-theme="dark"] .ai-input { background: var(--bg-input); border-color: var(--border-table); color: var(--text-primary); }
+[data-theme="dark"] .ai-input:focus { border-color: var(--primary-color); background: var(--bg-card); }
+[data-theme="dark"] .ai-send-btn { background: var(--primary-color); }
+[data-theme="dark"] .ai-send-btn:hover { background: #2d7dd2; }
+[data-theme="dark"] .ai-bubble pre { background: #0d1117; }
+[data-theme="dark"] .ai-bubble code { background: rgba(255,255,255,0.1); color: #e0e0e0; }
+[data-theme="dark"] .ai-bubble pre code { background: none; }
+[data-theme="dark"] .ai-float-btn { background: linear-gradient(135deg, #2d7dd2, #1a5bb0); box-shadow: 0 4px 15px rgba(45,125,210,0.4); }
+
+@media (max-width: 768px) {
+    .ai-chat-panel {
+        width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+}
+/* AI Markdown rendering styles */
+.ai-bubble pre {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 13px;
+    margin: 6px 0;
+}
+.ai-bubble code {
+    background: rgba(0,0,0,0.06);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 13px;
+    font-family: 'Courier New', monospace;
+}
+.ai-bubble pre code {
+    background: none;
+    padding: 0;
+}
+.ai-bubble table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 6px 0;
+    font-size: 13px;
+}
+.ai-bubble table th, .ai-bubble table td {
+    border: 1px solid #dee2e6;
+    padding: 4px 8px;
+}
+.ai-bubble table th {
+    background: #f8f9fa;
+    font-weight: 600;
+}
+.ai-bubble ul, .ai-bubble ol {
+    padding-left: 20px;
+    margin: 4px 0;
+}
+.ai-bubble blockquote {
+    border-left: 3px solid #409eff;
+    padding-left: 10px;
+    margin: 6px 0;
+    color: #666;
+}
+.ai-bubble h1, .ai-bubble h2, .ai-bubble h3, .ai-bubble h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 6px 0 4px;
+}
+.ai-bubble p { margin: 4px 0; }
+.ai-bubble a { color: #409eff; }
+.ai-bubble hr { border: none; border-top: 1px solid #e0e0e0; margin: 8px 0; }
+
+</style>
+
+    <script src="{{ url_for('static', filename='js/custom-modal.js') }}?v=20260721p1"></script>
+    <script src="{{ url_for('static', filename='js/table-sort.js') }}?v=20260721p1"></script>
+    <script src="{{ url_for('static', filename='js/form-loading.js') }}?v=20260721p1"></script>
+    <script src="{{ url_for('static', filename='js/chart-loading.js') }}?v=20260721p1"></script>
+    <script src="{{ url_for('static', filename='js/p2-enhancements.js') }}?v=20260806p2"></script>
+
+    <!-- 侧边栏自动滚动到当前选中菜单项 v2 -->
+    <script>
+    (function() {
+        function ensureActiveGroupExpanded() {
+            // 确保包含active菜单项的分组是展开的
+            // main.js可能根据localStorage保存的状态折叠了active分组
+            var activeItem = document.querySelector('.sidebar-item.active');
+            if (!activeItem) return;
+            var parentGroup = activeItem.closest('.sidebar-group');
+            if (!parentGroup) return;
+            var items = parentGroup.querySelector('.sidebar-group-items');
+            if (items && (items.style.display === 'none' || getComputedStyle(items).display === 'none')) {
+                console.log('[sidebar-scroll] Expanding collapsed active group');
+                items.style.display = 'block';
+                parentGroup.classList.add('expanded');
+                var title = parentGroup.querySelector('.sidebar-group-title');
+                if (title) title.setAttribute('aria-expanded', 'true');
+            }
+        }
+
+        function scrollSidebarToActive() {
+            console.log('[sidebar-scroll] scrollSidebarToActive called');
+
+            // 查找当前激活的菜单项
+            var activeItem = document.querySelector('.sidebar-item.active') ||
+                             document.querySelector('.sys-menu-item.active');
+            if (!activeItem) {
+                // 尝试查找激活的分组标题
+                var activeGroup = document.querySelector('.sidebar-group.active');
+                if (activeGroup) {
+                    activeItem = activeGroup.querySelector('.sidebar-group-title');
+                }
+            }
+            console.log('[sidebar-scroll] activeItem:', activeItem ? activeItem.textContent.trim() : 'null');
+            if (!activeItem) return;
+
+            // 再次确保分组已展开（双重保险）
+            ensureActiveGroupExpanded();
+
+            // 找到可滚动的侧边栏容器
+            var container = activeItem.closest('#sidebar-wrapper') ||
+                            activeItem.closest('.sys-sidebar');
+            console.log('[sidebar-scroll] container:', container ? container.className : 'null');
+            if (!container) return;
+
+            // 检查active item是否可见（不在display:none的容器内）
+            var itemRect = activeItem.getBoundingClientRect();
+            console.log('[sidebar-scroll] itemRect:', {top: itemRect.top, bottom: itemRect.bottom, height: itemRect.height});
+
+            // 如果itemRect.height为0，说明元素不可见（在折叠的分组内）
+            if (itemRect.height === 0) {
+                console.log('[sidebar-scroll] active item has zero height, skipping');
+                return;
+            }
+
+            // 使用scrollIntoView作为主要方法（更可靠）
+            try {
+                activeItem.scrollIntoView({ block: 'center', behavior: 'instant' });
+                console.log('[sidebar-scroll] scrolled via scrollIntoView');
+            } catch(e) {
+                // Fallback: 手动计算滚动位置
+                console.log('[sidebar-scroll] scrollIntoView failed, using manual calc');
+                var containerRect = container.getBoundingClientRect();
+                if (itemRect.top >= containerRect.top && itemRect.bottom <= containerRect.bottom) {
+                    console.log('[sidebar-scroll] already in viewport, skipping');
+                    return;
+                }
+                var scrollOffset = itemRect.top - containerRect.top;
+                scrollOffset -= (container.clientHeight - activeItem.offsetHeight) / 2;
+                container.scrollTop += scrollOffset;
+                console.log('[sidebar-scroll] manual scroll offset:', scrollOffset);
+            }
+        }
+
+        // Step 1: DOMContentLoaded时立即展开active分组（在main.js的100ms超时之前）
+        document.addEventListener('DOMContentLoaded', function() {
+            ensureActiveGroupExpanded();
+        });
+
+        // Step 2: window.onload后延迟执行滚动（确保main.js的所有初始化都已完成）
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                ensureActiveGroupExpanded();
+                scrollSidebarToActive();
+            }, 350);
+        });
+
+        // Step 3: 额外保险 - 如果load事件已经触发过
+        if (document.readyState === 'complete') {
+            setTimeout(function() {
+                ensureActiveGroupExpanded();
+                scrollSidebarToActive();
+            }, 350);
+        }
+    })();
+    
+    // ECharts深色模式适配
+    function initChartDarkMode() {
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        if (typeof echarts !== 'undefined') {
+            echarts.registerTheme('material-dark', {
+                backgroundColor: 'transparent',
+                textStyle: { color: '#e0e0e0' },
+                title: { textStyle: { color: '#e0e0e0' }, subtextStyle: { color: '#b8b8b8' } },
+                legend: { textStyle: { color: '#b8b8b8' } },
+                tooltip: {
+                    backgroundColor: 'rgba(30,30,30,0.9)',
+                    borderColor: '#3a3a4e',
+                    textStyle: { color: '#e0e0e0' }
+                },
+                xAxis: { axisLine: { lineStyle: { color: '#3a3a4e' } }, axisLabel: { color: '#b8b8b8' }, splitLine: { lineStyle: { color: '#2a2a3e' } } },
+                yAxis: { axisLine: { lineStyle: { color: '#3a3a4e' } }, axisLabel: { color: '#b8b8b8' }, splitLine: { lineStyle: { color: '#2a2a3e' } } },
+                categoryAxis: { axisLine: { lineStyle: { color: '#3a3a4e' } }, axisLabel: { color: '#b8b8b8' } },
+                color: ['#3a8ee6', '#67c23a', '#e6a23c', '#f56c6c', '#909399', '#9b59b6', '#1abc9c']
+            });
+        }
+        // 重新渲染所有图表
+        if (window._echarts_instances) {
+            Object.values(window._echarts_instances).forEach(function(chart) {
+                if (chart && chart.getOption) {
+                    var opt = chart.getOption();
+                    chart.dispose();
+                    var dom = chart.getDom ? chart.getDom() : null;
+                }
+            });
+        }
+        // 重新初始化
+        document.querySelectorAll('[_echarts_instance_]').forEach(function(dom) {
+            var existing = echarts.getInstanceByDom(dom);
+            if (existing) {
+                existing.dispose();
+            }
+            var chart = echarts.init(dom, isDark ? 'material-dark' : null);
+            window.dispatchEvent(new CustomEvent('echarts_theme_changed', { detail: { isDark: isDark, chart: chart } }));
+        });
+    }
+    // 页面加载和主题切换时调用
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(initChartDarkMode, 500);
+    });
+    // 监听主题变化
+    var _observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+            if (m.attributeName === 'data-theme') {
+                setTimeout(initChartDarkMode, 100);
+            }
+        });
+    });
+    if (document.documentElement) {
+        _observer.observe(document.documentElement, { attributes: true });
+    }
+    
+</script>
 </body>
 </html>

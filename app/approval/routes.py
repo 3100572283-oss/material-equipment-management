@@ -16,6 +16,11 @@ from app.models import (ApprovalFlow, ApprovalNode, ApprovalBranch,
 from app import db
 import json
 
+@bp.route("/")
+@login_required
+def index():
+    return redirect(url_for("approval.my_approvals"))
+
 
 # ============== 管理员配置部分 ==============
 

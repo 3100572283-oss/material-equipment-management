@@ -1,0 +1,863 @@
+{% extends "base.html" %}
+{% block title %}工程计算器 - 物资设备管理系统{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题 -->
+    <div class="d-flex align-items-center mb-4 mt-2">
+        <div class="flex-grow-1">
+            <h3 class="mb-1"><i class="bi bi-calculator-fill me-2 text-primary"></i>工程计算器</h3>
+            <p class="text-muted mb-0 small">常用工程计算工具集，涵盖钢筋、钢管、几何、混凝土、钢材、工期、焊接等计算</p>
+        </div>
+    </div>
+
+    <!-- 工具卡片网格 -->
+    <div class="row g-3 mb-4">
+        <!-- 钢筋重量计算 -->
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card tool-card h-100 shadow-sm border-0" onclick="openModal('modalRebar')" role="button">
+                <div class="card-body text-center d-flex flex-column justify-content-center align-items-center" style="min-height:120px;">
+                    <i class="bi bi-bar-chart-line-fill text-primary mb-2" style="font-size:1.8rem;"></i>
+                    <span class="fw-semibold">钢筋重量计算</span>
+                    <small class="text-muted">直径×长度→重量</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 钢管数量估算 -->
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card tool-card h-100 shadow-sm border-0" onclick="openModal('modalPipe')" role="button">
+                <div class="card-body text-center d-flex flex-column justify-content-center align-items-center" style="min-height:120px;">
+                    <i class="bi bi-distribute-vertical text-success mb-2" style="font-size:1.8rem;"></i>
+                    <span class="fw-semibold">钢管数量估算</span>
+                    <small class="text-muted">捆径×单根→数量</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 单位换算 -->
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card tool-card h-100 shadow-sm border-0" onclick="openModal('modalUnit')" role="button">
+                <div class="card-body text-center d-flex flex-column justify-content-center align-items-center" style="min-height:120px;">
+                    <i class="bi bi-arrow-left-right text-info mb-2" style="font-size:1.8rem;"></i>
+                    <span class="fw-semibold">单位换算</span>
+                    <small class="text-muted">长度/面积/体积/重量</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 几何计算 -->
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card tool-card h-100 shadow-sm border-0" onclick="openModal('modalGeo')" role="button">
+                <div class="card-body text-center d-flex flex-column justify-content-center align-items-center" style="min-height:120px;">
+                    <i class="bi bi-triangle text-warning mb-2" style="font-size:1.8rem;"></i>
+                    <span class="fw-semibold">几何计算</span>
+                    <small class="text-muted">面积/体积/周长</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 混凝土用量 -->
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card tool-card h-100 shadow-sm border-0" onclick="openModal('modalConcrete')" role="button">
+                <div class="card-body text-center d-flex flex-column justify-content-center align-items-center" style="min-height:120px;">
+                    <i class="bi bi-bricks text-secondary mb-2" style="font-size:1.8rem;"></i>
+                    <span class="fw-semibold">混凝土用量</span>
+                    <small class="text-muted">体积及材料用量</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 钢材重量表 -->
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card tool-card h-100 shadow-sm border-0" onclick="openModal('modalSteel')" role="button">
+                <div class="card-body text-center d-flex flex-column justify-content-center align-items-center" style="min-height:120px;">
+                    <i class="bi bi-table text-danger mb-2" style="font-size:1.8rem;"></i>
+                    <span class="fw-semibold">钢材重量表</span>
+                    <small class="text-muted">常用规格快速查询</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 工期计算器 -->
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card tool-card h-100 shadow-sm border-0" onclick="openModal('modalSchedule')" role="button">
+                <div class="card-body text-center d-flex flex-column justify-content-center align-items-center" style="min-height:120px;">
+                    <i class="bi bi-calendar-check text-primary mb-2" style="font-size:1.8rem;"></i>
+                    <span class="fw-semibold">工期计算器</span>
+                    <small class="text-muted">开工→竣工日期</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 焊接材料计算 -->
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="card tool-card h-100 shadow-sm border-0" onclick="openModal('modalWeld')" role="button">
+                <div class="card-body text-center d-flex flex-column justify-content-center align-items-center" style="min-height:120px;">
+                    <i class="bi bi-fire text-warning mb-2" style="font-size:1.8rem;"></i>
+                    <span class="fw-semibold">焊接材料计算</span>
+                    <small class="text-muted">焊缝长度→材料用量</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 钢筋重量计算 ==================== -->
+<div class="modal fade" id="modalRebar" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-bar-chart-line-fill me-2 text-primary"></i>钢筋重量计算</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">公式：W = 0.00617 × d² × L（d=直径mm, L=长度m, W=重量kg）</p>
+                <div class="mb-3">
+                    <label class="form-label">钢筋直径 d (mm)</label>
+                    <select class="form-select" id="rebarDiameter">
+                        <option value="6">6 mm</option>
+                        <option value="8">8 mm</option>
+                        <option value="10">10 mm</option>
+                        <option value="12" selected>12 mm</option>
+                        <option value="14">14 mm</option>
+                        <option value="16">16 mm</option>
+                        <option value="18">18 mm</option>
+                        <option value="20">20 mm</option>
+                        <option value="22">22 mm</option>
+                        <option value="25">25 mm</option>
+                        <option value="28">28 mm</option>
+                        <option value="32">32 mm</option>
+                        <option value="36">36 mm</option>
+                        <option value="40">40 mm</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">单根长度 L (m)</label>
+                    <input type="number" class="form-control" id="rebarLength" value="12" step="0.1" min="0">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">根数</label>
+                    <input type="number" class="form-control" id="rebarCount" value="1" step="1" min="1">
+                </div>
+                <div class="alert alert-info" id="rebarResult">
+                    <div class="d-flex justify-content-between">
+                        <span>单根重量：</span><span class="fw-bold" id="rebarSingle">0.888 kg</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>总重量：</span><span class="fw-bold" id="rebarTotal">10.656 kg</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" onclick="calcRebar()"><i class="bi bi-calculator me-1"></i>计算</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 钢管数量估算 ==================== -->
+<div class="modal fade" id="modalPipe" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-distribute-vertical me-2 text-success"></i>钢管数量估算</div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">根据六边形紧密排列估算：N ≈ (D/d - 1)² × 0.866 / 1 + 2(D/d - 1) + 1</p>
+                <div class="mb-3">
+                    <label class="form-label">捆径 D (mm)</label>
+                    <input type="number" class="form-control" id="pipeBundleD" value="800" step="1" min="0">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">单根钢管直径 d (mm)</label>
+                    <input type="number" class="form-control" id="pipeSingleD" value="48" step="0.1" min="0">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">捆数</label>
+                    <input type="number" class="form-control" id="pipeBundles" value="1" step="1" min="1">
+                </div>
+                <div class="alert alert-info" id="pipeResult">
+                    <div class="d-flex justify-content-between">
+                        <span>每捆约：</span><span class="fw-bold" id="pipePerBundle">219 根</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>总计约：</span><span class="fw-bold" id="pipeTotal">219 根</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" onclick="calcPipe()"><i class="bi bi-calculator me-1"></i>计算</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 单位换算 ==================== -->
+<div class="modal fade" id="modalUnit" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2 text-info"></i>单位换算</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-pills mb-3" id="unitTabs">
+                    <li class="nav-item"><button class="nav-link active" onclick="switchUnitTab('length')">长度</button></li>
+                    <li class="nav-item"><button class="nav-link" onclick="switchUnitTab('area')">面积</button></li>
+                    <li class="nav-item"><button class="nav-link" onclick="switchUnitTab('volume')">体积</button></li>
+                    <li class="nav-item"><button class="nav-link" onclick="switchUnitTab('weight')">重量</button></li>
+                </ul>
+                <div class="row g-2 align-items-end">
+                    <div class="col-5">
+                        <label class="form-label small">输入值</label>
+                        <input type="number" class="form-control" id="unitInput" value="1" oninput="calcUnit()">
+                    </div>
+                    <div class="col-3">
+                        <label class="form-label small">从</label>
+                        <select class="form-select form-select-sm" id="unitFrom" onchange="calcUnit()"></select>
+                    </div>
+                    <div class="col-1 text-center"><i class="bi bi-arrow-right"></i></div>
+                    <div class="col-3">
+                        <label class="form-label small">到</label>
+                        <select class="form-select form-select-sm" id="unitTo" onchange="calcUnit()"></select>
+                    </div>
+                </div>
+                <div class="alert alert-success mt-3" id="unitResult">
+                    <span class="fw-bold">1 m = 1000 mm</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 几何计算 ==================== -->
+<div class="modal fade" id="modalGeo" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-triangle me-2 text-warning"></i>几何计算</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-pills mb-3" id="geoTabs">
+                    <li class="nav-item"><button class="nav-link active" onclick="switchGeoTab('rect')">矩形</button></li>
+                    <li class="nav-item"><button class="nav-link" onclick="switchGeoTab('circle')">圆形</button></li>
+                    <li class="nav-item"><button class="nav-link" onclick="switchGeoTab('triangle')">三角形</button></li>
+                    <li class="nav-item"><button class="nav-link" onclick="switchGeoTab('trapezoid')">梯形</button></li>
+                </ul>
+
+                <!-- 矩形 -->
+                <div id="geoRect" class="geo-pane">
+                    <div class="row g-3">
+                        <div class="col-6"><label class="form-label small">长 a (m)</label><input type="number" class="form-control" id="rectA" value="5" step="0.01" oninput="calcGeo()"></div>
+                        <div class="col-6"><label class="form-label small">宽 b (m)</label><input type="number" class="form-control" id="rectB" value="3" step="0.01" oninput="calcGeo()"></div>
+                        <div class="col-6"><label class="form-label small">高 h (m, 选填体积)</label><input type="number" class="form-control" id="rectH" value="" step="0.01" oninput="calcGeo()" placeholder="留空只算面积"></div>
+                    </div>
+                </div>
+
+                <!-- 圆形 -->
+                <div id="geoCircle" class="geo-pane d-none">
+                    <div class="row g-3">
+                        <div class="col-6"><label class="form-label small">半径 r (m)</label><input type="number" class="form-control" id="circleR" value="2" step="0.01" oninput="calcGeo()"></div>
+                        <div class="col-6"><label class="form-label small">高 h (m, 选填体积)</label><input type="number" class="form-control" id="circleH" value="" step="0.01" oninput="calcGeo()" placeholder="留空只算面积"></div>
+                    </div>
+                </div>
+
+                <!-- 三角形 -->
+                <div id="geoTriangle" class="geo-pane d-none">
+                    <div class="row g-3">
+                        <div class="col-6"><label class="form-label small">底 a (m)</label><input type="number" class="form-control" id="triA" value="4" step="0.01" oninput="calcGeo()"></div>
+                        <div class="col-6"><label class="form-label small">高 h (m)</label><input type="number" class="form-control" id="triH" value="3" step="0.01" oninput="calcGeo()"></div>
+                    </div>
+                </div>
+
+                <!-- 梯形 -->
+                <div id="geoTrapezoid" class="geo-pane d-none">
+                    <div class="row g-3">
+                        <div class="col-4"><label class="form-label small">上底 a (m)</label><input type="number" class="form-control" id="trapA" value="3" step="0.01" oninput="calcGeo()"></div>
+                        <div class="col-4"><label class="form-label small">下底 b (m)</label><input type="number" class="form-control" id="trapB" value="5" step="0.01" oninput="calcGeo()"></div>
+                        <div class="col-4"><label class="form-label small">高 h (m)</label><input type="number" class="form-control" id="trapH" value="2" step="0.01" oninput="calcGeo()"></div>
+                    </div>
+                </div>
+
+                <div class="alert alert-success mt-3" id="geoResult">
+                    <div class="d-flex justify-content-between"><span>面积：</span><span class="fw-bold" id="geoArea">15.00 m²</span></div>
+                    <div class="d-flex justify-content-between"><span>周长：</span><span class="fw-bold" id="geoPerimeter">16.00 m</span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 混凝土用量 ==================== -->
+<div class="modal fade" id="modalConcrete" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-bricks me-2 text-secondary"></i>混凝土用量计算</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 mb-3">
+                    <div class="col-4">
+                        <label class="form-label small">长 (m)</label>
+                        <input type="number" class="form-control" id="conLen" value="10" step="0.01" oninput="calcConcrete()">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">宽 (m)</label>
+                        <input type="number" class="form-control" id="conWid" value="5" step="0.01" oninput="calcConcrete()">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">高/厚 (m)</label>
+                        <input type="number" class="form-control" id="conHei" value="0.2" step="0.01" oninput="calcConcrete()">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small">混凝土强度等级</label>
+                    <select class="form-select" id="conGrade" onchange="calcConcrete()">
+                        <option value="C20">C20</option>
+                        <option value="C25">C25</option>
+                        <option value="C30" selected>C30</option>
+                        <option value="C35">C35</option>
+                        <option value="C40">C40</option>
+                    </select>
+                </div>
+                <div class="alert alert-info" id="conResult">
+                    <div class="d-flex justify-content-between"><span>混凝土体积：</span><span class="fw-bold" id="conVolume">10.00 m³</span></div>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between"><span>水泥 (kg)：</span><span class="fw-bold" id="conCement">3,700 kg</span></div>
+                    <div class="d-flex justify-content-between"><span>砂 (kg)：</span><span class="fw-bold" id="conSand">6,640 kg</span></div>
+                    <div class="d-flex justify-content-between"><span>碎石 (kg)：</span><span class="fw-bold" id="conStone">12,250 kg</span></div>
+                    <div class="d-flex justify-content-between"><span>水 (kg)：</span><span class="fw-bold" id="conWater">1,960 kg</span></div>
+                </div>
+                <p class="text-muted small mb-0">* 配比为参考值，实际配比请以试验室配合比为准</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 钢材重量表 ==================== -->
+<div class="modal fade" id="modalSteel" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-table me-2 text-danger"></i>常用钢材理论重量表</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" class="form-control mb-3" id="steelSearch" placeholder="搜索规格..." oninput="filterSteelTable()">
+                <div class="table-responsive" style="max-height:420px;overflow-y:auto;">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="sticky-top">
+                            <tr class="table-light">
+                                <th>类别</th>
+                                <th>规格</th>
+                                <th class="text-end">理论重量</th>
+                                <th class="text-end">单位</th>
+                            </tr>
+                        </thead>
+                        <tbody id="steelTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 工期计算器 ==================== -->
+<div class="modal fade" id="modalSchedule" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-calendar-check me-2 text-primary"></i>工期计算器</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">开工日期</label>
+                    <input type="date" class="form-control" id="schedStart" onchange="calcSchedule()">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">工期天数</label>
+                    <input type="number" class="form-control" id="schedDays" value="90" step="1" min="1" oninput="calcSchedule()">
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="schedSkipWeekend" onchange="calcSchedule()">
+                    <label class="form-check-label" for="schedSkipWeekend">排除周末（仅工作日）</label>
+                </div>
+                <div class="alert alert-success" id="schedResult">
+                    <div class="d-flex justify-content-between"><span>竣工日期：</span><span class="fw-bold" id="schedEnd">--</span></div>
+                    <div class="d-flex justify-content-between"><span>总天数：</span><span class="fw-bold" id="schedTotal">--</span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" onclick="calcSchedule()"><i class="bi bi-calculator me-1"></i>计算</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== 焊接材料计算 ==================== -->
+<div class="modal fade" id="modalWeld" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-fire me-2 text-warning"></i>焊接材料计算</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small">焊缝长度 L (m)</label>
+                        <input type="number" class="form-control" id="weldLength" value="10" step="0.1" min="0" oninput="calcWeld()">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">焊脚尺寸 hf (mm)</label>
+                        <input type="number" class="form-control" id="weldSize" value="6" step="0.5" min="0" oninput="calcWeld()">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small">焊缝类型</label>
+                    <select class="form-select" id="weldType" onchange="calcWeld()">
+                        <option value="fillet">角焊缝</option>
+                        <option value="butt">对接焊缝</option>
+                        <option value="plug">塞焊缝</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small">焊条利用率（通常55%~70%）</label>
+                    <input type="number" class="form-control" id="weldEfficiency" value="60" step="1" min="1" max="100" oninput="calcWeld()">
+                    <small class="text-muted">输入百分比，如60表示60%</small>
+                </div>
+                <div class="alert alert-info" id="weldResult">
+                    <div class="d-flex justify-content-between"><span>焊缝截面积：</span><span class="fw-bold" id="weldArea">25.46 mm²</span></div>
+                    <div class="d-flex justify-content-between"><span>熔敷金属重量：</span><span class="fw-bold" id="weldMetal">1.998 kg</span></div>
+                    <div class="d-flex justify-content-between"><span>焊条消耗量：</span><span class="fw-bold" id="weldRod">3.330 kg</span></div>
+                </div>
+                <p class="text-muted small mb-0">* 焊缝密度取7.85 g/cm³，计算结果为参考值</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" onclick="calcWeld()"><i class="bi bi-calculator me-1"></i>计算</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.tool-card {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.tool-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.12) !important;
+}
+</style>
+
+<script>
+/* ========== 通用 ========== */
+function openModal(id) {
+    var el = document.getElementById(id);
+    if (el) {
+        var bsModal = bootstrap.Modal.getOrCreateInstance(el);
+        bsModal.show();
+    }
+}
+function fmt(n, d) {
+    d = d || 2;
+    if (isNaN(n)) return '--';
+    return n.toLocaleString('zh-CN', {minimumFractionDigits: d, maximumFractionDigits: d});
+}
+function val(id) {
+    var el = document.getElementById(id);
+    if (!el || el.value === '') return NaN;
+    return parseFloat(el.value);
+}
+
+/* ========== 1. 钢筋重量计算 ========== */
+function calcRebar() {
+    var d = val('rebarDiameter');
+    var L = val('rebarLength');
+    var n = val('rebarCount');
+    if (isNaN(d) || isNaN(L) || isNaN(n)) return;
+    var single = 0.00617 * d * d * L;
+    var total = single * n;
+    document.getElementById('rebarSingle').textContent = fmt(single, 3) + ' kg';
+    document.getElementById('rebarTotal').textContent = fmt(total, 3) + ' kg';
+}
+
+/* ========== 2. 钢管数量估算 ========== */
+function calcPipe() {
+    var D = val('pipeBundleD');
+    var d = val('pipeSingleD');
+    var bundles = val('pipeBundles');
+    if (isNaN(D) || isNaN(d) || d <= 0 || isNaN(bundles)) return;
+    // 六边形紧密排列标准公式：n = 1 + 3k(k+1), k = floor((D-d)/(2d))
+    var k = Math.floor((D - d) / (2 * d));
+    if (k < 0) k = 0;
+    var count = 1 + 3 * k * (k + 1);
+    // 同时计算面积法作为参考上限
+    var areaMax = Math.floor(0.9069 * Math.pow(D / d, 2));
+    // 取较小值（六边形公式更保守，更接近实际）
+    if (count > areaMax) count = areaMax;
+    var total = count * bundles;
+    document.getElementById('pipePerBundle').textContent = count + ' 根';
+    document.getElementById('pipeTotal').textContent = total + ' 根';
+}
+
+/* ========== 3. 单位换算 ========== */
+var unitData = {
+    length: {name:'长度', units:{'mm':0.001,'cm':0.01,'m':1,'km':1000,'in':0.0254,'ft':0.3048,'mi':1609.344}},
+    area: {name:'面积', units:{'mm²':0.000001,'cm²':0.0001,'m²':1,'km²':1000000,'ha':10000,'亩':666.667,'ft²':0.092903,'in²':0.00064516}},
+    volume: {name:'体积', units:{'cm³':0.000001,'mL':0.000001,'L':0.001,'m³':1,'gal(美)':0.00378541,'ft³':0.02831685}},
+    weight: {name:'重量', units:{'g':0.001,'kg':1,'t':1000,'lb':0.453592,'oz':0.0283495}}
+};
+var currentUnitTab = 'length';
+
+function switchUnitTab(tab) {
+    currentUnitTab = tab;
+    // 更新按钮样式
+    document.querySelectorAll('#unitTabs .nav-link').forEach(function(btn){
+        btn.classList.remove('active');
+    });
+    event.currentTarget.classList.add('active');
+    // 填充单位选项
+    var fromSel = document.getElementById('unitFrom');
+    var toSel = document.getElementById('unitTo');
+    fromSel.innerHTML = '';
+    toSel.innerHTML = '';
+    var units = unitData[tab].units;
+    var keys = Object.keys(units);
+    var firstDone = false;
+    keys.forEach(function(k, i){
+        fromSel.add(new Option(k, k));
+        toSel.add(new Option(k, k));
+        if (i === 0) fromSel.value = k;
+        if (i === 1) toSel.value = k;
+    });
+    calcUnit();
+}
+
+function calcUnit() {
+    var fromV = val('unitInput');
+    var fromU = document.getElementById('unitFrom').value;
+    var toU = document.getElementById('unitTo').value;
+    if (isNaN(fromV) || !fromU || !toU) return;
+    var baseVal = fromV * unitData[currentUnitTab].units[fromU];
+    var result = baseVal / unitData[currentUnitTab].units[toU];
+    document.getElementById('unitResult').innerHTML =
+        '<span class="fw-bold">' + fmt(fromV, 6) + ' ' + fromU + ' = ' + fmt(result, 6) + ' ' + toU + '</span>';
+}
+
+/* ========== 4. 几何计算 ========== */
+var currentGeoTab = 'rect';
+function switchGeoTab(tab) {
+    currentGeoTab = tab;
+    document.querySelectorAll('#geoTabs .nav-link').forEach(function(btn){
+        btn.classList.remove('active');
+    });
+    event.currentTarget.classList.add('active');
+    document.querySelectorAll('.geo-pane').forEach(function(p){ p.classList.add('d-none'); });
+    var pane = document.getElementById('geo' + tab.charAt(0).toUpperCase() + tab.slice(1));
+    if (pane) pane.classList.remove('d-none');
+    calcGeo();
+}
+
+function calcGeo() {
+    var area = 0, peri = 0, vol = 0;
+    if (currentGeoTab === 'rect') {
+        var a = val('rectA'), b = val('rectB');
+        if (isNaN(a) || isNaN(b)) return;
+        area = a * b;
+        peri = 2 * (a + b);
+        var h = val('rectH');
+        if (!isNaN(h)) vol = area * h;
+    } else if (currentGeoTab === 'circle') {
+        var r = val('circleR');
+        if (isNaN(r)) return;
+        area = Math.PI * r * r;
+        peri = 2 * Math.PI * r;
+        var h2 = val('circleH');
+        if (!isNaN(h2)) vol = area * h2;
+    } else if (currentGeoTab === 'triangle') {
+        var ta = val('triA'), th = val('triH');
+        if (isNaN(ta) || isNaN(th)) return;
+        area = 0.5 * ta * th;
+    } else if (currentGeoTab === 'trapezoid') {
+        var ua = val('trapA'), lb = val('trapB'), lh = val('trapH');
+        if (isNaN(ua) || isNaN(lb) || isNaN(lh)) return;
+        area = 0.5 * (ua + lb) * lh;
+    }
+    var html = '<div class="d-flex justify-content-between"><span>面积：</span><span class="fw-bold">' + fmt(area) + ' m²</span></div>';
+    if (peri > 0) html += '<div class="d-flex justify-content-between"><span>周长：</span><span class="fw-bold">' + fmt(peri) + ' m</span></div>';
+    if (vol > 0) html += '<div class="d-flex justify-content-between"><span>体积：</span><span class="fw-bold">' + fmt(vol) + ' m³</span></div>';
+    document.getElementById('geoResult').innerHTML = html;
+}
+
+/* ========== 5. 混凝土用量 ========== */
+// 参考配合比：每m³混凝土材料用量(kg) [水泥, 砂, 碎石, 水]
+var concreteMix = {
+    'C20': [370, 664, 1225, 196],
+    'C25': [390, 640, 1230, 195],
+    'C30': [430, 590, 1240, 195],
+    'C35': [460, 560, 1250, 194],
+    'C40': [490, 530, 1260, 193]
+};
+
+function calcConcrete() {
+    var l = val('conLen'), w = val('conWid'), h = val('conHei');
+    if (isNaN(l) || isNaN(w) || isNaN(h)) return;
+    var vol = l * w * h;
+    var grade = document.getElementById('conGrade').value;
+    var mix = concreteMix[grade];
+    var cement = vol * mix[0];
+    var sand = vol * mix[1];
+    var stone = vol * mix[2];
+    var water = vol * mix[3];
+    document.getElementById('conVolume').textContent = fmt(vol) + ' m³';
+    document.getElementById('conCement').textContent = fmt(cement, 0) + ' kg';
+    document.getElementById('conSand').textContent = fmt(sand, 0) + ' kg';
+    document.getElementById('conStone').textContent = fmt(stone, 0) + ' kg';
+    document.getElementById('conWater').textContent = fmt(water, 0) + ' kg';
+}
+
+/* ========== 6. 钢材重量表 ========== */
+var steelData = [
+    // 钢筋
+    {type:'钢筋', spec:'Φ6', weight:0.222, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ8', weight:0.395, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ10', weight:0.617, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ12', weight:0.888, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ14', weight:1.210, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ16', weight:1.580, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ18', weight:2.000, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ20', weight:2.470, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ22', weight:2.980, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ25', weight:3.850, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ28', weight:4.830, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ32', weight:6.310, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ36', weight:7.990, unit:'kg/m'},
+    {type:'钢筋', spec:'Φ40', weight:9.870, unit:'kg/m'},
+    // 钢板
+    {type:'钢板', spec:'δ1.0', weight:7.85, unit:'kg/m²'},
+    {type:'钢板', spec:'δ1.5', weight:11.78, unit:'kg/m²'},
+    {type:'钢板', spec:'δ2.0', weight:15.70, unit:'kg/m²'},
+    {type:'钢板', spec:'δ3.0', weight:23.55, unit:'kg/m²'},
+    {type:'钢板', spec:'δ4.0', weight:31.40, unit:'kg/m²'},
+    {type:'钢板', spec:'δ5.0', weight:39.25, unit:'kg/m²'},
+    {type:'钢板', spec:'δ6.0', weight:47.10, unit:'kg/m²'},
+    {type:'钢板', spec:'δ8.0', weight:62.80, unit:'kg/m²'},
+    {type:'钢板', spec:'δ10', weight:78.50, unit:'kg/m²'},
+    {type:'钢板', spec:'δ12', weight:94.20, unit:'kg/m²'},
+    {type:'钢板', spec:'δ16', weight:125.60, unit:'kg/m²'},
+    {type:'钢板', spec:'δ20', weight:157.00, unit:'kg/m²'},
+    // 角钢（等边）
+    {type:'角钢', spec:'25×25×3', weight:1.124, unit:'kg/m'},
+    {type:'角钢', spec:'25×25×4', weight:1.459, unit:'kg/m'},
+    {type:'角钢', spec:'30×30×3', weight:1.373, unit:'kg/m'},
+    {type:'角钢', spec:'30×30×4', weight:1.786, unit:'kg/m'},
+    {type:'角钢', spec:'40×40×3', weight:1.852, unit:'kg/m'},
+    {type:'角钢', spec:'40×40×4', weight:2.422, unit:'kg/m'},
+    {type:'角钢', spec:'50×50×4', weight:3.059, unit:'kg/m'},
+    {type:'角钢', spec:'50×50×5', weight:3.770, unit:'kg/m'},
+    {type:'角钢', spec:'63×63×5', weight:4.822, unit:'kg/m'},
+    {type:'角钢', spec:'63×63×6', weight:5.721, unit:'kg/m'},
+    {type:'角钢', spec:'70×70×6', weight:6.406, unit:'kg/m'},
+    {type:'角钢', spec:'75×75×7', weight:7.976, unit:'kg/m'},
+    {type:'角钢', spec:'80×80×8', weight:9.658, unit:'kg/m'},
+    {type:'角钢', spec:'100×100×10', weight:15.120, unit:'kg/m'},
+    // 槽钢
+    {type:'槽钢', spec:'[8', weight:8.045, unit:'kg/m'},
+    {type:'槽钢', spec:'[10', weight:10.007, unit:'kg/m'},
+    {type:'槽钢', spec:'[12', weight:12.059, unit:'kg/m'},
+    {type:'槽钢', spec:'[14a', weight:14.535, unit:'kg/m'},
+    {type:'槽钢', spec:'[16a', weight:17.240, unit:'kg/m'},
+    {type:'槽钢', spec:'[18a', weight:20.174, unit:'kg/m'},
+    {type:'槽钢', spec:'[20a', weight:22.637, unit:'kg/m'},
+    {type:'槽钢', spec:'[22a', weight:24.999, unit:'kg/m'},
+    {type:'槽钢', spec:'[25a', weight:27.410, unit:'kg/m'},
+    // 工字钢
+    {type:'工字钢', spec:'I10', weight:11.261, unit:'kg/m'},
+    {type:'工字钢', spec:'I12', weight:13.987, unit:'kg/m'},
+    {type:'工字钢', spec:'I14', weight:16.890, unit:'kg/m'},
+    {type:'工字钢', spec:'I16', weight:20.513, unit:'kg/m'},
+    {type:'工字钢', spec:'I18', weight:24.143, unit:'kg/m'},
+    {type:'工字钢', spec:'I20a', weight:27.929, unit:'kg/m'},
+    {type:'工字钢', spec:'I22a', weight:33.070, unit:'kg/m'},
+    {type:'工字钢', spec:'I25a', weight:38.105, unit:'kg/m'},
+    // H型钢
+    {type:'H型钢', spec:'100×100×6×8', weight:17.2, unit:'kg/m'},
+    {type:'H型钢', spec:'150×150×7×10', weight:31.9, unit:'kg/m'},
+    {type:'H型钢', spec:'200×200×8×12', weight:50.5, unit:'kg/m'},
+    {type:'H型钢', spec:'250×250×9×14', weight:72.4, unit:'kg/m'},
+    {type:'H型钢', spec:'300×300×10×15', weight:94.5, unit:'kg/m'},
+    {type:'H型钢', spec:'350×350×12×19', weight:137.0, unit:'kg/m'},
+    {type:'H型钢', spec:'400×400×13×21', weight:172.0, unit:'kg/m'},
+    // 钢管（焊接/无缝）
+    {type:'钢管', spec:'Φ48×3.0', weight:3.329, unit:'kg/m'},
+    {type:'钢管', spec:'Φ48×3.5', weight:3.840, unit:'kg/m'},
+    {type:'钢管', spec:'Φ57×3.5', weight:4.618, unit:'kg/m'},
+    {type:'钢管', spec:'Φ76×4.0', weight:7.105, unit:'kg/m'},
+    {type:'钢管', spec:'Φ89×4.0', weight:8.385, unit:'kg/m'},
+    {type:'钢管', spec:'Φ108×4.0', weight:10.260, unit:'kg/m'},
+    {type:'钢管', spec:'Φ114×4.0', weight:10.850, unit:'kg/m'},
+    {type:'钢管', spec:'Φ159×5.0', weight:18.990, unit:'kg/m'},
+    {type:'钢管', spec:'Φ219×6.0', weight:31.520, unit:'kg/m'},
+    // 方管
+    {type:'方管', spec:'25×25×2.0', weight:1.42, unit:'kg/m'},
+    {type:'方管', spec:'40×40×2.0', weight:2.35, unit:'kg/m'},
+    {type:'方管', spec:'50×50×2.5', weight:3.62, unit:'kg/m'},
+    {type:'方管', spec:'60×60×3.0', weight:5.22, unit:'kg/m'},
+    {type:'方管', spec:'80×80×3.0', weight:7.07, unit:'kg/m'},
+    {type:'方管', spec:'100×100×4.0', weight:11.73, unit:'kg/m'},
+    // 扁钢
+    {type:'扁钢', spec:'20×3', weight:0.471, unit:'kg/m'},
+    {type:'扁钢', spec:'30×3', weight:0.707, unit:'kg/m'},
+    {type:'扁钢', spec:'40×3', weight:0.942, unit:'kg/m'},
+    {type:'扁钢', spec:'50×4', weight:1.570, unit:'kg/m'},
+    {type:'扁钢', spec:'60×5', weight:2.355, unit:'kg/m'},
+    {type:'扁钢', spec:'80×6', weight:3.768, unit:'kg/m'},
+    // 圆钢
+    {type:'圆钢', spec:'Φ6', weight:0.222, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ8', weight:0.395, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ10', weight:0.617, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ12', weight:0.888, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ16', weight:1.580, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ20', weight:2.470, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ25', weight:3.850, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ30', weight:5.550, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ40', weight:9.860, unit:'kg/m'},
+    {type:'圆钢', spec:'Φ50', weight:15.410, unit:'kg/m'},
+];
+
+function renderSteelTable(data) {
+    var tbody = document.getElementById('steelTableBody');
+    tbody.innerHTML = '';
+    data.forEach(function(item){
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + item.type + '</td><td>' + item.spec + '</td>' +
+            '<td class="text-end">' + item.weight.toFixed(3) + '</td><td class="text-end">' + item.unit + '</td>';
+        tbody.appendChild(tr);
+    });
+}
+
+function filterSteelTable() {
+    var kw = document.getElementById('steelSearch').value.toLowerCase().trim();
+    if (!kw) {
+        renderSteelTable(steelData);
+        return;
+    }
+    var filtered = steelData.filter(function(item){
+        return item.type.toLowerCase().indexOf(kw) >= 0 || item.spec.toLowerCase().indexOf(kw) >= 0;
+    });
+    renderSteelTable(filtered);
+}
+
+/* ========== 7. 工期计算器 ========== */
+function calcSchedule() {
+    var startStr = document.getElementById('schedStart').value;
+    var days = val('schedDays');
+    if (!startStr || isNaN(days)) {
+        document.getElementById('schedEnd').textContent = '--';
+        document.getElementById('schedTotal').textContent = '--';
+        return;
+    }
+    var start = new Date(startStr);
+    var skipWeekend = document.getElementById('schedSkipWeekend').checked;
+    var current = new Date(start);
+    var addedDays = 0;
+    var totalDays = 0;
+    if (skipWeekend) {
+        while (addedDays < days) {
+            current.setDate(current.getDate() + 1);
+            totalDays++;
+            var dow = current.getDay();
+            if (dow !== 0 && dow !== 6) {
+                addedDays++;
+            }
+        }
+    } else {
+        current.setDate(current.getDate() + days);
+        totalDays = days;
+    }
+    var y = current.getFullYear();
+    var m = String(current.getMonth() + 1).padStart(2, '0');
+    var d = String(current.getDate()).padStart(2, '0');
+    document.getElementById('schedEnd').textContent = y + '-' + m + '-' + d;
+    document.getElementById('schedTotal').textContent = totalDays + ' 天';
+}
+
+/* ========== 8. 焊接材料计算 ========== */
+function calcWeld() {
+    var L = val('weldLength');
+    var hf = val('weldSize');
+    var eff = val('weldEfficiency');
+    var weldType = document.getElementById('weldType').value;
+    if (isNaN(L) || isNaN(hf) || isNaN(eff)) return;
+
+    var area = 0;
+    if (weldType === 'fillet') {
+        // 角焊缝: A = 0.707 * hf² (等腰直角三角形近似)
+        area = 0.707 * hf * hf;
+    } else if (weldType === 'butt') {
+        // 对接焊缝: A = hf * 坡口宽度(近似取hf)
+        area = hf * hf * 0.5;
+    } else if (weldType === 'plug') {
+        // 塞焊缝: A = π * (hf/2)²
+        area = Math.PI * (hf / 2) * (hf / 2);
+    }
+
+    var density = 7.85; // g/cm³
+    // 熔敷金属体积 = 面积(mm²) × 长度(mm) = mm³ → cm³
+    var Lmm = L * 1000;
+    var volumeCm3 = (area * Lmm) / 1000;
+    var metalWeight = volumeCm3 * density / 1000; // kg
+
+    // 焊条消耗量 = 熔敷金属量 / 利用率
+    var rodWeight = metalWeight / (eff / 100);
+
+    document.getElementById('weldArea').textContent = fmt(area, 2) + ' mm²';
+    document.getElementById('weldMetal').textContent = fmt(metalWeight, 3) + ' kg';
+    document.getElementById('weldRod').textContent = fmt(rodWeight, 3) + ' kg';
+}
+
+/* ========== 初始化 ========== */
+document.addEventListener('DOMContentLoaded', function(){
+    // 初始化单位换算
+    switchUnitTab('length');
+    // 初始化钢材表
+    renderSteelTable(steelData);
+    // 初始化工期（默认今天）
+    var today = new Date();
+    var y = today.getFullYear();
+    var m = String(today.getMonth() + 1).padStart(2, '0');
+    var d = String(today.getDate()).padStart(2, '0');
+    document.getElementById('schedStart').value = y + '-' + m + '-' + d;
+    calcSchedule();
+    // 初始计算
+    calcRebar();
+    calcPipe();
+    calcGeo();
+    calcConcrete();
+    calcWeld();
+});
+</script>
+{% endblock %}

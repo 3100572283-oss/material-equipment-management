@@ -1,7 +1,8 @@
 {% extends "mobile/base.html" %}
 {% block title %}周转材归还{% endblock %}
 {% block nav_title %}归还登记{% endblock %}
-{% block hide_tab %}true{% endblock %}
+{% block content_class %}no-tab{% endblock %}
+{% block mobile_tabbar %}{% endblock %}
 
 {% block content %}
 <form method="POST" id="returnForm" enctype="multipart/form-data">

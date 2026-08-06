@@ -1,0 +1,46 @@
+{% extends "mobile/base.html" %}
+{% block title %}合同列表{% endblock %}
+{% block nav_title %}合同查看{% endblock %}
+
+{% block content %}
+<div class="m-card" style="padding:10px 14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <span style="font-size:15px; font-weight:600; color:#212529;">
+            <i class="bi bi-file-earmark-text" style="color:#165DFF;"></i> 合同列表
+        </span>
+        <span style="font-size:13px; color:#6c757d;">共 {{ contracts|length }} 条</span>
+    </div>
+    <form method="get" style="display:flex; gap:8px;">
+        <input type="text" name="keyword" value="{{ keyword }}" class="m-form-control" placeholder="搜索合同编号/名称" style="flex:1;">
+        <button type="submit" class="m-btn m-btn-primary m-btn-sm">搜索</button>
+    </form>
+</div>
+
+{% if contracts %}
+    {% for c in contracts %}
+    <a href="{{ url_for('mobile.m_contract_detail', id=c.id) }}" style="text-decoration:none; display:block;">
+        <div class="m-card" style="padding:12px 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:600; color:#212529; font-size:14px;">{{ c.code }}</span>
+                <span style="font-size:11px; padding:2px 8px; border-radius:10px;
+                    {% if c.status == '正常履约' %}background:#d1e7dd; color:#0f5132;
+                    {% elif c.status == '已结算' %}background:#e2e3e5; color:#6c757d;
+                    {% else %}background:#fff3cd; color:#664d03;{% endif %}">{{ c.status }}</span>
+            </div>
+            {% if c.name %}
+            <div style="font-size:13px; color:#495057; margin-top:6px;">{{ c.name[:40] }}</div>
+            {% endif %}
+            <div style="display:flex; justify-content:space-between; margin-top:8px;">
+                <span style="font-size:12px; color:#adb5bd;">{{ c.sign_date.strftime('%Y-%m-%d') if c.sign_date else '未签署' }}</span>
+                <span style="font-weight:600; color:#165DFF; font-size:14px;">{{ '%.2f'|format(c.amount_with_tax or 0) }} 元</span>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+{% else %}
+    <div class="m-card" style="text-align:center; padding:40px 14px; color:#adb5bd;">
+        <i class="bi bi-inbox" style="font-size:48px; display:block; margin-bottom:10px;"></i>
+        <div style="font-size:14px;">暂无合同记录</div>
+    </div>
+{% endif %}
+{% endblock %}

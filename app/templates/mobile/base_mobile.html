@@ -11,6 +11,39 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css') }}">
     {% block extra_css %}{% endblock %}
+    <!-- P1-7: CSRF保护 -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+    (function() {
+        var originalOpen = XMLHttpRequest.prototype.open;
+        var originalSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this._method = method;
+            return originalOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function(body) {
+            if (this._method && this._method.toUpperCase() === 'POST') {
+                var token = document.querySelector('meta[name="csrf-token"]');
+                if (token) { this.setRequestHeader('X-CSRFToken', token.getAttribute('content')); }
+            }
+            return originalSend.apply(this, arguments);
+        };
+        document.addEventListener('DOMContentLoaded', function() {
+            var token = document.querySelector('meta[name="csrf-token"]');
+            if (token) {
+                document.querySelectorAll('form').forEach(function(form) {
+                    if (form.method && form.method.toUpperCase() === 'POST' && !form.querySelector('input[name="csrf_token"]')) {
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'csrf_token';
+                        input.value = token.getAttribute('content');
+                        form.appendChild(input);
+                    }
+                });
+            }
+        });
+    })();
+    </script>
 </head>
 <body>
     <!-- 顶部导航栏 -->

@@ -40,7 +40,20 @@ def permission_required(permission):
                 abort(403)
             if current_user.is_admin():
                 return f(*args, **kwargs)
-            if not current_user.has_permission(permission):
+            # P2: 权限检查缓存
+            from app.cache import get_user_perms_cache, set_user_perms_cache
+            _cached_perms = get_user_perms_cache(current_user.id)
+            if _cached_perms is not None:
+                _has_perm = permission in _cached_perms
+            else:
+                _has_perm = current_user.has_permission(permission)
+                try:
+                    from app.services.permission_service import permission_service
+                    _all_perms = permission_service.get_user_permissions_list(current_user.id)
+                    set_user_perms_cache(current_user.id, _all_perms)
+                except Exception:
+                    pass
+            if not _has_perm:
                 if request.path.startswith('/api/') or request.is_json:
                     return jsonify({'code': 403, 'message': f'无权限执行此操作：{permission}'}), 403
                 abort(403)

@@ -232,7 +232,7 @@ function saveScene(e) {
             if (res.success) {
                 location.reload();
             } else {
-                alert(res.message || '保存失败');
+                customAlert(res.message || '保存失败');
             }
         });
 }
@@ -247,7 +247,7 @@ function deleteScene(id, name) {
             if (res.success) {
                 location.reload();
             } else {
-                alert(res.message || '删除失败');
+                customAlert(res.message || '删除失败');
             }
         });
 }

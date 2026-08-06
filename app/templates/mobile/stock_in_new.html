@@ -1,7 +1,8 @@
 {% extends "mobile/base.html" %}
 {% block title %}入库登记{% endblock %}
 {% block nav_title %}入库登记{% endblock %}
-{% block hide_tab %}true{% endblock %}
+{% block content_class %}no-tab{% endblock %}
+{% block mobile_tabbar %}{% endblock %}
 
 {% block content %}
 <form method="POST" id="stockInForm" enctype="multipart/form-data">
@@ -47,6 +48,23 @@
     <!-- 物资明细 -->
     <div class="m-card">
         <div class="m-card-title"><i class="bi bi-list-ul"></i>物资明细</div>
+        
+        <!-- 拍照识别收料小票 -->
+        <div style="margin-bottom:12px; padding:10px; background:linear-gradient(135deg,#e3f2fd,#f3e5f5); border-radius:10px; border:1px solid #bbdefb;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <i class="bi bi-camera-fill" style="font-size:24px; color:#1565C0;"></i>
+                <div style="flex:1;">
+                    <div style="font-size:14px; font-weight:600; color:#1565C0;">AI智能识别收料小票（支持图片/PDF）</div>
+                    <div style="font-size:12px; color:#666;">拍照上传小票，自动识别物资明细</div>
+                </div>
+            </div>
+            <button type="button" class="m-btn m-btn-primary" style="width:100%; margin-top:8px; height:42px;" onclick="document.getElementById('receiptFileInput').click()">
+                <i class="bi bi-camera" style="margin-right:6px;"></i>拍照识别收料小票
+            </button>
+            <input type="file" id="receiptFileInput" accept="image/*,application/pdf" 
+                   style="display:none;" onchange="recognizeReceipt(this)">
+        </div>
+        
         <div id="itemsContainer"></div>
         <button type="button" class="m-add-row-btn" onclick="addItemRow()">
             <i class="bi bi-plus-lg"></i> 添加物资
@@ -124,6 +142,87 @@
 var currentEditingRow = null;  // 当前正在选择物资的行
 
 // ========== 物资明细行 ==========
+
+// ========== AI识别收料小票 ==========
+function recognizeReceipt(input) {
+    var file = input.files[0];
+    if (!file) return;
+    
+    M.toast('正在识别收料小票...', 'info');
+    M.loading(true);
+    
+    // 压缩图片
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var img = new Image();
+        img.onload = function() {
+            var maxLen = 1280;
+            var w = img.width, h = img.height;
+            if (w > h && w > maxLen) { h = h * maxLen / w; w = maxLen; }
+            else if (h > maxLen) { w = w * maxLen / h; h = maxLen; }
+            var canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob(function(blob) {
+                _sendReceiptToAI(blob);
+            }, 'image/jpeg', 0.8);
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+    input.value = '';
+}
+
+function _sendReceiptToAI(blob) {
+    var formData = new FormData();
+    formData.append('image', blob, 'receipt.jpg');
+    formData.append('type', 'receipt');
+    
+    fetch('/ai/vision/recognize', {
+        method: 'POST',
+        body: formData
+    }).then(function(r) { return r.json(); })
+    .then(function(data) {
+        M.loading(false);
+        if (data.success && data.data && data.data.items && data.data.items.length > 0) {
+            var items = data.data.items;
+            M.confirm('识别到 ' + items.length + ' 条物资明细，是否清空当前明细并填充？', function() {
+                // 清空当前明细
+                document.getElementById('itemsContainer').innerHTML = '';
+                // 填充识别结果
+                items.forEach(function(item) {
+                    addItemRow();
+                    var rows = document.querySelectorAll('#itemsContainer .m-item-row');
+                    var lastRow = rows[rows.length - 1];
+                    if (lastRow) {
+                        // 填充物资名称
+                        var nameInput = lastRow.querySelector('.material-name');
+                        if (nameInput) nameInput.value = item.material_name || item.name || '';
+                        // 填充数量
+                        var qtyInput = lastRow.querySelector('.material-qty');
+                        if (qtyInput) qtyInput.value = item.quantity || '';
+                        // 填充规格
+                        var specInput = lastRow.querySelector('.material-spec');
+                        if (specInput) specInput.value = item.spec || item.specification || '';
+                        // 填充单位
+                        var unitInput = lastRow.querySelector('.material-unit');
+                        if (unitInput) unitInput.value = item.unit || '';
+                    }
+                });
+                M.toast('收料小票识别成功，已填充' + items.length + '条明细，请核对', 'success');
+            });
+        } else if (data.success && (!data.data || !data.data.items || data.data.items.length === 0)) {
+            M.toast('未识别到物资明细，请手动录入', 'warning');
+        } else {
+            M.toast('识别失败：' + (data.message || '未知错误') + '，请手动录入', 'danger');
+        }
+    }).catch(function(err) {
+        M.loading(false);
+        M.toast('识别请求失败：' + err.message + '，请手动录入', 'danger');
+    });
+}
+
 function addItemRow() {
     var container = document.getElementById('itemsContainer');
     var idx = container.children.length;

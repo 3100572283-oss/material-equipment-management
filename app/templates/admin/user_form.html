@@ -219,7 +219,7 @@
                     <div class="mb-3">
                         <label for="resetPwdNew" class="form-label">新密码 <span class="text-danger">*</span></label>
                         <div class="input-group">
-                            <input type="password" class="form-control" id="resetPwdNew" name="new_password" required minlength="6" placeholder="请输入新密码（至少6位）">
+                            <input type="password" class="form-control" id="resetPwdNew" name="new_password" required minlength="8" placeholder="请输入新密码（至少8位，需含大小写字母和数字）">
                             <button class="btn btn-outline-secondary" type="button" id="toggleNewPwd" title="显示/隐藏密码">
                                 <i class="bi bi-eye"></i>
                             </button>
@@ -229,7 +229,7 @@
                     <div class="mb-3">
                         <label for="resetPwdConfirm" class="form-label">确认密码 <span class="text-danger">*</span></label>
                         <div class="input-group">
-                            <input type="password" class="form-control" id="resetPwdConfirm" name="confirm_password" required minlength="6" placeholder="请再次输入新密码">
+                            <input type="password" class="form-control" id="resetPwdConfirm" name="confirm_password" required minlength="8" placeholder="请再次输入新密码">
                             <button class="btn btn-outline-secondary" type="button" id="toggleConfirmPwd" title="显示/隐藏密码">
                                 <i class="bi bi-eye"></i>
                             </button>
@@ -703,14 +703,14 @@ function filterDeptTree(keyword) {
 
     var form = document.querySelector('#resetPwdModal form');
     form.addEventListener('submit', function(e) {
-        if (newPwd.value.length < 6) {
+        if (newPwd.value.length < 8) {
             e.preventDefault();
-            alert('密码长度不能少于6位');
+            customAlert('密码长度不能少于8位，需包含大小写字母和数字');
             return;
         }
         if (newPwd.value !== confirmPwd.value) {
             e.preventDefault();
-            alert('两次输入的密码不一致');
+            customAlert('两次输入的密码不一致');
             return;
         }
     });
