@@ -2519,164 +2519,208 @@ body.dark-mode .m-calc-keypad button.equals { background: #2d7dd2; color: #fff; 
 .m-ai-page {
     padding-bottom: 0 !important;
 }
+
+/* ========== V7.1 移动端AI助手页面 ========== */
+.m-ai-page .m-content,
+.m-ai-page .m-navbar + div {
+    padding-bottom: 0 !important;
+}
+
 .m-ai-page-wrap {
     min-height: calc(100vh - 56px);
-    padding-bottom: 70px;
+    padding-bottom: 72px;
+    background: linear-gradient(180deg, #f0f5ff 0%, #fafafa 30%, #fafafa 100%);
 }
+
+/* ========== 欢迎区域 ========== */
 .m-ai-welcome {
     text-align: center;
-    padding: 40px 20px 20px;
+    padding: 48px 24px 28px;
 }
 .m-ai-welcome-icon {
-    width: 72px;
-    height: 72px;
-    margin: 0 auto 16px;
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 20px;
     border-radius: 50%;
     background: linear-gradient(135deg, #409eff, #1e6fd9);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 32px;
+    font-size: 36px;
     color: #fff;
-    box-shadow: 0 4px 20px rgba(64, 158, 255, 0.3);
+    box-shadow: 0 8px 28px rgba(64, 158, 255, 0.35);
 }
 .m-ai-welcome h2 {
-    font-size: 20px;
-    font-weight: 600;
+    font-size: 22px;
+    font-weight: 700;
     color: #1a1a1a;
     margin-bottom: 8px;
+    letter-spacing: 0.5px;
 }
 .m-ai-welcome p {
     font-size: 14px;
     color: #999;
-    margin-bottom: 24px;
+    margin-bottom: 28px;
+    line-height: 1.5;
 }
+
+/* ========== 快捷问题卡片 ========== */
 .m-ai-welcome-tips {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    padding: 0 8px;
+    gap: 14px;
+    padding: 0 4px;
 }
 .m-ai-tip {
     background: #fff;
-    border: 1px solid #eee;
-    border-radius: 12px;
-    padding: 14px 12px;
+    border: 1px solid #f0f0f0;
+    border-radius: 16px;
+    padding: 18px 12px 14px;
     text-align: center;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.25s ease;
     -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
 }
 .m-ai-tip:active {
-    transform: scale(0.96);
-    background: #f0f7ff;
+    transform: scale(0.95);
+    box-shadow: 0 1px 6px rgba(64, 158, 255, 0.15);
     border-color: #409eff;
 }
-.m-ai-tip i {
-    font-size: 22px;
-    color: #409eff;
-    display: block;
-    margin-bottom: 6px;
+.m-ai-tip-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
 }
 .m-ai-tip span {
     font-size: 13px;
-    color: #666;
+    color: #555;
+    font-weight: 500;
 }
 
-/* 消息列表 */
+/* ========== 消息列表 ========== */
 .m-ai-msgs {
-    padding: 12px 14px;
+    padding: 8px 14px 16px;
 }
 .m-ai-msg-user {
     display: flex;
     justify-content: flex-end;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
+    animation: m-ai-fadein 0.3s ease;
 }
 .m-ai-bubble-user {
-    max-width: 78%;
-    padding: 10px 14px;
-    border-radius: 16px 16px 4px 16px;
-    background: #409eff;
+    max-width: 76%;
+    padding: 11px 16px;
+    border-radius: 18px 18px 4px 18px;
+    background: linear-gradient(135deg, #409eff, #1e6fd9);
     color: #fff;
     font-size: 14px;
     line-height: 1.6;
     word-break: break-word;
+    box-shadow: 0 2px 10px rgba(64, 158, 255, 0.25);
 }
 .m-ai-msg-bot {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 14px;
+    gap: 10px;
+    margin-bottom: 16px;
+    animation: m-ai-fadein 0.3s ease;
 }
 .m-ai-avatar-bot {
-    width: 32px;
-    height: 32px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     background: linear-gradient(135deg, #409eff, #1e6fd9);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 16px;
+    font-size: 17px;
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
 }
 .m-ai-bubble-bot {
-    max-width: 78%;
-    padding: 10px 14px;
-    border-radius: 4px 16px 16px 16px;
+    max-width: 76%;
+    padding: 11px 16px;
+    border-radius: 4px 18px 18px 18px;
     background: #fff;
     color: #333;
     font-size: 14px;
-    line-height: 1.6;
+    line-height: 1.7;
     word-break: break-word;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 .m-ai-bubble-bot pre {
-    background: #f5f5f5;
-    padding: 8px 10px;
+    background: #f5f7fa;
+    padding: 10px 12px;
     border-radius: 8px;
     overflow-x: auto;
-    margin: 6px 0;
+    margin: 8px 0;
     font-size: 13px;
+    border: 1px solid #eee;
 }
 .m-ai-bubble-bot code {
-    background: #f0f0f0;
-    padding: 2px 5px;
+    background: #f0f5ff;
+    color: #409eff;
+    padding: 2px 6px;
     border-radius: 4px;
     font-size: 13px;
 }
+.m-ai-bubble-bot pre code {
+    background: none;
+    color: #333;
+    padding: 0;
+}
+.m-ai-bubble-bot strong { font-weight: 600; color: #1a1a1a; }
 .m-ai-bubble-bot table {
     border-collapse: collapse;
-    margin: 6px 0;
+    margin: 8px 0;
     font-size: 13px;
+    width: 100%;
 }
 .m-ai-bubble-bot table td {
-    border: 1px solid #ddd;
-    padding: 4px 8px;
+    border: 1px solid #e0e0e0;
+    padding: 6px 10px;
 }
 .m-ai-bubble-bot ul {
-    padding-left: 18px;
-    margin: 4px 0;
+    padding-left: 20px;
+    margin: 6px 0;
+}
+.m-ai-bubble-bot li { margin: 3px 0; }
+
+@keyframes m-ai-fadein {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-/* 打字动画 */
+/* ========== 打字动画 ========== */
 .m-ai-typing .m-ai-dot {
     display: inline-block;
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: #bbb;
-    margin: 0 2px;
+    background: #c0c0c0;
+    margin: 0 3px;
     animation: m-ai-bounce 1.4s infinite ease-in-out;
 }
 .m-ai-typing .m-ai-dot:nth-child(2) { animation-delay: 0.2s; }
 .m-ai-typing .m-ai-dot:nth-child(3) { animation-delay: 0.4s; }
 @keyframes m-ai-bounce {
-    0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
     40% { transform: scale(1); opacity: 1; }
 }
 
-/* 底部输入栏 */
+/* ========== 底部输入栏 ========== */
 .m-ai-input-bar {
     position: fixed;
     bottom: 0;
@@ -2685,30 +2729,35 @@ body.dark-mode .m-calc-keypad button.equals { background: #2d7dd2; color: #fff; 
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-    background: #fff;
-    border-top: 1px solid #eee;
+    padding: 10px 14px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
     z-index: 1000;
 }
 .m-ai-input {
     flex: 1;
-    border: 1px solid #ddd;
-    border-radius: 22px;
-    padding: 8px 16px;
+    border: 1.5px solid #e4e7ed;
+    border-radius: 24px;
+    padding: 9px 18px;
     font-size: 15px;
     outline: none;
     background: #f5f7fa;
     color: #333;
-    transition: border-color 0.2s;
+    transition: all 0.2s;
+    -webkit-appearance: none;
 }
+.m-ai-input::placeholder { color: #c0c4cc; }
 .m-ai-input:focus {
     border-color: #409eff;
     background: #fff;
+    box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.08);
 }
 .m-ai-mic-btn {
-    width: 38px;
-    height: 38px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     border: none;
     background: #f0f7ff;
@@ -2720,22 +2769,24 @@ body.dark-mode .m-calc-keypad button.equals { background: #2d7dd2; color: #fff; 
     cursor: pointer;
     flex-shrink: 0;
     -webkit-tap-highlight-color: transparent;
+    transition: all 0.2s;
 }
+.m-ai-mic-btn:active { transform: scale(0.92); }
 .m-ai-mic-btn.recording {
     background: #ff4d4f;
     color: #fff;
     animation: m-ai-pulse 1.5s infinite;
 }
 @keyframes m-ai-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(255,77,79,0.4); }
-    50% { box-shadow: 0 0 0 8px rgba(255,77,79,0); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.4); }
+    50% { box-shadow: 0 0 0 10px rgba(255, 77, 79, 0); }
 }
 .m-ai-send-btn {
-    width: 38px;
-    height: 38px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     border: none;
-    background: #409eff;
+    background: linear-gradient(135deg, #409eff, #1e6fd9);
     color: #fff;
     font-size: 16px;
     display: flex;
@@ -2744,38 +2795,47 @@ body.dark-mode .m-calc-keypad button.equals { background: #2d7dd2; color: #fff; 
     cursor: pointer;
     flex-shrink: 0;
     -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 3px 10px rgba(64, 158, 255, 0.3);
+    transition: all 0.2s;
 }
-.m-ai-send-btn:active { transform: scale(0.92); }
+.m-ai-send-btn:active { transform: scale(0.9); }
 
 /* ========== 深色模式 ========== */
-body.dark-mode .m-ai-welcome h2 { color: #e0e0e0; }
+body.dark-mode .m-ai-page-wrap {
+    background: linear-gradient(180deg, #1a2332 0%, #1e1e1e 30%, #1e1e1e 100%);
+}
+body.dark-mode .m-ai-welcome h2 { color: #e8e8e8; }
 body.dark-mode .m-ai-welcome p { color: #888; }
 body.dark-mode .m-ai-tip {
     background: #2a2a2a;
     border-color: #3a3a3a;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
 }
 body.dark-mode .m-ai-tip:active {
     background: #1a2a3a;
     border-color: #409eff;
 }
-body.dark-mode .m-ai-tip span { color: #aaa; }
+body.dark-mode .m-ai-tip span { color: #ccc; }
 body.dark-mode .m-ai-bubble-bot {
     background: #2a2a2a;
     color: #ddd;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
-body.dark-mode .m-ai-bubble-bot pre { background: #1a1a1a; }
-body.dark-mode .m-ai-bubble-bot code { background: #1a1a1a; }
+body.dark-mode .m-ai-bubble-bot pre { background: #1a1a1a; border-color: #333; }
+body.dark-mode .m-ai-bubble-bot code { background: #1a2332; color: #66b1ff; }
+body.dark-mode .m-ai-bubble-bot pre code { color: #ddd; }
+body.dark-mode .m-ai-bubble-bot strong { color: #fff; }
 body.dark-mode .m-ai-bubble-bot table td { border-color: #444; }
 body.dark-mode .m-ai-input-bar {
-    background: #1e1e1e;
-    border-top-color: #333;
+    background: rgba(30, 30, 30, 0.96);
+    border-top-color: rgba(255, 255, 255, 0.08);
 }
 body.dark-mode .m-ai-input {
     background: #2a2a2a;
     border-color: #444;
     color: #ddd;
 }
+body.dark-mode .m-ai-input::placeholder { color: #666; }
 body.dark-mode .m-ai-input:focus {
     border-color: #409eff;
     background: #2a2a2a;
