@@ -67,3 +67,7 @@ class Config:
     # 管理员初始密码（首次初始化时创建 admin 账号使用）
     # 生产环境部署后请立即修改 admin 密码
     ADMIN_DEFAULT_PASSWORD = os.environ.get('ADMIN_DEFAULT_PASSWORD', 'Admin@2024')
+
+    # M0 权限中台灰度开关：true 时启用 auth_core 新权限（已迁移用户走新判定）
+    # 默认 false —— 旧权限逻辑继续生效，保证平滑回退
+    AUTH_CORE_ENABLED = os.environ.get('AUTH_CORE_ENABLED', 'false').lower() == 'true'

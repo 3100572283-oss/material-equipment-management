@@ -1211,6 +1211,10 @@ def create_app(config_class=Config):
     csrf.exempt(_ai_bp_for_csrf)
     csrf.exempt(_auth_bp_for_csrf)  # 登录/登出是入口，豁免CSRF
 
+    # M0 权限中台（绞杀者模式）：独立蓝图，最小侵入接入
+    from app.auth_core import bp as auth_core_bp
+    app.register_blueprint(auth_core_bp, url_prefix='/auth_core')
+
     @app.context_processor
     def inject_projects():
         from flask_login import current_user
@@ -1277,6 +1281,13 @@ def create_app(config_class=Config):
             if not current_user.is_authenticated:
                 return False
             try:
+                # M0 灰度：已迁移到 auth_core 的用户走新权限判定，未迁移回退旧逻辑
+                from app.auth_core.gateway import AuthGateway, _enabled
+                if _enabled():
+                    from app.auth_core.models import AuthUser
+                    acu = AuthUser.query.filter_by(username=current_user.username).first()
+                    if acu:
+                        return AuthGateway.check_permission(acu.id, permission)
                 return current_user.has_permission(permission)
             except Exception:
                 return False
@@ -1484,6 +1495,9 @@ def create_app(config_class=Config):
         init_default_flows()
         init_rbac_data()
         init_steel_specs()
+        # M0 权限中台：组织树骨架 + 铁建岗位角色模板 + 超级管理员种子
+        from app.auth_core.init_data import init_auth_core_data
+        init_auth_core_data()
         # 主数据统一改造：建立项目常用关联
         from app.utils import init_master_data_unification
         init_master_data_unification()

@@ -1,0 +1,280 @@
+{% extends "auth_core/_layout.html" %}
+{% set page_title = '组织架构' %}
+
+{% block ac_content %}
+<div class="ac-card">
+  <div class="ac-card-head">
+    <h6><i class="bi bi-diagram-3 me-2 text-primary"></i>组织架构</h6>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-secondary btn-sm" onclick="Org.toggleAll(true)">
+        <i class="bi bi-arrows-expand me-1"></i>展开
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="Org.toggleAll(false)">
+        <i class="bi bi-arrows-collapse me-1"></i>收起
+      </button>
+      {% if 'system:org:create' in perms %}
+      <button class="btn btn-primary btn-sm" onclick="Org.openForm()">
+        <i class="bi bi-plus-lg me-1"></i>新增组织
+      </button>
+      {% endif %}
+    </div>
+  </div>
+  <div class="ac-card-body">
+    <div class="ac-hint">
+      <i class="bi bi-info-circle me-1"></i>
+      按中国铁建<strong>三级四层</strong>结构维护：股份公司 → 二级集团/工程局 → 三级公司 → 项目部。
+      勾选<strong>法人单位</strong>的节点是「法人管项目」两层管理的数据隔离边界，
+      角色数据范围选「本法人及下属单位」时以此为界。
+    </div>
+    <div id="orgTree"><div class="ac-empty"><i class="bi bi-hourglass-split"></i>加载中…</div></div>
+  </div>
+</div>
+
+<!-- 组织表单 -->
+<div class="modal fade" id="orgModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title" id="orgModalTitle">新增组织</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="f_id">
+        <div class="row g-3">
+          <div class="col-6">
+            <label class="form-label small fw-semibold">组织编码 <span class="text-danger">*</span></label>
+            <input class="form-control form-control-sm" id="f_code" placeholder="如 PROJ-001">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">组织名称 <span class="text-danger">*</span></label>
+            <input class="form-control form-control-sm" id="f_name" placeholder="如 XX高速项目部">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">上级组织</label>
+            <select class="form-select form-select-sm" id="f_parent" onchange="Org.autoLevel()"></select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">组织层级</label>
+            <select class="form-select form-select-sm" id="f_level">
+              {% for lv, nm in level_names.items() %}
+              <option value="{{ lv }}">{{ lv }} - {{ nm }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">组织类型</label>
+            <select class="form-select form-select-sm" id="f_type">
+              {% for code, nm in dept_types.items() %}
+              <option value="{{ code }}">{{ nm }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">负责人</label>
+            <input class="form-control form-control-sm" id="f_leader">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">排序</label>
+            <input type="number" class="form-control form-control-sm" id="f_sort" value="0">
+          </div>
+          <div class="col-12">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="f_legal">
+              <label class="form-check-label small" for="f_legal">
+                法人单位 <span class="text-muted">（数据隔离边界，公司级通常勾选）</span>
+              </label>
+            </div>
+            <div class="form-check form-switch mt-1">
+              <input class="form-check-input" type="checkbox" id="f_status" checked>
+              <label class="form-check-label small" for="f_status">启用</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light btn-sm" data-bs-dismiss="modal">取消</button>
+        <button class="btn btn-primary btn-sm" onclick="Org.save()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block ac_script %}
+<script>
+const CAN = {
+  create: {{ 'true' if 'system:org:create' in perms else 'false' }},
+  edit:   {{ 'true' if 'system:org:edit'   in perms else 'false' }},
+  del:    {{ 'true' if 'system:org:delete' in perms else 'false' }}
+};
+const LEVEL_NAMES = {{ level_names | tojson }};
+
+const Org = {
+  tree: [],
+  collapsed: new Set(),
+
+  async load() {
+    const j = await AC.req('{{ url_for("auth_core.api_org_tree") }}');
+    Org.tree = j ? j.data : [];
+    Org.render();
+  },
+
+  render() {
+    const box = document.getElementById('orgTree');
+    if (!Org.tree.length) {
+      box.innerHTML = '<div class="ac-empty"><i class="bi bi-inbox"></i>暂无组织，点击「新增组织」创建根节点</div>';
+      return;
+    }
+    box.innerHTML = '<div class="org-tree">' + Org.tree.map(n => Org.node(n, 0)).join('') + '</div>';
+  },
+
+  node(n, depth) {
+    const hasChild = n.children && n.children.length;
+    const isCollapsed = Org.collapsed.has(n.id);
+    const caret = hasChild
+      ? `<i class="bi bi-chevron-${isCollapsed ? 'right' : 'down'} org-caret" onclick="Org.toggle(${n.id})"></i>`
+      : '<i class="bi bi-dot org-caret text-muted" style="opacity:.35"></i>';
+
+    const levelBadge = `<span class="badge badge-soft ms-2">${AC.esc(LEVEL_NAMES[n.level] || ('L' + n.level))}</span>`;
+    const legalBadge = n.legal_entity
+      ? '<span class="badge bg-warning-subtle text-warning-emphasis ms-1"><i class="bi bi-bank me-1"></i>法人</span>' : '';
+    const projBadge = n.project_id
+      ? `<span class="badge bg-info-subtle text-info-emphasis ms-1">项目#${n.project_id}</span>` : '';
+    const offBadge = n.status ? '' : '<span class="badge bg-secondary ms-1">停用</span>';
+
+    let ops = '';
+    if (CAN.create) ops += `<button class="btn btn-outline-primary" title="添加下级" onclick='Org.openForm(null,${n.id})'><i class="bi bi-plus-lg"></i></button>`;
+    if (CAN.edit)   ops += `<button class="btn btn-outline-secondary" title="编辑" onclick='Org.openForm(${JSON.stringify(n)})'><i class="bi bi-pencil"></i></button>`;
+    if (CAN.del)    ops += `<button class="btn btn-outline-danger" title="删除" onclick="Org.del(${n.id},'${AC.esc(n.name)}')"><i class="bi bi-trash"></i></button>`;
+
+    let html = `
+      <div class="org-row" style="padding-left:${depth * 22}px">
+        ${caret}
+        <i class="bi ${n.level === 4 ? 'bi-building-gear' : 'bi-building'} me-2 text-primary"></i>
+        <span class="org-name">${AC.esc(n.name)}</span>
+        <span class="text-muted small ms-2">${AC.esc(n.code)}</span>
+        ${levelBadge}${legalBadge}${projBadge}${offBadge}
+        <span class="org-ops btn-group btn-group-sm">${ops}</span>
+      </div>`;
+    if (hasChild && !isCollapsed) html += n.children.map(c => Org.node(c, depth + 1)).join('');
+    return html;
+  },
+
+  toggle(id) { Org.collapsed.has(id) ? Org.collapsed.delete(id) : Org.collapsed.add(id); Org.render(); },
+
+  toggleAll(expand) {
+    Org.collapsed.clear();
+    if (!expand) {
+      const walk = ns => ns.forEach(n => {
+        if (n.children && n.children.length) { Org.collapsed.add(n.id); walk(n.children); }
+      });
+      walk(Org.tree);
+    }
+    Org.render();
+  },
+
+  async openForm(node = null, parentId = null) {
+    const meta = await AC.loadMeta(true);
+    const sel = document.getElementById('f_parent');
+    sel.innerHTML = '<option value="0">（无，作为根节点）</option>' +
+      meta.orgs.map(o => `<option value="${o.id}">${AC.esc(o.indent_name)}</option>`).join('');
+
+    document.getElementById('orgModalTitle').textContent = node ? '编辑组织' : '新增组织';
+    document.getElementById('f_id').value     = node ? node.id : '';
+    document.getElementById('f_code').value   = node ? node.code : '';
+    document.getElementById('f_name').value   = node ? node.name : '';
+    document.getElementById('f_type').value   = node ? node.dept_type : 'dept';
+    document.getElementById('f_leader').value = '';
+    document.getElementById('f_sort').value   = 0;
+    document.getElementById('f_legal').checked  = node ? !!node.legal_entity : false;
+    document.getElementById('f_status').checked = node ? !!node.status : true;
+
+    if (node) {
+      const p = Org.findParent(Org.tree, node.id, 0);
+      sel.value = String(p);
+      document.getElementById('f_level').value = String(node.level);
+      // 编辑时禁止把自己选成自己的上级（后端也有防环校验，这里先做前端提示层）
+      Array.from(sel.options).forEach(o => {
+        if (o.value === String(node.id)) o.disabled = true;
+      });
+    } else {
+      sel.value = String(parentId || 0);
+      Org.autoLevel();
+    }
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('orgModal')).show();
+  },
+
+  findParent(nodes, id, parentId) {
+    for (const n of nodes) {
+      if (n.id === id) return parentId;
+      if (n.children) { const r = Org.findParent(n.children, id, n.id); if (r !== null) return r; }
+    }
+    return null;
+  },
+
+  // 选了上级自动推层级，避免手工填错破坏三级四层结构
+  autoLevel() {
+    const pid = parseInt(document.getElementById('f_parent').value || '0');
+    if (!pid) { document.getElementById('f_level').value = '1'; return; }
+    const find = (ns) => {
+      for (const n of ns) {
+        if (n.id === pid) return n;
+        if (n.children) { const r = find(n.children); if (r) return r; }
+      }
+      return null;
+    };
+    const p = find(Org.tree);
+    if (p) document.getElementById('f_level').value = String(Math.min(p.level + 1, 4));
+  },
+
+  async save() {
+    const id = document.getElementById('f_id').value;
+    const body = {
+      org_code:     document.getElementById('f_code').value.trim(),
+      org_name:     document.getElementById('f_name').value.trim(),
+      parent_id:    parseInt(document.getElementById('f_parent').value || '0'),
+      org_level:    parseInt(document.getElementById('f_level').value),
+      dept_type:    document.getElementById('f_type').value,
+      leader:       document.getElementById('f_leader').value.trim(),
+      sort:         parseInt(document.getElementById('f_sort').value || '0'),
+      legal_entity: document.getElementById('f_legal').checked,
+      status:       document.getElementById('f_status').checked
+    };
+    if (!body.org_code || !body.org_name) { AC.toast('组织编码与名称必填', false); return; }
+
+    const j = id
+      ? await AC.req('/auth_core/api/org/' + id, 'PUT', body)
+      : await AC.req('{{ url_for("auth_core.api_org_create") }}', 'POST', body);
+    if (!j) return;
+    bootstrap.Modal.getInstance(document.getElementById('orgModal')).hide();
+    AC.toast(j.msg);
+    AC.meta = null;
+    Org.load();
+  },
+
+  async del(id, name) {
+    if (!confirm('确认删除组织「' + name + '」？\n（存在子组织或用户时将被拒绝）')) return;
+    const j = await AC.req('/auth_core/api/org/' + id, 'DELETE');
+    if (!j) return;
+    AC.toast(j.msg);
+    AC.meta = null;
+    Org.load();
+  }
+};
+
+Org.load();
+</script>
+<style>
+  .org-row {
+    display: flex; align-items: center; padding-top: 7px; padding-bottom: 7px;
+    border-bottom: 1px dashed var(--bs-border-color, #eef0f3); font-size: 14px;
+    transition: background .15s ease;
+  }
+  .org-row:hover { background: rgba(13,110,253,.045); }
+  .org-row:hover .org-ops { opacity: 1; }
+  .org-caret { cursor: pointer; width: 18px; text-align: center; color: #7a8290; }
+  .org-name { font-weight: 500; }
+  .org-ops { opacity: 0; margin-left: auto; transition: opacity .16s ease; }
+  @media (max-width: 767.98px) { .org-ops { opacity: 1; } }
+</style>
+{% endblock %}
