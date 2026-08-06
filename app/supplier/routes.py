@@ -206,16 +206,44 @@ def edit(id):
 @log_audit(module='supplier', operation='删除')
 def delete(id):
     supplier = Supplier.query.get_or_404(id)
-    from app.models import Contract, StockIn, PurchaseOrder
-    if Contract.query.filter_by(supplier_id=supplier.id).first():
-        flash('该供应商已关联合同，无法删除。', 'danger')
+    from app.models import (Contract, StockIn, PurchaseOrder,
+                             ProjectSupplier, Invoice, Payment,
+                             PaymentApplication, Reconciliation,
+                             SupplierEvaluation)
+    # 收集所有关联数据提示
+    block_reasons = []
+    contract_count = Contract.query.filter_by(supplier_id=supplier.id).count()
+    if contract_count:
+        block_reasons.append(f'合同({contract_count}条)')
+    stockin_count = StockIn.query.filter_by(supplier_id=supplier.id).count()
+    if stockin_count:
+        block_reasons.append(f'入库记录({stockin_count}条)')
+    po_count = PurchaseOrder.query.filter_by(supplier_id=supplier.id).count()
+    if po_count:
+        block_reasons.append(f'采购订单({po_count}条)')
+    invoice_count = Invoice.query.filter_by(supplier_id=supplier.id).count()
+    if invoice_count:
+        block_reasons.append(f'发票({invoice_count}条)')
+    payment_count = Payment.query.filter_by(supplier_id=supplier.id).count()
+    if payment_count:
+        block_reasons.append(f'付款记录({payment_count}条)')
+    pa_count = PaymentApplication.query.filter_by(supplier_id=supplier.id).count()
+    if pa_count:
+        block_reasons.append(f'付款申请({pa_count}条)')
+    recon_count = Reconciliation.query.filter_by(supplier_id=supplier.id).count()
+    if recon_count:
+        block_reasons.append(f'对账单({recon_count}条)')
+    eval_count = SupplierEvaluation.query.filter_by(supplier_id=supplier.id).count()
+    if eval_count:
+        block_reasons.append(f'供应商评价({eval_count}条)')
+
+    if block_reasons:
+        flash(f'无法删除供应商「{supplier.name}」，存在关联数据：{"、".join(block_reasons)}。请先处理相关数据后再删除。', 'danger')
         return redirect(url_for('supplier.index'))
-    if StockIn.query.filter_by(supplier_id=supplier.id).first():
-        flash('该供应商已存在入库记录，无法删除。', 'danger')
-        return redirect(url_for('supplier.index'))
-    if PurchaseOrder.query.filter_by(supplier_id=supplier.id).first():
-        flash('该供应商已关联采购订单，无法删除。', 'danger')
-        return redirect(url_for('supplier.index'))
+
+    # ProjectSupplier 是关联表（项目常用标记），直接清理
+    ProjectSupplier.query.filter_by(supplier_id=supplier.id).delete()
+
     db.session.delete(supplier)
     db.session.commit()
     log_operation('删除', module='供应商管理', description=f'删除供应商：{supplier.name}')
