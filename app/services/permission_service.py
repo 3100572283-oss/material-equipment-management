@@ -1,6 +1,25 @@
 from flask_login import current_user
 
 
+def _unwrap_user(user):
+    """解包 flask_login 的 LocalProxy，拿到真实用户对象。
+
+    current_user 是 LocalProxy，isinstance(user, AuthUser) 恒为 False，
+    会让所有「委托 AuthGateway」的分支被静默跳过。所有对外方法入口统一解包。
+    user 为 None 时取当前登录用户（与原有 `if user is None: user = current_user` 语义一致）。
+    """
+    if user is None:
+        from flask_login import current_user as _cu
+        user = _cu
+    getter = getattr(user, '_get_current_object', None)
+    if callable(getter):
+        try:
+            user = getter()
+        except Exception:
+            pass
+    return user
+
+
 class PermissionService:
     _instance = None
 
@@ -21,6 +40,7 @@ class PermissionService:
                 'custom_depts': []  # data_scope=custom 时的部门ID列表
             }
         """
+        user = _unwrap_user(user)
         from app.auth_core.models import AuthUser
         if isinstance(user, AuthUser):
             from app.auth_core.gateway import AuthGateway
@@ -62,6 +82,7 @@ class PermissionService:
 
         用户手动绑定的项目始终保留。
         """
+        user = _unwrap_user(user)
         from app.auth_core.models import AuthUser
         if isinstance(user, AuthUser):
             from app.auth_core.gateway import AuthGateway
@@ -133,6 +154,7 @@ class PermissionService:
         Returns:
             bool: 是否有权限
         """
+        user = _unwrap_user(user)
         if not permission:
             return True
         from app.auth_core.models import AuthUser
@@ -219,6 +241,7 @@ class PermissionService:
         Returns:
             list: 菜单树结构，每个节点包含 id, name, type, permission, children 等
         """
+        user = _unwrap_user(user)
         from app.models import SysMenu, SysModule
 
         enabled_modules = {}
@@ -286,6 +309,7 @@ class PermissionService:
         Returns:
             list: 权限标识数组，如 ['system:dept:view', 'stock:in:create']
         """
+        user = _unwrap_user(user)
         from app.models import SysMenu, SysRoleMenu, SysModule
 
         enabled_modules = {}
@@ -362,6 +386,7 @@ class PermissionService:
         Returns:
             set | None: None 表示拥有全部部门权限
         """
+        user = _unwrap_user(user)
         if user.is_admin():
             return None
 
@@ -394,6 +419,7 @@ class PermissionService:
 
     def get_user_visible_projects(self, user):
         """获取用户可见的 Project 对象列表"""
+        user = _unwrap_user(user)
         from app.models import Project
         allowed = self.get_user_allowed_projects(user)
         if allowed is None:
@@ -404,6 +430,7 @@ class PermissionService:
 
     def can_access_project(self, user, project_id):
         """检查用户是否可访问指定项目"""
+        user = _unwrap_user(user)
         allowed = self.get_user_allowed_projects(user)
         if allowed is None:
             return True
@@ -490,6 +517,7 @@ class PermissionService:
         Returns:
             query: 追加过滤条件后的查询对象
         """
+        user = _unwrap_user(user)
         if user is None:
             user = current_user
 
@@ -552,6 +580,7 @@ class PermissionService:
                 'dept_names': list  # 部门名称列表（用于展示）
             }
         """
+        user = _unwrap_user(user)
         scope_info = self.get_user_data_scope(user)
         data_scope = scope_info['scope']
         custom_depts = scope_info['custom_depts']
@@ -610,6 +639,7 @@ class PermissionService:
         Returns:
             list: 项目字典列表，每个项目包含 id, name, code, dept_id, status
         """
+        user = _unwrap_user(user)
         projects = self.get_user_visible_projects(user)
         result = []
         for p in projects:
@@ -636,6 +666,7 @@ class PermissionService:
         Returns:
             list: 按钮权限标识列表，如 ['view', 'create', 'edit', 'delete', 'export', 'import', 'approve', 'print']
         """
+        user = _unwrap_user(user)
         if user.is_admin():
             return ['view', 'create', 'edit', 'delete', 'export', 'import', 'approve', 'print']
 
@@ -676,6 +707,7 @@ class PermissionService:
         Returns:
             dict: 完整的权限明细
         """
+        user = _unwrap_user(user)
         from app.models import SysRole, SysMenu
 
         result = {

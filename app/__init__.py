@@ -1500,6 +1500,10 @@ def create_app(config_class=Config):
         # 初始化默认管理员账号
         init_default_users()
 
+    # M0 权限中台：集中式行级数据隔离（替代逐路由过滤补丁，灰度开关 DATA_SCOPE_ENFORCE）
+    from app.auth_core.data_scope import install_data_scope
+    install_data_scope(app, db)
+
     # 拦截禁用菜单的访问 & 模块开关拦截 & 更新用户活跃时间 & 初始化向导
     @app.before_request
     def redirect_legacy_rbac():
