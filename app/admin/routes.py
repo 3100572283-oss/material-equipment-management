@@ -3,7 +3,7 @@ import os
 import shutil
 from datetime import datetime
 from flask import (render_template, request, redirect, url_for, flash,
-                   send_file, session, current_app, jsonify, abort)
+                   send_file, session, current_app, jsonify, abort, Response)
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.admin import bp
@@ -625,7 +625,7 @@ def backup_index():
     backups = []
     for fname in sorted(os.listdir(BACKUP_DIR), reverse=True):
         fpath = os.path.join(BACKUP_DIR, fname)
-        if os.path.isfile(fpath) and fname.endswith('.db'):
+        if os.path.isfile(fpath) and fname.endswith(('.db', '.sql')):
             size = os.path.getsize(fpath)
             backups.append({
                 'filename': fname,
@@ -635,22 +635,59 @@ def backup_index():
     return render_template('admin/backup.html', backups=backups)
 
 
+def _dump_sql_db(uri, backup_path):
+    """通过 mysqldump 导出 SQL 备份；密码写入临时 my.cnf，避免进入进程列表。"""
+    from urllib.parse import urlparse, unquote
+    import subprocess
+    parsed = urlparse(uri)
+    scheme = parsed.scheme.split('+')[0]
+    user = unquote(parsed.username or 'root')
+    pw = unquote(parsed.password or '')
+    host = parsed.hostname or '127.0.0.1'
+    port = parsed.port or 3306
+    dbname = parsed.path.lstrip('/').split('?')[0]
+    if scheme != 'mysql':
+        raise RuntimeError('暂不支持的数据库类型: %s' % scheme)
+    cnf = os.path.join(BACKUP_DIR, f'.dump_{os.getpid()}.cnf')
+    with open(cnf, 'w') as f:
+        f.write('[mysqldump]\nuser=%s\npassword=%s\n' % (user, pw))
+    os.chmod(cnf, 0o600)
+    try:
+        with open(backup_path, 'w') as out:
+            subprocess.run(
+                ['mysqldump', '--defaults-extra-file=%s' % cnf,
+                 '-h', host, '-P', str(port), '--single-transaction',
+                 '--routines', '--triggers', dbname],
+                stdout=out, stderr=subprocess.PIPE, check=True)
+    finally:
+        if os.path.exists(cnf):
+            os.remove(cnf)
+
+
 @bp.route('/backup/now')
 @login_required
 @admin_required
 @log_audit(module='admin', operation='备份')
 def backup_now():
     ensure_backup_dir()
-    db_path = current_app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', '')
-    if not os.path.isabs(db_path):
-        db_path = os.path.join(current_app.root_path, '..', db_path)
-        db_path = os.path.abspath(db_path)
-
+    uri = current_app.config['SQLALCHEMY_DATABASE_URI']
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_name = f'backup_{timestamp}.db'
-    backup_path = os.path.join(BACKUP_DIR, backup_name)
 
-    shutil.copy2(db_path, backup_path)
+    if uri.startswith('sqlite'):
+        db_path = uri.replace('sqlite:///', '', 1)
+        if not os.path.isabs(db_path):
+            db_path = os.path.abspath(os.path.join(current_app.root_path, '..', db_path))
+        backup_name = f'backup_{timestamp}.db'
+        backup_path = os.path.join(BACKUP_DIR, backup_name)
+        shutil.copy2(db_path, backup_path)
+    elif uri.startswith('mysql') or uri.startswith('postgresql'):
+        backup_name = f'backup_{timestamp}.sql'
+        backup_path = os.path.join(BACKUP_DIR, backup_name)
+        _dump_sql_db(uri, backup_path)
+    else:
+        flash('不支持的数据库类型，无法自动备份', 'error')
+        return redirect(url_for('admin.backup_index'))
+
     flash(f'备份成功：{backup_name}', 'success')
     return redirect(url_for('admin.backup_index'))
 
@@ -979,8 +1016,12 @@ def export_login_logs():
             log.logout_time.strftime('%Y-%m-%d %H:%M:%S') if log.logout_time else ''
         ])
     data = export_to_excel(headers, rows, '登录日志', 'login_logs.xlsx')
-    return send_file(data, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name=f'登录日志_{datetime.now().strftime("%Y%m%d%H%M%S")}.xlsx')
+    filename = f'登录日志_{datetime.now().strftime("%Y%m%d%H%M%S")}.xlsx'
+    return Response(
+        data,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename={filename}'},
+    )
 
 
 # ============== 错误日志 ==============

@@ -26,3 +26,9 @@ instance/
 Thumbs.db
 .pytest_cache/
 scheduler.lock
+
+# 运行时自动备份（含业务数据，不入库）
+/backups/
+/app/backups/*.sql
+/app/backups/*.db
+/app/backups/.dump_*.cnf

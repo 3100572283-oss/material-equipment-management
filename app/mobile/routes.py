@@ -3231,10 +3231,10 @@ def api_concrete_history_pour_part():
     )
     if kw:
         q = q.filter(ConcreteTicket.pour_part.contains(kw))
-    items = q.with_entities(ConcreteTicket.pour_part) \
-        .distinct().order_by(ConcreteTicket.arrival_time.desc()).limit(20).all()
+    items = q.with_entities(ConcreteTicket.pour_part, ConcreteTicket.arrival_time) \
+        .order_by(ConcreteTicket.arrival_time.desc()).limit(50).all()
     seen = []
-    for (pp,) in items:
+    for (pp, _t) in items:
         if pp and pp not in seen:
             seen.append(pp)
     return jsonify([{'value': pp, 'label': pp} for pp in seen[:15]])
