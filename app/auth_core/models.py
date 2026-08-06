@@ -5,6 +5,7 @@
 所有业务调用经 AuthGateway 接口，不直接触碰本模块表结构。
 """
 from datetime import datetime
+from flask_login import UserMixin
 from app import db
 
 
@@ -34,7 +35,7 @@ class AuthOrgUnit(db.Model):
         return result
 
 
-class AuthUser(db.Model):
+class AuthUser(UserMixin, db.Model):
     """用户：归属组织 + 岗位（选组织+岗位自动带权）"""
     __tablename__ = 'auth_core_user'
     id = db.Column(db.Integer, primary_key=True)
@@ -45,6 +46,7 @@ class AuthUser(db.Model):
     phone = db.Column(db.String(32), nullable=True)
     org_id = db.Column(db.Integer, db.ForeignKey('auth_core_org_unit.id'), nullable=True)
     post = db.Column(db.String(64), nullable=True)  # 岗位：项目经理/物资部长...
+    dept_id = db.Column(db.Integer, nullable=True)  # 旧 sys_dept.id，供 Project.dept_id 查询兼容
     status = db.Column(db.Boolean, default=True)
     must_change_password = db.Column(db.Boolean, default=False)
     failed_login_count = db.Column(db.Integer, default=0)
@@ -53,6 +55,146 @@ class AuthUser(db.Model):
     last_login_ip = db.Column(db.String(64), nullable=True)
     source = db.Column(db.String(16), default='self')  # etl/self
     created_at = db.Column(db.DateTime, default=datetime.now)
+
+    # ---------------- 旧系统兼容接口（委托 AuthGateway，使 current_user 引用零改写） ----------------
+    @property
+    def is_active(self):
+        return bool(self.status)
+
+    def is_admin(self):
+        """超管判定：拥有 super_admin 角色即视为超管"""
+        sa = AuthRole.query.filter_by(role_code='super_admin').first()
+        if not sa:
+            return False
+        return AuthUserRole.query.filter_by(user_id=self.id, role_id=sa.id).first() is not None
+
+    def has_permission(self, permission):
+        from app.auth_core.gateway import AuthGateway
+        return AuthGateway.check_permission(self.id, permission)
+
+    @property
+    def roles(self):
+        """该用户的全部角色对象列表（支持多角色）"""
+        rids = [ur.role_id for ur in AuthUserRole.query.filter_by(user_id=self.id).all()]
+        if not rids:
+            return []
+        return AuthRole.query.filter(AuthRole.id.in_(rids)).all()
+
+    @property
+    def primary_role(self):
+        """主角色：多角色时优先超管，其次数据范围最宽者（避免 first() 顺序不定）"""
+        rs = self.roles
+        if not rs:
+            return None
+        for r in rs:
+            if r.role_code == 'super_admin':
+                return r
+        rank = {'self': 0, 'project': 1, 'custom': 1, 'legal_entity': 2, 'all': 3}
+        best, best_rank = rs[0], -1
+        for r in rs:
+            ds = AuthDataScope.query.filter_by(role_id=r.id).first()
+            cur = rank.get(ds.scope_type if ds else 'project', 1)
+            if cur > best_rank:
+                best, best_rank = r, cur
+        return best
+
+    @property
+    def role_obj(self):
+        """兼容旧 User.role_obj：返回带 id/role_code/role_name/data_scope 的轻对象"""
+        role = self.primary_role
+        if not role:
+            return None
+
+        class _Role:
+            pass
+
+        r = _Role()
+        r.id = role.id
+        r.role_code = role.role_code
+        r.role_name = role.role_name
+        ds = AuthDataScope.query.filter_by(role_id=role.id).first()
+        r.data_scope = ds.scope_type if ds else 'project'
+        return r
+
+    @property
+    def role_id(self):
+        role = self.primary_role
+        return role.id if role else None
+
+    @property
+    def role(self):
+        ro = self.role_obj
+        return ro.role_code if ro else None
+
+    def get_role_code(self):
+        ro = self.role_obj
+        return ro.role_code if ro else None
+
+    def get_role_name(self):
+        ro = self.role_obj
+        return ro.role_name if ro else None
+
+    def can_edit(self):
+        editable = ('super_admin', 'material_admin', 'material_manager', 'finance_user',
+                    'finance', 'admin', 'editor', 'ROLE001', 'ROLE002', 'ROLE006',
+                    'ROLE007', 'material_staff', 'project_admin')
+        return self.is_admin() or (self.get_role_code() in editable)
+
+    @property
+    def data_scope(self):
+        from app.auth_core.gateway import AuthGateway
+        return AuthGateway.get_data_scope(self.id)['scope_type']
+
+    def get_data_scope(self):
+        from app.auth_core.gateway import AuthGateway
+        return AuthGateway.get_data_scope(self.id)['scope_type']
+
+    def get_allowed_projects(self):
+        from app.auth_core.gateway import AuthGateway
+        sc = AuthGateway.get_data_scope(self.id)
+        return None if sc['scope_type'] == 'all' else (sc['project_ids'] or [])
+
+    def get_visible_projects(self):
+        from app.auth_core.gateway import AuthGateway
+        from app.models import Project
+        sc = AuthGateway.get_data_scope(self.id)
+        if sc['scope_type'] == 'all':
+            return Project.query.filter_by(is_archived=False).all()
+        pids = sc['project_ids'] or []
+        if not pids:
+            return []
+        return Project.query.filter(Project.id.in_(pids), Project.is_archived == False).all()
+
+    def can_access_project(self, project_id):
+        allowed = self.get_allowed_projects()
+        if allowed is None:
+            return True
+        return int(project_id) in [int(p) for p in allowed]
+
+    def get_main_project(self):
+        projects = self.get_visible_projects()
+        return projects[0] if projects else None
+
+    @property
+    def user_projects(self):
+        import json as _json
+        uds = AuthUserDataScope.query.filter_by(user_id=self.id).first()
+        pids = []
+        if uds and uds.project_ids:
+            try:
+                pids = _json.loads(uds.project_ids)
+            except Exception:
+                pids = []
+        result = []
+        for pid in pids:
+            class _UP:
+                pass
+            up = _UP()
+            up.project_id = pid
+            up.is_main = False
+            up.project = None
+            result.append(up)
+        return result
 
     org = db.relationship('AuthOrgUnit', backref='users')
 

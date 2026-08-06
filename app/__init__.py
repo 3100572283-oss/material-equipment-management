@@ -176,6 +176,8 @@ def init_db_schema():
     _add_column_if_missing('users', 'per_page', 'INTEGER DEFAULT 10')
     # 项目归档字段
     _add_column_if_missing('projects', 'is_archived', 'BOOLEAN DEFAULT 0')
+    # M0 权限中台：AuthUser 兼容旧 users.dept_id（指向旧 sys_dept.id，供 Project.dept_id 查询）
+    _add_column_if_missing('auth_core_user', 'dept_id', 'INTEGER')
     # 软删除字段（核心业务表 + 扩展业务表）
     for tbl in ['contracts', 'stock_ins', 'stock_outs', 'suppliers', 'materials', 'payments', 'reconciliations', 'equipment', 'turnover_material',
                 'concrete_ticket', 'material_transfer', 'material_scrap', 'purchase_requisition', 'stock_check',
@@ -1281,13 +1283,7 @@ def create_app(config_class=Config):
             if not current_user.is_authenticated:
                 return False
             try:
-                # M0 灰度：已迁移到 auth_core 的用户走新权限判定，未迁移回退旧逻辑
-                from app.auth_core.gateway import AuthGateway, _enabled
-                if _enabled():
-                    from app.auth_core.models import AuthUser
-                    acu = AuthUser.query.filter_by(username=current_user.username).first()
-                    if acu:
-                        return AuthGateway.check_permission(acu.id, permission)
+                # M0 全量替换：登录身份已是 auth_core.AuthUser，has_permission 直接委托 AuthGateway
                 return current_user.has_permission(permission)
             except Exception:
                 return False
@@ -1505,6 +1501,30 @@ def create_app(config_class=Config):
         init_default_users()
 
     # 拦截禁用菜单的访问 & 模块开关拦截 & 更新用户活跃时间 & 初始化向导
+    @app.before_request
+    def redirect_legacy_rbac():
+        """M0 全量替换：旧 rbac/用户管理页已废弃，切流后重定向到 auth_core 统一入口。
+
+        仅当 AUTH_CORE_ENABLED=true 时生效；flag 关闭时旧页面恢复（回滚安全）。
+        保留 /system/api 与 /admin/api 不被拦截，避免误伤其它内部调用。
+        """
+        from flask import request, redirect, url_for
+        from app.auth_core.gateway import _enabled
+        if not _enabled():
+            return
+        path = request.path
+        if path.startswith('/system/'):
+            if path.startswith('/system/api/'):
+                return
+            if (path.startswith('/system/roles') or path.startswith('/system/menus')
+                    or path.startswith('/system/modules')):
+                return redirect(url_for('auth_core.page_roles'))
+            return redirect(url_for('auth_core.page_orgs'))
+        if path.startswith('/admin/users'):
+            if path.startswith('/admin/api/'):
+                return
+            return redirect(url_for('auth_core.page_users'))
+
     @app.before_request
     def check_menu_status():
         """检查请求的端点是否对应已禁用的菜单或已关闭的模块，并更新用户最后活跃时间"""

@@ -7,6 +7,7 @@ from flask import session as flask_session
 from app.auth import bp
 from app import db
 from app.models import User, LoginLog, SysMenu, SysRoleMenu, SysRole, SysDept, Project, SysModule
+from app.auth_core.models import AuthUser
 from app.utils import log_operation
 from app.decorators import log_audit
 import os
@@ -157,7 +158,7 @@ def login():
             return render_template('auth/login.html')
         remember = bool(request.form.get('remember'))
 
-        user = User.query.filter_by(username=username).first()
+        user = AuthUser.query.filter_by(username=username).first()
 
         if user and user.locked_until and user.locked_until > datetime.now():
             _record_login_log(user, 'failed', fail_reason='账号已锁定')
@@ -165,7 +166,7 @@ def login():
             flash(f'账号已被锁定，请 {remaining} 分钟后再试。', 'danger')
             return render_template('auth/login.html')
 
-        if user and user.status == 'inactive':
+        if user and not user.status:
             _record_login_log(user, 'failed', fail_reason='账号已停用')
             flash('账号已停用，请联系管理员。', 'danger')
             return render_template('auth/login.html')
@@ -176,12 +177,15 @@ def login():
             user.last_login_ip = request.remote_addr
             user.failed_login_count = 0
             user.locked_until = None
-            # 用户所属部门为项目部且未设置主项目时，自动关联部门对应项目
-            if not user.project_id and user.dept_id:
+            # 用户所属部门为项目部且未设置主项目时，自动关联部门对应项目（AuthUser 无 project_id 列，不持久化）
+            if not getattr(user, 'project_id', None) and getattr(user, 'dept_id', None):
                 from app.models import SysDept
                 dept = SysDept.query.get(user.dept_id)
                 if dept and dept.dept_type == 'project' and dept.project_id:
-                    user.project_id = dept.project_id
+                    try:
+                        user.project_id = dept.project_id
+                    except Exception:
+                        pass
             log_id = _record_login_log(user, 'success')
             flask_session['login_log_id'] = log_id
             db.session.commit()

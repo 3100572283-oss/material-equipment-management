@@ -20,6 +20,10 @@ def _enabled():
     return os.environ.get('AUTH_CORE_ENABLED', 'false').lower() == 'true'
 
 
+# 数据范围档位排序（数值越大范围越宽），用于多角色/用户级合并时取最宽
+SCOPE_RANK = {'self': 0, 'project': 1, 'legal_entity': 2, 'all': 3, 'custom': 1}
+
+
 def _json_loads(v):
     if not v:
         return []
@@ -77,28 +81,70 @@ class AuthGateway:
 
     # ------------------------- 数据范围 -------------------------
     @staticmethod
+    def get_role_scope(user_id):
+        """角色级数据范围档位：多角色取最宽；super_admin 直接 all"""
+        role_ids = [ur.role_id for ur in AuthUserRole.query.filter_by(user_id=user_id).all()]
+        if not role_ids:
+            return 'self', []
+        sa = AuthRole.query.filter_by(role_code='super_admin').first()
+        if sa and sa.id in role_ids:
+            return 'all', role_ids
+        best = None
+        for ds in AuthDataScope.query.filter(AuthDataScope.role_id.in_(role_ids)).all():
+            if best is None or SCOPE_RANK.get(ds.scope_type, 0) > SCOPE_RANK.get(best, 0):
+                best = ds.scope_type
+        return (best or 'project'), role_ids
+
+    @staticmethod
     def get_data_scope(user_id):
-        """返回数据范围 dict：{scope_type, org_ids[], project_ids[]}"""
+        """返回数据范围 dict：{scope_type, org_ids[], project_ids[]}
+
+        合并策略（角色定档位、用户级做具体授权，绝不误降超管）：
+          1. 角色档位 = 该用户全部角色中最宽的一档（super_admin 恒为 all）
+          2. 用户级 scope_type='custom'  → 管理员显式自定义，完全以用户级为准
+          3. 角色档位为 all              → 忽略用户级白名单，全量可见
+          4. 用户级档位更宽              → 升级为用户级档位
+          5. 其余（同档或更窄）          → 用户级 project_ids/org_ids 作为白名单生效，
+                                          为空则回落到按组织树解析的结果
+        """
         user = AuthUser.query.get(user_id)
         if not user:
-            return {'scope_type': 'all', 'org_ids': [], 'project_ids': []}
-        # 用户级覆盖优先
+            return {'scope_type': 'self', 'org_ids': [], 'project_ids': []}
+
+        role_scope, _ = AuthGateway.get_role_scope(user_id)
         uds = AuthUserDataScope.query.filter_by(user_id=user_id).first()
-        if uds:
+
+        if not uds:
+            org_ids, project_ids = AuthGateway._resolve_scope(user, role_scope)
+            return {'scope_type': role_scope, 'org_ids': org_ids, 'project_ids': project_ids}
+
+        u_orgs = _json_loads(uds.org_ids)
+        u_projects = _json_loads(uds.project_ids)
+
+        # 2) 显式自定义：以用户级为准（允许收窄，属管理员明确意图）
+        if uds.scope_type == 'custom':
+            return {'scope_type': 'custom', 'org_ids': u_orgs, 'project_ids': u_projects}
+
+        # 3) 超管/全局档位：不被用户级白名单降级
+        if role_scope == 'all':
+            return {'scope_type': 'all', 'org_ids': [], 'project_ids': []}
+
+        # 4) 用户级更宽：升级
+        if SCOPE_RANK.get(uds.scope_type, 0) > SCOPE_RANK.get(role_scope, 0):
+            org_ids, project_ids = AuthGateway._resolve_scope(user, uds.scope_type)
             return {
                 'scope_type': uds.scope_type,
-                'org_ids': _json_loads(uds.org_ids),
-                'project_ids': _json_loads(uds.project_ids),
+                'org_ids': u_orgs or org_ids,
+                'project_ids': u_projects or project_ids,
             }
-        # 角色级
-        role_ids = [ur.role_id for ur in AuthUserRole.query.filter_by(user_id=user_id).all()]
-        scope_type = 'project'
-        if role_ids:
-            ds = AuthDataScope.query.filter(AuthDataScope.role_id.in_(role_ids)).first()
-            if ds:
-                scope_type = ds.scope_type
-        org_ids, project_ids = AuthGateway._resolve_scope(user, scope_type)
-        return {'scope_type': scope_type, 'org_ids': org_ids, 'project_ids': project_ids}
+
+        # 5) 同档/更窄：用户级白名单优先，为空回落组织树解析
+        org_ids, project_ids = AuthGateway._resolve_scope(user, role_scope)
+        return {
+            'scope_type': role_scope,
+            'org_ids': u_orgs or org_ids,
+            'project_ids': u_projects or project_ids,
+        }
 
     @staticmethod
     def _resolve_scope(user, scope_type):

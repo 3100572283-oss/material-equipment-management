@@ -27,22 +27,38 @@ SCOPE_MAP = {
     'self': 'self',
 }
 
+# 旧 dept_code → 已有 auth_core org_code 归一映射。
+# 旧系统的顶级部门"中国铁建"(HQ) 与 seed 根节点"中国铁建股份有限公司"(CRC)
+# 是同一法人实体，不做归一会在组织树上出现两个根。
+ORG_CODE_ALIAS = {
+    'HQ': 'CRC',
+}
+
+
+def _org_code_for(dept_code):
+    """旧部门编码 → 新组织编码（优先走归一别名，否则加 LEGACY_ 前缀）"""
+    return ORG_CODE_ALIAS.get(dept_code) or ('LEGACY_%s' % dept_code)
+
 
 def sync_org_from_legacy(legacy_dept_id=None):
-    """把旧 sys_dept 树迁为 auth_core_org_unit（含法人标识、三级四层层级）"""
+    """把旧 sys_dept 树迁为 auth_core_org_unit（含法人标识、三级四层层级）
+
+    关键：旧 sys_dept.id 与新 auth_core_org_unit.id 属于不同 id 空间，
+    必须先建组织再统一修正 parent_id 指向新的 auth_core org id。
+    """
     query = LegacyDept.query
     if legacy_dept_id:
         query = query.filter_by(id=legacy_dept_id)
-    mapped = {}
+    # 1) 创建缺失组织（parent_id 暂置 0）
     for d in query.all():
-        if AuthOrgUnit.query.filter_by(org_code='LEGACY_%s' % d.dept_code).first():
+        if AuthOrgUnit.query.filter_by(org_code=_org_code_for(d.dept_code)).first():
             continue
         level = {'company': 2, 'branch': 2, 'project': 4, 'dept': 4, 'team': 4}.get(d.dept_type, 4)
         legal = d.dept_type in ('company', 'branch')
         ou = AuthOrgUnit(
-            org_code='LEGACY_%s' % d.dept_code,
+            org_code=_org_code_for(d.dept_code),
             org_name=d.dept_name,
-            parent_id=d.parent_id or 0,
+            parent_id=0,
             org_level=level,
             legal_entity=legal,
             dept_type=d.dept_type,
@@ -53,9 +69,27 @@ def sync_org_from_legacy(legacy_dept_id=None):
         )
         db.session.add(ou)
         db.session.flush()
-        mapped[d.id] = ou.id
     db.session.commit()
-    return mapped
+    # 2) 构建 旧 dept_id -> 新 org_id 映射
+    id_map = {}
+    for d in LegacyDept.query.all():
+        ou = AuthOrgUnit.query.filter_by(org_code=_org_code_for(d.dept_code)).first()
+        if ou:
+            id_map[d.id] = ou.id
+    # 3) 修正所有 parent_id（旧 sys_dept.id -> 新 auth_core org id）
+    for d in LegacyDept.query.all():
+        ou_id = id_map.get(d.id)
+        if ou_id is None:
+            continue
+        ou = AuthOrgUnit.query.get(ou_id)
+        if ou is None:
+            continue
+        new_parent = id_map.get(d.parent_id, 0) if d.parent_id else 0
+        if ou.parent_id != new_parent:
+            ou.parent_id = new_parent
+            db.session.add(ou)
+    db.session.commit()
+    return id_map
 
 
 def sync_role_from_legacy():
@@ -101,20 +135,45 @@ def sync_role_from_legacy():
 
 
 def sync_user_from_legacy(legacy_user_id):
-    """旧 users 单行 → auth_core_user（密码直搬，同算法零中断）"""
+    """旧 users 单行 → auth_core_user（密码直搬，同算法零中断）
+
+    关键：org_id 必须指向新的 auth_core org id（经 org_code 反查），
+    dept_id 保留旧 sys_dept.id 以兼容 Project.dept_id 查询；旧管理员赠 super_admin。
+    """
     legacy = LegacyUser.query.get(legacy_user_id)
     if not legacy:
         return None
+    # 反查新 org id（旧 sys_dept.id -> 新 auth_core org id 通过 org_code 桥接）
+    dept = LegacyDept.query.get(legacy.dept_id) if legacy.dept_id else None
+    ou = AuthOrgUnit.query.filter_by(org_code=_org_code_for(dept.dept_code)).first() if dept else None
+    new_org_id = ou.id if ou else None
+
     existing = AuthUser.query.filter_by(username=legacy.username).first()
     if existing:
-        return existing.id  # 幂等
+        # 幂等修正（防止旧次错误映射）：组织归属 + 角色 + 数据范围 全量对齐
+        existing.org_id = new_org_id
+        existing.dept_id = legacy.dept_id
+        existing.name = legacy.name or existing.name
+        existing.password_hash = legacy.password_hash or existing.password_hash
+        existing.email = legacy.email or existing.email
+        existing.phone = legacy.phone or existing.phone
+        # 强制改密标志必须以旧系统为准，否则 seed 建的 admin 会被反复拦在改密页
+        existing.must_change_password = bool(legacy.must_change_password)
+        if legacy.status is not None:
+            existing.status = bool(legacy.status)
+        _sync_user_roles(existing, legacy)
+        _sync_user_scope(existing, legacy)
+        db.session.commit()
+        return existing.id
+
     user = AuthUser(
         username=legacy.username,
         password_hash=legacy.password_hash,  # werkzeug pbkdf2:sha256，直搬可验证
         name=legacy.name,
         email=legacy.email,
         phone=legacy.phone,
-        org_id=legacy.dept_id,
+        org_id=new_org_id,
+        dept_id=legacy.dept_id,  # 旧 sys_dept.id，供 Project.dept_id 查询兼容
         post=(legacy.role_obj.role_code if legacy.role_obj else None),
         source='etl',
         must_change_password=bool(legacy.must_change_password),
@@ -122,13 +181,39 @@ def sync_user_from_legacy(legacy_user_id):
     db.session.add(user)
     db.session.flush()
 
-    # 角色映射
+    _sync_user_roles(user, legacy)
+    _sync_user_scope(user, legacy)
+
+    db.session.commit()
+    return user.id
+
+
+def _sync_user_roles(user, legacy):
+    """旧用户角色 → auth_core_user_role（幂等；旧管理员额外赠 super_admin）"""
     if legacy.role_obj:
         role = AuthRole.query.filter_by(role_code=legacy.role_obj.role_code).first()
         if role and not AuthUserRole.query.filter_by(user_id=user.id, role_id=role.id).first():
             db.session.add(AuthUserRole(user_id=user.id, role_id=role.id))
+    if legacy.is_admin():
+        sa = AuthRole.query.filter_by(role_code='super_admin').first()
+        if sa and not AuthUserRole.query.filter_by(user_id=user.id, role_id=sa.id).first():
+            db.session.add(AuthUserRole(user_id=user.id, role_id=sa.id))
+    db.session.flush()
 
-    # 数据范围：allowed_projects → user_data_scope.project_ids
+
+def _sync_user_scope(user, legacy):
+    """旧 allowed_projects / sys_user_project → auth_core_user_data_scope（幂等覆盖）
+
+    超管不写用户级白名单：其角色档位已是 all，写白名单只会造成语义歧义。
+    """
+    sa = AuthRole.query.filter_by(role_code='super_admin').first()
+    if sa and AuthUserRole.query.filter_by(user_id=user.id, role_id=sa.id).first():
+        stale = AuthUserDataScope.query.filter_by(user_id=user.id).first()
+        if stale:
+            db.session.delete(stale)
+            db.session.flush()
+        return
+
     proj_ids = []
     try:
         if legacy.allowed_projects:
@@ -138,11 +223,18 @@ def sync_user_from_legacy(legacy_user_id):
     if not proj_ids:
         for up in LegacyUserProject.query.filter_by(user_id=legacy.id).all():
             proj_ids.append(up.project_id)
-    if proj_ids and not AuthUserDataScope.query.filter_by(user_id=user.id).first():
+    if not proj_ids:
+        return
+    row = AuthUserDataScope.query.filter_by(user_id=user.id).first()
+    payload = json.dumps(proj_ids, ensure_ascii=False)
+    if row:
+        row.scope_type = 'project'
+        row.project_ids = payload
+        db.session.add(row)
+    else:
         db.session.add(AuthUserDataScope(user_id=user.id, scope_type='project',
-                                         project_ids=json.dumps(proj_ids, ensure_ascii=False)))
-    db.session.commit()
-    return user.id
+                                         project_ids=payload))
+    db.session.flush()
 
 
 def sync_all_from_legacy():

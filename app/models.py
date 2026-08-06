@@ -6,8 +6,9 @@ from app import db, login_manager
 
 @login_manager.user_loader
 def load_user(user_id):
-    # 使用 joinedload 预加载角色,避免每次访问 role_obj 都触发 DB 查询
-    return User.query.options(db.joinedload(User.role_obj)).get(int(user_id))
+    # M0 全量替换：登录身份统一由 auth_core.AuthUser 承载（旧 users 表仅作历史数据保留）
+    from app.auth_core.models import AuthUser
+    return AuthUser.query.get(int(user_id))
 
 
 class User(UserMixin, db.Model):

@@ -17,15 +17,12 @@ from app.auth_core.models import (
 
 
 # 组织树骨架（parent_code 解析，保证父子顺序）
+# 注意：此处只播种集团根节点。二级集团/三级公司/项目部一律由 ETL 从旧
+# sys_dept 迁入（org_code = LEGACY_*），或由管理员在权限中台页面维护，
+# 不再塞任何"（示例）"占位数据，避免生产组织树出现脏节点。
 ORG_SEED = [
     {'code': 'CRC', 'name': '中国铁建股份有限公司', 'parent_code': None,
      'level': 1, 'legal': True, 'type': 'company'},
-    {'code': 'CORP', 'name': '二级集团/工程局（示例）', 'parent_code': 'CRC',
-     'level': 2, 'legal': True, 'type': 'company'},
-    {'code': 'SUBCO', 'name': '三级公司（示例）', 'parent_code': 'CORP',
-     'level': 3, 'legal': True, 'type': 'company'},
-    {'code': 'PROJ', 'name': '项目部（示例）', 'parent_code': 'SUBCO',
-     'level': 4, 'legal': False, 'type': 'project'},
 ]
 
 # 铁建岗位角色模板：(code, name, data_scope, sort)

@@ -21,8 +21,11 @@ class PermissionService:
                 'custom_depts': []  # data_scope=custom 时的部门ID列表
             }
         """
-        if user.is_admin():
-            return {'scope': 'all', 'custom_depts': []}
+        from app.auth_core.models import AuthUser
+        if isinstance(user, AuthUser):
+            from app.auth_core.gateway import AuthGateway
+            sc = AuthGateway.get_data_scope(user.id)
+            return {'scope': sc['scope_type'], 'custom_depts': sc.get('project_ids') or sc.get('org_ids') or []}
 
         role = user.role_obj
         if not role:
@@ -59,8 +62,13 @@ class PermissionService:
 
         用户手动绑定的项目始终保留。
         """
-        if user.is_admin():
-            return None
+        from app.auth_core.models import AuthUser
+        if isinstance(user, AuthUser):
+            from app.auth_core.gateway import AuthGateway
+            sc = AuthGateway.get_data_scope(user.id)
+            if sc['scope_type'] == 'all':
+                return None
+            return sc.get('project_ids') or []
 
         scope_info = self.get_user_data_scope(user)
         data_scope = scope_info['scope']
@@ -127,6 +135,10 @@ class PermissionService:
         """
         if not permission:
             return True
+        from app.auth_core.models import AuthUser
+        if isinstance(user, AuthUser):
+            from app.auth_core.gateway import AuthGateway
+            return AuthGateway.check_permission(user.id, permission)
         if user.is_admin():
             return True
         if not user.role_id:
