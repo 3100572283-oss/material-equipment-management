@@ -6,7 +6,7 @@
 <div class="m-card" style="padding:10px 14px;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
         <span style="font-size:15px; font-weight:600; color:#212529;">
-            <i class="bi bi-file-earmark-text" style="color:#165DFF;"></i> 合同列表
+            <i class="bi bi-file-earmark-text" style="color:#409eff;"></i> 合同列表
         </span>
         <span style="font-size:13px; color:#6c757d;">共 {{ contracts|length }} 条</span>
     </div>
@@ -32,7 +32,7 @@
             {% endif %}
             <div style="display:flex; justify-content:space-between; margin-top:8px;">
                 <span style="font-size:12px; color:#adb5bd;">{{ c.sign_date.strftime('%Y-%m-%d') if c.sign_date else '未签署' }}</span>
-                <span style="font-weight:600; color:#165DFF; font-size:14px;">{{ '%.2f'|format(c.amount_with_tax or 0) }} 元</span>
+                <span style="font-weight:600; color:#409eff; font-size:14px;">{{ '%.2f'|format(c.amount_with_tax or 0) }} 元</span>
             </div>
         </div>
     </a>

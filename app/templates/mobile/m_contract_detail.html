@@ -5,7 +5,7 @@
 {% block content %}
 <!-- 合同基本信息 -->
 <div class="m-card">
-    <div class="m-card-title"><i class="bi bi-file-earmark-text" style="color:#165DFF;"></i> {{ contract.code }}</div>
+    <div class="m-card-title"><i class="bi bi-file-earmark-text" style="color:#409eff;"></i> {{ contract.code }}</div>
     <div style="font-size:15px; font-weight:600; color:#212529; margin-bottom:10px;">{{ contract.name }}</div>
     <div style="border-top:1px solid #e9ecef; padding-top:10px;">
         <div style="display:flex; margin-bottom:8px;">
@@ -22,7 +22,7 @@
         </div>
         <div style="display:flex; margin-bottom:8px;">
             <span style="width:80px; font-size:13px; color:#6c757d; flex-shrink:0;">合同金额</span>
-            <span style="font-size:14px; font-weight:600; color:#165DFF;">{{ '%.2f'|format(contract.amount_with_tax or 0) }} 元</span>
+            <span style="font-size:14px; font-weight:600; color:#409eff;">{{ '%.2f'|format(contract.amount_with_tax or 0) }} 元</span>
         </div>
         <div style="display:flex; margin-bottom:8px;">
             <span style="width:80px; font-size:13px; color:#6c757d; flex-shrink:0;">税率</span>
@@ -68,7 +68,7 @@
 <!-- 合同明细 -->
 {% if items %}
 <div class="m-card">
-    <div class="m-card-title"><i class="bi bi-list-ul" style="color:#165DFF;"></i> 合同明细</div>
+    <div class="m-card-title"><i class="bi bi-list-ul" style="color:#409eff;"></i> 合同明细</div>
     {% for item in items %}
     <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; {% if not loop.last %}border-bottom:1px solid #f1f3f5;{% endif %}">
         <div>

@@ -3,7 +3,7 @@
 {% block nav_title %}商砼小票详情{% endblock %}
 
 {% block nav_right %}
-<a href="{{ url_for('mobile.concrete_list') }}" style="color:#165DFF; font-size:14px; margin-right:8px;">列表</a>
+<a href="{{ url_for('mobile.concrete_list') }}" style="color:#409eff; font-size:14px; margin-right:8px;">列表</a>
 <button type="button" class="m-theme-toggle" id="mThemeToggle" onclick="toggleTheme()" title="切换深色/浅色">
     <i class="bi bi-moon-stars"></i>
 </button>
@@ -41,7 +41,7 @@
     <div class="m-info-row"><span>关联工号</span><span>{% if ticket.work_number %}{{ ticket.work_number.code }}{% if ticket.work_number.division_name %}（{{ ticket.work_number.division_name }}）{% endif %}{% else %}-{% endif %}</span></div>
     <div class="m-info-row"><span>运输车号</span><span>{{ ticket.vehicle_no or '-' }}</span></div>
     <div class="m-info-row"><span>司机姓名</span><span>{{ ticket.driver_name or '-' }}</span></div>
-    <div class="m-info-row"><span>方量</span><span><strong style="color:#165DFF;">{{ '%.2f'|format(ticket.volume|float) }}</strong> m³</span></div>
+    <div class="m-info-row"><span>方量</span><span><strong style="color:#409eff;">{{ '%.2f'|format(ticket.volume|float) }}</strong> m³</span></div>
     <div class="m-info-row"><span>车次</span><span>{{ ticket.vehicle_count or 1 }} 车</span></div>
     <div class="m-info-row"><span>坍落度</span><span>{{ ticket.slump or '-' }}</span></div>
     <div class="m-info-row"><span>进场时间</span><span>{{ ticket.arrival_time.strftime('%Y-%m-%d %H:%M') if ticket.arrival_time else '-' }}</span></div>

@@ -1,0 +1,243 @@
+{% extends "mobile/base.html" %}
+{% block title %}AI智能助手{% endblock %}
+{% block nav_title %}AI智能助手{% endblock %}
+{% block active_tag %}profile{% endblock %}
+
+{% block content_class %}m-ai-page{% endblock %}
+
+{% block content %}
+<div class="m-ai-page-wrap">
+    <!-- 欢迎区域 -->
+    <div class="m-ai-welcome" id="mAIWelcome">
+        <div class="m-ai-welcome-icon">
+            <i class="bi bi-robot"></i>
+        </div>
+        <h2>AI智能助手</h2>
+        <p>我可以帮您查询库存、分析数据、总结记录、解答业务问题</p>
+        <div class="m-ai-welcome-tips">
+            <div class="m-ai-tip" data-msg="查询当前项目库存情况">
+                <i class="bi bi-box-seam"></i>
+                <span>查询库存</span>
+            </div>
+            <div class="m-ai-tip" data-msg="本月入库出库统计">
+                <i class="bi bi-bar-chart"></i>
+                <span>统计分析</span>
+            </div>
+            <div class="m-ai-tip" data-msg="待我审批的有哪些">
+                <i class="bi bi-clipboard-check"></i>
+                <span>待办审批</span>
+            </div>
+            <div class="m-ai-tip" data-msg="合同到期预警">
+                <i class="bi bi-file-earmark-text"></i>
+                <span>合同预警</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 消息列表 -->
+    <div class="m-ai-msgs" id="mAIMsgs"></div>
+</div>
+{% endblock %}
+
+{% block mobile_tabbar %}{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+
+    var msgs = document.getElementById('mAIMsgs');
+    var welcome = document.getElementById('mAIWelcome');
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+    var SPEECH_ENABLED = {{ 'true' if get_config('ai_speech_enabled', 'false') == 'true' else 'false' }};
+
+    // 输入栏（固定底部）
+    var inputBar = document.createElement('div');
+    inputBar.className = 'm-ai-input-bar';
+    inputBar.innerHTML = ''
+        + (SPEECH_ENABLED ? '<button class="m-ai-mic-btn" id="mAIMic" aria-label="语音输入"><i class="bi bi-mic"></i></button>' : '')
+        + '<input type="text" id="mAIInput" class="m-ai-input" placeholder="输入您的问题..." autocomplete="off" />'
+        + '<button class="m-ai-send-btn" id="mAISend" aria-label="发送"><i class="bi bi-send-fill"></i></button>';
+    document.body.appendChild(inputBar);
+
+    var input = inputBar.querySelector('#mAIInput');
+    var sendBtn = inputBar.querySelector('#mAISend');
+    var micBtn = inputBar.querySelector('#mAIMic');
+
+    // ========== 快捷问题 ==========
+    document.querySelectorAll('.m-ai-tip').forEach(function(tip) {
+        tip.addEventListener('click', function() {
+            sendMsg(this.getAttribute('data-msg'));
+        });
+    });
+
+    // ========== 发送消息 ==========
+    sendBtn.addEventListener('click', function() { sendMsg(input.value); });
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); sendMsg(input.value); }
+    });
+
+    function sendMsg(msg) {
+        if (!msg || !msg.trim()) return;
+        msg = msg.trim();
+        if (welcome) welcome.style.display = 'none';
+        addUserMsg(msg);
+        input.value = '';
+        showTyping();
+        scrollToBottom();
+
+        var formData = new FormData();
+        formData.append('message', msg);
+        if (csrfToken) formData.append('csrf_token', csrfToken);
+
+        fetch('/ai/chat', {
+            method: 'POST',
+            body: formData,
+            headers: csrfToken ? { 'X-CSRFToken': csrfToken } : {}
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            removeTyping();
+            if (data.success) {
+                addBotMsg(data.response || data.message || '收到');
+            } else {
+                addBotMsg(data.message || '请求失败，请稍后重试');
+            }
+            scrollToBottom();
+        }).catch(function(err) {
+            removeTyping();
+            addBotMsg('网络错误，请检查网络连接后重试');
+            scrollToBottom();
+        });
+    }
+
+    // ========== 消息渲染 ==========
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function formatMsg(text) {
+        if (!text) return '';
+        var html = escapeHtml(text);
+        html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function(m, lang, code) {
+            return '<pre><code>' + code.trim() + '</code></pre>';
+        });
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+        html = html.replace(/(<li>[\s\S]*?<\/li>)/g, function(m) { return '<ul>' + m + '</ul>'; });
+        html = html.replace(/<\/ul>\s*<ul>/g, '');
+        html = html.replace(/\n/g, '<br>');
+        html = html.replace(/\|(.+)\|/g, function(m) {
+            var cells = m.split('|').filter(function(c) { return c.trim(); });
+            if (cells.length > 1) return '<table><tr>' + cells.map(function(c) { return '<td>' + c.trim() + '</td>'; }).join('') + '</tr></table>';
+            return m;
+        });
+        return html;
+    }
+
+    function addUserMsg(text) {
+        var div = document.createElement('div');
+        div.className = 'm-ai-msg-user';
+        div.innerHTML = '<div class="m-ai-bubble-user">' + escapeHtml(text) + '</div>';
+        msgs.appendChild(div);
+    }
+
+    function addBotMsg(text) {
+        var div = document.createElement('div');
+        div.className = 'm-ai-msg-bot';
+        div.innerHTML = '<div class="m-ai-avatar-bot"><i class="bi bi-robot"></i></div><div class="m-ai-bubble-bot">' + formatMsg(text) + '</div>';
+        msgs.appendChild(div);
+    }
+
+    var typingEl = null;
+    function showTyping() {
+        typingEl = document.createElement('div');
+        typingEl.className = 'm-ai-msg-bot m-ai-typing';
+        typingEl.innerHTML = '<div class="m-ai-avatar-bot"><i class="bi bi-robot"></i></div><div class="m-ai-bubble-bot"><span class="m-ai-dot"></span><span class="m-ai-dot"></span><span class="m-ai-dot"></span></div>';
+        msgs.appendChild(typingEl);
+    }
+
+    function removeTyping() {
+        if (typingEl) { typingEl.remove(); typingEl = null; }
+    }
+
+    function scrollToBottom() {
+        requestAnimationFrame(function() {
+            window.scrollTo(0, document.body.scrollHeight);
+        });
+    }
+
+    // ========== 语音输入 ==========
+    var mediaRecorder = null;
+    var audioChunks = [];
+    var isRecording = false;
+
+    if (micBtn) {
+        micBtn.addEventListener('click', function() {
+            if (isRecording) { stopRecording(); } else { startRecording(); }
+        });
+    }
+
+    function startRecording() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            M.toast('您的浏览器不支持语音录制', 'error');
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            mediaRecorder.addEventListener('dataavailable', function(e) { audioChunks.push(e.data); });
+            mediaRecorder.addEventListener('stop', function() {
+                var blob = new Blob(audioChunks, { type: 'audio/webm' });
+                stream.getTracks().forEach(function(t) { t.stop(); });
+                sendSpeech(blob);
+            });
+            mediaRecorder.start();
+            isRecording = true;
+            micBtn.classList.add('recording');
+            micBtn.querySelector('i').className = 'bi bi-stop-circle-fill';
+            M.toast('正在录音... 点击停止', 'info');
+        }).catch(function(err) {
+            M.toast('无法访问麦克风：' + err.message, 'error');
+        });
+    }
+
+    function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') { mediaRecorder.stop(); }
+        isRecording = false;
+        if (micBtn) {
+            micBtn.classList.remove('recording');
+            micBtn.querySelector('i').className = 'bi bi-mic';
+        }
+    }
+
+    function sendSpeech(blob) {
+        M.toast('正在识别语音...', 'info');
+        var formData = new FormData();
+        formData.append('file', blob, 'speech.webm');
+        if (csrfToken) formData.append('csrf_token', csrfToken);
+
+        fetch('/ai/speech/to_text', {
+            method: 'POST',
+            body: formData,
+            headers: csrfToken ? { 'X-CSRFToken': csrfToken } : {}
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            if (data.success && data.text) {
+                input.value = data.text;
+                input.focus();
+                M.toast('语音识别成功', 'success');
+            } else {
+                M.toast(data.message || '语音识别失败', 'error');
+            }
+        }).catch(function(err) {
+            M.toast('语音识别出错', 'error');
+        });
+    }
+
+    // 自动聚焦输入框
+    setTimeout(function() { if (input) input.focus(); }, 500);
+})();
+</script>
+{% endblock %}

@@ -461,7 +461,7 @@
                 '<div class="m-qe-pool" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;"></div>' +
                 '<div style="display:flex;gap:8px;margin-top:16px;">' +
                 '<button class="m-qe-cancel" style="flex:1;padding:10px;border:1px solid #ddd;background:#fff;border-radius:6px;">取消</button>' +
-                '<button class="m-qe-save" style="flex:2;padding:10px;background:#165DFF;color:#fff;border:none;border-radius:6px;">保存</button>' +
+                '<button class="m-qe-save" style="flex:2;padding:10px;background:#409eff;color:#fff;border:none;border-radius:6px;">保存</button>' +
                 '</div>';
 
             overlay.appendChild(panel);

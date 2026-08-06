@@ -7,11 +7,11 @@
 <!-- 当前项目 -->
 <div class="m-card" style="padding:10px 16px;display:flex;align-items:center;justify-content:space-between;">
     <div style="display:flex;align-items:center;gap:8px;">
-        <i class="bi bi-geo-alt-fill" style="color:#165DFF;font-size:16px;"></i>
+        <i class="bi bi-geo-alt-fill" style="color:#409eff;font-size:16px;"></i>
         <span class="fw-semibold" style="font-size:14px;">{{ project.name }}</span>
     </div>
     {% if visible_projects and visible_projects|length > 1 %}
-    <a href="{{ url_for('mobile.profile') }}" style="font-size:12px;color:#165DFF;">切换</a>
+    <a href="{{ url_for('mobile.profile') }}" style="font-size:12px;color:#409eff;">切换</a>
     {% endif %}
 </div>
 

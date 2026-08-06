@@ -143,7 +143,7 @@ window.MobileAIVision = (function () {
             '.maiv-foot button{flex:1;height:44px;border:none;border-radius:8px;font-size:15px;}' +
             '.maiv-rotate{background:rgba(255,255,255,0.15);color:#fff;flex:0 0 56px;}' +
             '.maiv-cancel{background:#6c757d;color:#fff;flex:0 0 90px;}' +
-            '.maiv-ok{background:#165DFF;color:#fff;flex:1;}';
+            '.maiv-ok{background:#409eff;color:#fff;flex:1;}';
         var style = document.createElement('style');
         style.textContent = css;
         document.head.appendChild(style);
@@ -321,9 +321,9 @@ window.MobileAIVision = (function () {
         var sheet = document.createElement('div');
         sheet.style.cssText = 'background:#fff;width:100%;max-width:520px;border-radius:14px 14px 0 0;padding:8px 0 20px;';
         sheet.innerHTML =
-            '<button type="button" data-act="camera" style="width:100%;height:52px;border:none;background:#fff;font-size:15px;color:#165DFF;border-bottom:1px solid #f1f3f5;">' +
+            '<button type="button" data-act="camera" style="width:100%;height:52px;border:none;background:#fff;font-size:15px;color:#409eff;border-bottom:1px solid #f1f3f5;">' +
                 '<i class="bi bi-camera me-2"></i>拍照</button>' +
-            '<button type="button" data-act="album" style="width:100%;height:52px;border:none;background:#fff;font-size:15px;color:#165DFF;border-bottom:8px solid #f1f3f5;">' +
+            '<button type="button" data-act="album" style="width:100%;height:52px;border:none;background:#fff;font-size:15px;color:#409eff;border-bottom:8px solid #f1f3f5;">' +
                 '<i class="bi bi-image me-2"></i>从相册选择</button>' +
             '<button type="button" data-act="cancel" style="width:100%;height:52px;border:none;background:#fff;font-size:15px;color:#6c757d;">取消</button>';
         mask.appendChild(sheet);

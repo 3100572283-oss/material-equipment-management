@@ -3,7 +3,7 @@
 {% block nav_title %}编辑商砼小票{% endblock %}
 
 {% block nav_right %}
-<a href="{{ url_for('mobile.concrete_detail', tid=ticket.id) }}" style="color:#165DFF; font-size:14px; margin-right:8px;">详情</a>
+<a href="{{ url_for('mobile.concrete_detail', tid=ticket.id) }}" style="color:#409eff; font-size:14px; margin-right:8px;">详情</a>
 <button type="button" class="m-theme-toggle" id="mThemeToggle" onclick="toggleTheme()" title="切换深色/浅色">
     <i class="bi bi-moon-stars"></i>
 </button>
@@ -131,7 +131,7 @@
         <div style="display:flex; align-items:center; justify-content:space-between;">
             <div>
                 <div style="font-size:13px; color:#212529; font-weight:500;">
-                    <i class="bi bi-geo-alt" style="color:#165DFF;"></i> 现场定位
+                    <i class="bi bi-geo-alt" style="color:#409eff;"></i> 现场定位
                 </div>
                 <div id="locationInfo" style="font-size:12px; color:#adb5bd; margin-top:2px;">
                     {% if ticket.location_lat and ticket.location_lng %}
@@ -297,7 +297,7 @@ function captureLocation(){
     }
     var info = document.getElementById('locationInfo');
     info.textContent = '定位中...';
-    info.style.color = '#165DFF';
+    info.style.color = '#409eff';
     navigator.geolocation.getCurrentPosition(function(pos){
         document.getElementById('locationLat').value = pos.coords.latitude;
         document.getElementById('locationLng').value = pos.coords.longitude;

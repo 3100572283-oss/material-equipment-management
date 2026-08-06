@@ -4390,6 +4390,16 @@ def api_save_location():
     lng = data.get('lng')
     accuracy = data.get('accuracy')
 
+@bp.route('/ai-assistant')
+def ai_assistant():
+    """移动端AI智能助手全屏页面"""
+    if not current_user.is_authenticated:
+        return redirect(url_for('mobile.login'))
+    project = get_current_project()
+    return render_template('mobile/ai_assistant.html', project=project)
+
+
+
     if lat and lng:
         # Store in session for use in stock_in/out
         session['mobile_location'] = {

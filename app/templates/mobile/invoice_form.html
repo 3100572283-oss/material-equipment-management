@@ -12,7 +12,7 @@
     <div class="m-card" style="padding:12px 16px;background:linear-gradient(135deg,#e7f5ff,#f0f9ff);border:1px solid #b3d7ff;">
         <div style="display:flex;align-items:center;justify-content:space-between;">
             <div>
-                <div style="font-size:14px;font-weight:600;color:#165DFF;">
+                <div style="font-size:14px;font-weight:600;color:#409eff;">
                     <i class="bi bi-camera-fill"></i> 拍照识别发票
                 </div>
                 <div style="font-size:12px;color:#6c757d;margin-top:2px;">
@@ -85,7 +85,7 @@
             <label class="m-form-label">不含税金额（自动）</label>
             <input type="text" class="m-form-control" id="amount_without_tax" readonly
                    value="{{ '%.2f'|format(invoice.amount_without_tax or 0) if invoice else '0.00' }}"
-                   style="font-weight:600;color:#165DFF;">
+                   style="font-weight:600;color:#409eff;">
         </div>
     </div>
 

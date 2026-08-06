@@ -37,7 +37,7 @@
         <div class="value"><span id="filledCount">0</span> / <span id="totalCount">{{ items|length }}</span> 种</div>
     </div>
     <div style="background:#f1f3f5; border-radius:4px; height:8px; overflow:hidden;">
-        <div id="progressBar" style="background:#165DFF; height:100%; width:0%; transition:width 0.3s;"></div>
+        <div id="progressBar" style="background:#409eff; height:100%; width:0%; transition:width 0.3s;"></div>
     </div>
     <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
         <button type="button" class="m-btn m-btn-outline-primary m-btn-sm" onclick="scanToLocate()">
@@ -130,12 +130,12 @@
 .m-check-diff.zero { color:#6c757d; }
 .m-check-reason { margin-top:6px; }
 .m-check-item.scanned {
-    border:2px solid #165DFF;
+    border:2px solid #409eff;
     background:#f0f5ff;
     animation: flash 0.6s ease-out;
 }
 @keyframes flash {
-    0% { background:#165DFF; }
+    0% { background:#409eff; }
     100% { background:#f0f5ff; }
 }
 </style>

@@ -6,7 +6,7 @@
 <!-- 项目卡片 + 问候 -->
 <div class="m-card">
     <div style="display:flex; align-items:center;">
-        <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#165DFF,#0a4ed6);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:12px;">
+        <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#409eff,#1e6fd9);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:12px;">
             <i class="bi bi-building"></i>
         </div>
         <div style="flex:1;">
@@ -14,11 +14,11 @@
             <div style="font-size:16px;font-weight:600;margin-top:2px;">{{ project.name }}</div>
         </div>
         {% if visible_projects and visible_projects|length > 1 %}
-        <a href="{{ url_for('mobile.profile') }}" style="font-size:12px;color:#165DFF;">
+        <a href="{{ url_for('mobile.profile') }}" style="font-size:12px;color:#409eff;">
             切换 <i class="bi bi-chevron-right"></i>
         </a>
         {% endif %}
-        <a href="javascript:void(0)" onclick="openQuickEditor()" style="font-size:12px;color:#165DFF;margin-left:12px;">
+        <a href="javascript:void(0)" onclick="openQuickEditor()" style="font-size:12px;color:#409eff;margin-left:12px;">
             <i class="bi bi-gear"></i> 编辑
         </a>
     </div>
@@ -152,7 +152,7 @@ var quickAvailable = [
     { key: 'pr', label: '领料申请', icon: 'bi-file-earmark-text', color: 'warning', url: "{{ url_for('mobile.pr_list') }}" },
     { key: 'purchase_request', label: '采购申请', icon: 'bi-cart-plus', color: 'info', url: "{{ url_for('mobile.purchase_request') }}" },
     { key: 'messages', label: '消息中心', icon: 'bi-chat-dots', color: 'purple', url: "{{ url_for('mobile.messages') }}" },
-    { key: 'ai_assistant', label: 'AI助手', icon: 'bi-robot', color: 'blue', url: "javascript:void(0)" },
+    { key: 'ai_assistant', label: 'AI助手', icon: 'bi-robot', color: 'blue', url: "/mobile/ai-assistant" },
     { key: 'scrap', label: '报废申请', icon: 'bi-trash', color: 'danger', url: "{{ url_for('mobile.scrap_list') }}" },
     { key: 'scan', label: '扫码查询', icon: 'bi-qr-code-scan', color: 'pink', url: 'javascript:quickScan()' },
     { key: 'contract_list', label: '合同查看', icon: 'bi-file-earmark-text', color: 'blue', url: "{{ url_for('mobile.m_contract_list') }}" },
