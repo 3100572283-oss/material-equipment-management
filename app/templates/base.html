@@ -1884,6 +1884,13 @@
                 return;
             }
 
+            // 仅当 active item 不在侧边栏可视区内时才滚动；已在可视区则保持当前滚动位置，
+            // 避免点击下级菜单后整页重载时侧边栏被强制弹回顶端
+            var containerRect = container.getBoundingClientRect();
+            if (itemRect.top >= containerRect.top && itemRect.bottom <= containerRect.bottom) {
+                console.log('[sidebar-scroll] active item already visible, keep position');
+                return;
+            }
             // 使用scrollIntoView作为主要方法（更可靠）
             try {
                 activeItem.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -1891,11 +1898,6 @@
             } catch(e) {
                 // Fallback: 手动计算滚动位置
                 console.log('[sidebar-scroll] scrollIntoView failed, using manual calc');
-                var containerRect = container.getBoundingClientRect();
-                if (itemRect.top >= containerRect.top && itemRect.bottom <= containerRect.bottom) {
-                    console.log('[sidebar-scroll] already in viewport, skipping');
-                    return;
-                }
                 var scrollOffset = itemRect.top - containerRect.top;
                 scrollOffset -= (container.clientHeight - activeItem.offsetHeight) / 2;
                 container.scrollTop += scrollOffset;
