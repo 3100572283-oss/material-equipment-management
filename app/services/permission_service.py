@@ -252,9 +252,15 @@ class PermissionService:
         if user.is_admin():
             allowed_menu_ids = set(m.id for m in SysMenu.query.all())
         else:
-            from app.models import SysRoleMenu
-            rms = SysRoleMenu.query.filter_by(role_id=user.role_id).all()
-            allowed_menu_ids = set(rm.menu_id for rm in rms)
+            # M0 全量接管：current_user 已为 AuthUser，菜单可见性由 auth_core 角色→权限(SSOT) 派生，
+            # 不再依赖旧 sys_role_menu（其 role_id 空间与 auth_core_role.id 不兼容）。
+            from app.auth_core.models import AuthUser as _AuthUser
+            if isinstance(user, _AuthUser):
+                allowed_menu_ids = self._auth_core_menu_ids(user)
+            else:
+                from app.models import SysRoleMenu
+                rms = SysRoleMenu.query.filter_by(role_id=user.role_id).all()
+                allowed_menu_ids = set(rm.menu_id for rm in rms)
 
         def build_tree(parent_id=None):
             children = []
@@ -303,6 +309,24 @@ class PermissionService:
 
         return build_tree()
 
+    def _auth_core_menu_ids(self, user):
+        """从 auth_core 角色→权限(SSOT) 派生当前用户可见菜单 id 集合。
+
+        auth_core_permission.perm_key 与 SysMenu.permission 同命名空间（module:resource:view），
+        故以「用户被授予的 perm_key 集合」∩「SysMenu.permission」即可得可见菜单。
+        """
+        from app.auth_core.gateway import AuthGateway
+        from app.models import SysMenu
+
+        keys = AuthGateway.get_permissions(user.id)
+        if not keys:
+            return set()
+        menus = SysMenu.query.filter(
+            SysMenu.permission.in_(keys),
+            SysMenu.menu_type == 'menu'
+        ).all()
+        return set(m.id for m in menus)
+
     def get_user_permissions_list(self, user):
         """获取用户所有按钮权限标识列表
 
@@ -328,6 +352,11 @@ class PermissionService:
                     for op in ['view', 'create', 'edit', 'delete', 'import', 'export', 'approve', 'print']:
                         permissions.append(f"{base_perm}:{op}")
         else:
+            from app.auth_core.models import AuthUser as _AuthUser
+            if isinstance(user, _AuthUser):
+                # M0 全量接管：按钮权限标识直接取自 auth_core 授予的 perm_key 集合（SSOT）
+                from app.auth_core.gateway import AuthGateway
+                return list(AuthGateway.get_permissions(user.id))
             role_menus = SysRoleMenu.query.filter_by(role_id=user.role_id).all()
             for rm in role_menus:
                 menu = SysMenu.query.get(rm.menu_id)
@@ -670,7 +699,7 @@ class PermissionService:
         if user.is_admin():
             return ['view', 'create', 'edit', 'delete', 'export', 'import', 'approve', 'print']
 
-        from app.models import SysMenu, SysRoleMenu
+        from app.models import SysMenu
 
         menu_id = None
 
@@ -690,6 +719,22 @@ class PermissionService:
         if not menu_id:
             return []
 
+        # M0 全量接管：AuthUser 的按钮权限由 auth_core 授予的 perm_key 集合推导（SSOT）
+        from app.auth_core.models import AuthUser as _AuthUser
+        if isinstance(user, _AuthUser):
+            from app.auth_core.gateway import AuthGateway
+            menu = SysMenu.query.get(menu_id)
+            if not menu or not menu.permission:
+                return []
+            base = menu.permission.rsplit(':', 1)[0]
+            keys = AuthGateway.get_permissions(user.id)
+            ops = set()
+            for k in keys:
+                if k == menu.permission or k.startswith(base + ':'):
+                    ops.add(k.rsplit(':', 1)[-1])
+            return sorted(ops)
+
+        from app.models import SysRoleMenu
         role_menus = SysRoleMenu.query.filter_by(
             role_id=user.role_id,
             menu_id=menu_id

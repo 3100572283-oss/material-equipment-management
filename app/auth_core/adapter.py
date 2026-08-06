@@ -35,6 +35,23 @@ ORG_CODE_ALIAS = {
 }
 
 
+def _ensure_permission(module, resource, action):
+    """确保 auth_core_permission 中存在 (module, resource, action) 权限点，返回实例（幂等）。
+
+    权限点 perm_key 统一为 'module:resource:action'，与 SysMenu.permission
+    （由 _generate_permission 生成 module:func:view）同命名空间，可作为菜单可见性与
+    按钮权限判定的单一数据源（SSOT）。
+    """
+    perm_key = '%s:%s:%s' % (module, resource, action)
+    p = AuthPermission.query.filter_by(perm_key=perm_key).first()
+    if p:
+        return p
+    p = AuthPermission(module=module, resource=resource, action=action, perm_key=perm_key)
+    db.session.add(p)
+    db.session.flush()
+    return p
+
+
 def _org_code_for(dept_code):
     """旧部门编码 → 新组织编码（优先走归一别名，否则加 LEGACY_ 前缀）"""
     return ORG_CODE_ALIAS.get(dept_code) or ('LEGACY_%s' % dept_code)
@@ -123,13 +140,22 @@ def sync_role_from_legacy():
         new_scope = SCOPE_MAP.get(r.data_scope, 'project')
         if not AuthDataScope.query.filter_by(role_id=role.id).first():
             db.session.add(AuthDataScope(role_id=role.id, scope_type=new_scope))
-        # 旧 角色-菜单 → 新 角色-权限
+        # 旧 角色-菜单(含 operation) → 新 角色-权限（SSOT）
+        #   - view 权限点：perm_key 与 SysMenu.permission 完全一致，承载「菜单可见性」
+        #   - operation 权限点(module:resource:<op>)：承载「按钮粒度」create/edit/delete/export...
         for rm in LegacyRoleMenu.query.filter_by(role_id=r.id).all():
-            perm_id = perm_map.get(rm.menu_id)
-            if not perm_id:
+            menu = LegacyMenu.query.get(rm.menu_id)
+            if not menu or not menu.permission:
                 continue
-            if not AuthRolePermission.query.filter_by(role_id=role.id, permission_id=perm_id).first():
-                db.session.add(AuthRolePermission(role_id=role.id, permission_id=perm_id))
+            parts = menu.permission.split(':')
+            module = parts[0] if parts else 'misc'
+            resource = parts[1] if len(parts) > 2 else (menu.menu_code or 'page')
+            operation = rm.operation or 'view'
+            view_perm = _ensure_permission(module, resource, 'view')
+            op_perm = _ensure_permission(module, resource, operation)
+            for perm in (view_perm, op_perm):
+                if not AuthRolePermission.query.filter_by(role_id=role.id, permission_id=perm.id).first():
+                    db.session.add(AuthRolePermission(role_id=role.id, permission_id=perm.id))
     db.session.commit()
     return role_map
 
