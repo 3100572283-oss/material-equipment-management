@@ -29,6 +29,13 @@
   2. sys_*              旧 RBAC 组织/角色/用户-项目映射（scope 计算依赖它）
   3. users              身份表（过滤它 = 登录直接挂）
   4. projects           特殊处理：按主键 id 过滤，而非 project_id
+  5. 公司级主数据表      suppliers / materials / categories
+     这三张表虽有 project_id，但语义是「创建来源项目」而非归属项目：
+       - master 蓝图（公司主数据库）用 source='company' 取全公司共享池
+       - 项目侧可见性由 project_supplier / project_material 关联表表达
+     若按 project_id 强制过滤，会导致「项目 A 的人在公司供应商主库里看到 0 条」，
+     入库/合同等单据将无法选到供应商与物料，业务直接中断。
+     -> 主数据共享、单据隔离，是本系统的既定分层，隔离层必须尊重它。
 
 NULL 语义
 ---------
@@ -43,7 +50,7 @@ NULL 语义
   3. 代码块豁免：with bypass_data_scope(): ...   （跨项目统计、对账、大屏汇总）
   4. 无请求上下文（CLI / ETL / 调度器）天然不拦截
 
-版本：v0.2.0 / 2026-08-06
+版本：v0.3.0 / 2026-08-06（主数据表排除）
 """
 import os
 from contextlib import contextmanager
@@ -70,6 +77,15 @@ EXCLUDE_TABLES = {
 }
 EXCLUDE_PREFIXES = ('auth_core_', 'sys_')
 
+# 公司级主数据（跨项目共享池）：project_id 是「创建来源」而非「归属」，不作为隔离维度。
+# 其项目可见性由 source 字段 + project_supplier / project_material 关联表控制，
+# 关联表本身仍然参与隔离（project_supplier.project_id 是真实归属）。
+MASTER_DATA_TABLES = {
+    'suppliers',    # 供应商主库（source=company 全公司共享 / source=project 项目临时录入）
+    'materials',    # 物料主库
+    'categories',   # 物料分类树
+}
+
 PROJECT_TABLE = 'projects'
 
 _REGISTRY = None        # {模型类: 'strict' | 'null_ok'}
@@ -95,7 +111,8 @@ def _build_registry(db):
             _PROJECT_CLS = cls
             rules[name] = ('id', 'pk')
             continue
-        if name in EXCLUDE_TABLES or name.startswith(EXCLUDE_PREFIXES):
+        if (name in EXCLUDE_TABLES or name in MASTER_DATA_TABLES
+                or name.startswith(EXCLUDE_PREFIXES)):
             continue
         col = table.columns.get('project_id')
         if col is None:
