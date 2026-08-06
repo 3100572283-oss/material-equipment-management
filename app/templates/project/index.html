@@ -41,6 +41,13 @@
 [data-bs-theme="dark"] .proj-sidebar-header { background: rgba(255,255,255,.05); }
 [data-bs-theme="dark"] .proj-tree-row:hover { background: rgba(255,255,255,.06); }
 [data-bs-theme="dark"] .proj-tree-count { background: rgba(255,255,255,.08); }
+/* 修复table-responsive裁剪dropdown */
+.table-responsive { overflow: visible; }
+.proj-main .card-body { overflow-x: auto; }
+.proj-main .dropdown-menu-end { right: 0; left: auto; }
+@media (max-width: 768px) {
+    .table-responsive { overflow-x: auto; }
+}
 </style>
 {% endblock %}
 {% block content %}
@@ -147,7 +154,7 @@
                                     {% set has_more = current_user.has_permission('system:project:config') or current_user.has_permission('system:project:edit') %}
                                     {% if has_more %}
                                     <div class="btn-group btn-group-sm" role="group">
-                                        <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="更多">
+                                        <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="更多">
                                             <i class="bi bi-three-dots"></i>
                                         </button>
                                         <ul class="dropdown-menu dropdown-menu-end">

@@ -849,16 +849,16 @@ def audit_log_detail(id):
     from app.models import SysOperationLog, DataChangeLog
     log = SysOperationLog.query.get_or_404(id)
     import json
+    params = json.loads(log.params) if log.params else {}
+    changes = json.loads(log.changes) if log.changes else {}
+    change_logs = DataChangeLog.query.filter_by(record_id=log.biz_id).all() if log.biz_id else []
+    return render_template('admin/audit_log_detail.html', log=log, params=params, changes=changes)
 
 @bp.route("/")
 @login_required
 @admin_required
 def index():
     return redirect(url_for("admin.users"))
-    params = json.loads(log.params) if log.params else {}
-    changes = json.loads(log.changes) if log.changes else {}
-    change_logs = DataChangeLog.query.filter_by(record_id=log.biz_id).all() if log.biz_id else []
-    return render_template('admin/audit_log_detail.html', log=log, params=params, changes=changes)
 
 @bp.route('/audit_logs/export')
 @login_required

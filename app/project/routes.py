@@ -284,6 +284,31 @@ def delete(id):
     # 数据权限校验：只能删除权限范围内的项目
     if not _check_project_permission(project):
         abort(403)
+
+    # 检查关联数据
+    from app.models import (
+        Material, StockIn, StockOut, Contract, Supplier, Inventory,
+        PurchaseOrder, PurchaseRequisition, MaterialReturn, Equipment,
+        Category, Attachment, UsageUnit, SysUserProject
+    )
+    checks = [
+        (Material.query.filter_by(project_id=id).count(), '物资数据'),
+        (StockIn.query.filter_by(project_id=id).count(), '入库记录'),
+        (StockOut.query.filter_by(project_id=id).count(), '出库记录'),
+        (Contract.query.filter_by(project_id=id).count(), '合同记录'),
+        (Inventory.query.filter_by(project_id=id).count(), '库存记录'),
+        (Equipment.query.filter_by(project_id=id).count(), '设备记录'),
+        (PurchaseOrder.query.filter_by(project_id=id).count(), '采购订单'),
+        (MaterialReturn.query.filter_by(project_id=id).count(), '退料记录'),
+        (Category.query.filter_by(project_id=id).count(), '物资分类'),
+        (UsageUnit.query.filter_by(project_id=id).count(), '使用单位'),
+        (SysUserProject.query.filter_by(project_id=id).count(), '用户关联'),
+    ]
+    related = [f'{label}({cnt}条)' for cnt, label in checks if cnt > 0]
+    if related:
+        flash(f'无法删除项目「{project.name}」，存在关联数据：{", ".join(related)}。请先清理或转移相关数据后再删除。', 'danger')
+        return redirect(url_for('project.index'))
+
     db.session.delete(project)
     db.session.commit()
     flash('项目删除成功。', 'success')

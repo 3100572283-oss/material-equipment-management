@@ -1145,7 +1145,8 @@ def api_dept_tree():
     def build_tree(parent_id):
         children = []
         for d in depts:
-            if d.parent_id == parent_id:
+            # 兼容 parent_id 为 None 或 0 的情况
+            if d.parent_id == parent_id or (not d.parent_id and not parent_id):
                 node = {
                     'id': d.id,
                     'label': d.dept_name,
@@ -1160,9 +1161,9 @@ def api_dept_tree():
                 children.append(node)
         return children
 
-    # 如果是全量权限，从parent_id=0开始；否则从顶层可见部门开始
+    # 如果是全量权限，从parent_id=None（根节点）开始；否则从顶层可见部门开始
     if allowed_dept_ids is None:
-        tree = build_tree(0)
+        tree = build_tree(None)
     else:
         # 找到所有根节点（父部门不在可见范围内的部门）
         tree = []

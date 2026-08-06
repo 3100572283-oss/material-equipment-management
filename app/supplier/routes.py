@@ -206,9 +206,15 @@ def edit(id):
 @log_audit(module='supplier', operation='删除')
 def delete(id):
     supplier = Supplier.query.get_or_404(id)
-    from app.models import Contract
+    from app.models import Contract, StockIn, PurchaseOrder
     if Contract.query.filter_by(supplier_id=supplier.id).first():
         flash('该供应商已关联合同，无法删除。', 'danger')
+        return redirect(url_for('supplier.index'))
+    if StockIn.query.filter_by(supplier_id=supplier.id).first():
+        flash('该供应商已存在入库记录，无法删除。', 'danger')
+        return redirect(url_for('supplier.index'))
+    if PurchaseOrder.query.filter_by(supplier_id=supplier.id).first():
+        flash('该供应商已关联采购订单，无法删除。', 'danger')
         return redirect(url_for('supplier.index'))
     db.session.delete(supplier)
     db.session.commit()
