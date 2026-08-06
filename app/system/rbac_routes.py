@@ -1202,7 +1202,7 @@ def api_menu_tree():
     def build_tree(parent_id):
         children = []
         for m in menus:
-            if m.parent_id == parent_id:
+            if m.parent_id == parent_id or (not m.parent_id and not parent_id):
                 node = {
                     'id': m.id,
                     'label': m.menu_name,
@@ -1213,7 +1213,7 @@ def api_menu_tree():
                 children.append(node)
         return children
     
-    return jsonify(build_tree(0))
+    return jsonify(build_tree(None))
 
 
 @bp.route('/api/user/has_permission/<permission>')

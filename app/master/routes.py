@@ -27,6 +27,18 @@ from app.utils import (
 )
 from flask import current_app
 
+# P2: 文件上传扩展名校验
+def _validate_upload_file(file):
+    """校验上传文件扩展名，不通过则abort 400"""
+    if file and file.filename:
+        from app.utils import validate_file_extension
+        from flask import abort
+        ok, err = validate_file_extension(file.filename)
+        if not ok:
+            abort(400, err)
+    return file
+
+
 @master_bp.route("/")
 @login_required
 @admin_required

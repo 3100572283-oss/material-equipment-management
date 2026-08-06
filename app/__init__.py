@@ -1666,6 +1666,48 @@ def create_app(config_class=Config):
             pass
 
     # 错误日志自动捕获 - 仅处理非HTTPException的异常
+    # 全局 IntegrityError 处理：外键约束冲突时显示友好提示
+    from sqlalchemy.exc import IntegrityError
+
+    @app.errorhandler(IntegrityError)
+    def handle_integrity_error(e):
+        from flask import request, flash, redirect, render_template
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        
+        # 记录错误日志
+        try:
+            from app.models import ErrorLog
+            from datetime import datetime
+            import traceback, json
+            err = ErrorLog(
+                error_time=datetime.now(),
+                error_type='IntegrityError',
+                error_message=str(e.orig) if hasattr(e, 'orig') else str(e),
+                stack_trace=traceback.format_exc(),
+                request_url=request.url[:512] if request else '',
+                request_method=request.method if request else '',
+                request_params=json.dumps(request.form.to_dict(), ensure_ascii=False) if request and request.form else None,
+                user_id=current_user.id if current_user.is_authenticated else None,
+                username=current_user.username if current_user.is_authenticated else None,
+                ip_address=request.remote_addr if request else None,
+                user_agent=request.headers.get('User-Agent', '')[:512] if request else None,
+            )
+            db.session.add(err)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        # 如果是AJAX请求返回JSON
+        if request and request.is_json or (request and request.headers.get('X-Requested-With') == 'XMLHttpRequest'):
+            return jsonify({'success': False, 'message': '操作失败：数据存在关联引用，无法删除或修改。请先处理相关联的数据。'}), 400
+
+        # 普通请求：flash提示并重定向回来源页
+        flash('操作失败：该数据存在关联引用，无法删除。请先处理相关联的数据后再操作。', 'danger')
+        return redirect(request.referrer or url_for('main.index'))
+
     @app.errorhandler(Exception)
     def handle_exception(e):
         """捕获所有异常并记录错误日志（HTTPException由专门handler处理）"""
