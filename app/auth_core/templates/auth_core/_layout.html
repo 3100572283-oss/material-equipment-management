@@ -6,6 +6,8 @@
 {% block title %}{{ page_title }} - 权限中台{% endblock %}
 
 {% block content %}
+{# CSRF 令牌：auth_core 蓝图未豁免 CSRFProtect，AJAX 必须带 X-CSRFToken 否则被 400 拦截 #}
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <style>
   .ac-wrap { display: flex; gap: 16px; align-items: flex-start; }
   .ac-nav {
@@ -104,6 +106,9 @@ const AC = {
   },
   async req(url, method = 'GET', body = null) {
     const opt = { method, headers: { 'Content-Type': 'application/json' } };
+    // 携带 CSRF 令牌（Flask-WTF CSRFProtect 对 auth_core 蓝图启用），避免 400 拦截
+    const _tok = document.querySelector('meta[name="csrf-token"]');
+    if (_tok) opt.headers['X-CSRFToken'] = _tok.getAttribute('content');
     if (body) opt.body = JSON.stringify(body);
     try {
       const r = await fetch(url, opt);
