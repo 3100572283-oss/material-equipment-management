@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}新增预算调整单 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>新增预算调整单（{{ fy }} 年度）</h5>
+    </div>
+    <div class="card-body">
+        {% if not controls %}
+        <div class="alert alert-warning">当前项目暂无预算控制科目，请先在「预算管控」中<span class="fw-bold">新增预算科目</span>并设定年度预算。</div>
+        {% endif %}
+        <form method="POST" action="{{ url_for('cost.adjustment_create') }}" class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">预算科目</label>
+                <select name="control_id" class="form-select" required>
+                    <option value="">-- 请选择 --</option>
+                    {% for c in controls %}
+                    <option value="{{ c.id }}" {% if request.args.get('control_id', type=int)==c.id %}selected{% endif %}>
+                        {{ labels.get(c.category_code, c.category_code) }}（当前年度预算 {{ '%.2f'|format(c.annual_amount or 0) }}）
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">调整后年度预算(元)</label>
+                <input type="number" step="0.01" name="new_amount" class="form-control" required
+                       placeholder="填写调整后的年度预算">
+            </div>
+            <div class="col-12">
+                <label class="form-label">调整原因</label>
+                <textarea name="reason" class="form-control" rows="3" placeholder="如：工程量增加 / 单价上涨 / 设计变更…"></textarea>
+            </div>
+            <div class="col-12 d-flex gap-2">
+                <button type="submit" class="btn btn-primary" {% if not controls %}disabled{% endif %}><i class="bi bi-check-lg me-1"></i>提交审批</button>
+                <a href="{{ url_for('cost.adjustment_list') }}" class="btn btn-outline-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

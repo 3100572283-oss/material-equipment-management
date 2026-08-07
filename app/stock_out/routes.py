@@ -13,9 +13,21 @@ from app.decorators import editor_required, log_audit
 from app.utils import to_decimal, apply_data_scope, get_project_materials
 from app.services.inventory_cost import InventoryCostService
 from app.services.business_logger import BusinessLogger
+from app.cost.services import safe_record_spend
 
 
 ALLOW_NEGATIVE_STOCK = False
+
+
+def _budget_hook_stock_out(stock_out):
+    """出库审批通过时记账到预算控制（material 科目）。
+
+    strangler 模式：仅挂钩，内部已 try/except 且幂等，任何异常不向外出，绝不影响出库主流程。
+    """
+    if stock_out.status != 'approved':
+        return
+    amt = db.session.query(func.sum(StockOutItem.amount)).filter_by(stock_out_id=stock_out.id).scalar() or 0
+    safe_record_spend(stock_out.project_id, 'material', float(amt), 'stock_out', stock_out.id)
 
 
 def _allow_negative_stock(project_id, material_id):
@@ -455,6 +467,7 @@ def create():
                     _apply_stock(project_id, item.material_id, -float(item.quantity))
                 stock_out.status = 'approved'
                 stock_out.approval_status = 'passed'
+                _budget_hook_stock_out(stock_out)
                 db.session.commit()
                 flash('出库单已直接生效（项目未启用审批模块）。', 'success')
             else:
@@ -472,6 +485,7 @@ def create():
                 if success:
                     flash(f'调拨入库已自动创建: {msg}', 'info')
 
+        _budget_hook_stock_out(stock_out)
         db.session.commit()
         flash('出库单创建成功。', 'success')
         if stock_out.approval_status == 'draft':
@@ -652,6 +666,7 @@ def edit(id):
                     _apply_stock(stock_out.project_id, item.material_id, -float(item.quantity))
                 stock_out.status = 'approved'
                 stock_out.approval_status = 'passed'
+                _budget_hook_stock_out(stock_out)
                 db.session.commit()
                 flash('出库单已直接生效（项目未启用审批模块）。', 'success')
             else:
@@ -664,6 +679,7 @@ def edit(id):
             for item in stock_out.items:
                 _apply_stock(stock_out.project_id, item.material_id, -float(item.quantity))
 
+        _budget_hook_stock_out(stock_out)
         db.session.commit()
         flash('出库单更新成功。', 'success')
         return redirect(url_for('stock_out.detail', id=stock_out.id))
@@ -723,6 +739,7 @@ def submit(id):
             _apply_stock(stock_out.project_id, item.material_id, -float(item.quantity))
         stock_out.status = 'approved'
         stock_out.approval_status = 'passed'
+        _budget_hook_stock_out(stock_out)
         db.session.commit()
         flash('出库单已直接生效（项目未启用审批模块）。', 'success')
     else:

@@ -14,6 +14,7 @@ from app.models import (
 )
 from app.decorators import editor_required, log_audit, module_required
 from app.utils import log_operation, get_dict_items, apply_data_scope
+from app.cost.services import safe_record_spend
 
 
 def _get_project_id():
@@ -540,6 +541,9 @@ def rent_settle_confirm(id):
         flash('只有草稿状态的结算单才能确认', 'warning')
         return redirect(url_for('equipment.rent_settle'))
     settle.status = 'confirmed'
+    # M4 P2：记账到预算管控（equipment 科目），失败不影响主流程
+    safe_record_spend(settle.equipment.project_id, 'equipment',
+                      float(settle.total_amount or 0), 'equipment_settle', settle.id)
     db.session.commit()
     log_operation('确认', module='设备租赁结算', description=f'确认结算单 {settle.settle_no}')
     flash('结算单已确认', 'success')

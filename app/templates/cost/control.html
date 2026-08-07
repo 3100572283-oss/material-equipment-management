@@ -2,10 +2,137 @@
 {% block title %}预算管控 - 物资设备管理系统{% endblock %}
 {% block content %}
 <div class="card shadow-sm">
-    <div class="card-header bg-white"><h5 class="mb-0"><i class="bi bi-shield-check me-2"></i>全面预算管控</h5></div>
-    <div class="card-body text-center text-muted py-5">
-        <i class="bi bi-hourglass-split" style="font-size:2.5rem;"></i>
-        <p class="mt-3 mb-0">本功能将于 <strong>阶段二 P2</strong> 上线：物资出库/设备结算/分包付款走预算校验——无预算不开支，超预算提级审批。</p>
+    <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0"><i class="bi bi-shield-check me-2"></i>全面预算管控</h5>
+        <div class="d-flex gap-2 align-items-center">
+            <form method="GET" action="{{ url_for('cost.control') }}" class="d-inline-flex align-items-center gap-1">
+                <select name="fy" class="form-select form-select-sm" onchange="this.form.submit()">
+                    {% for y in range(fy-2, fy+2) %}
+                    <option value="{{ y }}" {% if y==fy %}selected{% endif %}>{{ y }} 年度</option>
+                    {% endfor %}
+                </select>
+            </form>
+            {% if current_user.has_permission('cost:budget:edit') %}
+            <a href="{{ url_for('cost.control_edit') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增预算科目</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        {# 汇总卡片 #}
+        <div class="row g-2 mb-3">
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">年度预算总额</div>
+                    <div class="fs-5 fw-bold">{{ '%.2f'|format(total_annual or 0) }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">已用</div>
+                    <div class="fs-5 fw-bold text-primary">{{ '%.2f'|format(total_used or 0) }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">可用</div>
+                    <div class="fs-5 fw-bold text-success">{{ '%.2f'|format(total_available or 0) }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">预警 / 超支科目</div>
+                    <div class="fs-5 fw-bold">
+                        <span class="text-warning">{{ warn_count or 0 }}</span> /
+                        <span class="text-danger">{{ over_count or 0 }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>预算科目</th>
+                        <th class="text-end">年度预算</th>
+                        <th class="text-end">已用</th>
+                        <th class="text-end">冻结</th>
+                        <th class="text-end">可用</th>
+                        <th style="min-width:160px;">使用率</th>
+                        <th>状态</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr>
+                        <td>
+                            <a class="text-decoration-none" data-bs-toggle="collapse" href="#det{{ r.ctrl.id }}" role="button">
+                                <i class="bi bi-chevron-right small"></i> {{ r.label }}
+                            </a>
+                            <div class="text-muted small">{{ r.category_code }}</div>
+                        </td>
+                        <td class="text-end">{{ '%.2f'|format(r.annual) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(r.used) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(r.frozen) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(r.available) }}</td>
+                        <td>
+                            {% set pct = [r.rate*100, 100]|min %}
+                            {% if r.status == 'ok' %}{% set bar='bg-success' %}{% elif r.status == 'warn' %}{% set bar='bg-warning' %}{% else %}{% set bar='bg-danger' %}{% endif %}
+                            <div class="progress" style="height:18px;">
+                                <div class="progress-bar {{ bar }}" role="progressbar" style="width:{{ pct }}%;">{{ '%.0f'|format(r.rate*100) }}%</div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if r.status == 'ok' %}<span class="badge bg-success">正常</span>
+                            {% elif r.status == 'warn' %}<span class="badge bg-warning">预警</span>
+                            {% else %}<span class="badge bg-danger">超支</span>{% endif %}
+                        </td>
+                        <td class="text-end">
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('cost.control_edit', id=r.ctrl.id) }}" class="btn btn-outline-primary" title="编辑预算"><i class="bi bi-pencil"></i></a>
+                                <a href="{{ url_for('cost.adjustment_create') }}?control_id={{ r.ctrl.id }}" class="btn btn-outline-info" title="发起预算调整"><i class="bi bi-sliders"></i></a>
+                                {% if current_user.has_permission('cost:budget:edit') %}
+                                <form method="POST" action="{{ url_for('cost.control_delete', id=r.ctrl.id) }}" class="d-inline" onsubmit="return confirm('确定删除该预算科目？已有记账则不可删。');">
+                                    <button type="submit" class="btn btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="collapse" id="det{{ r.ctrl.id }}">
+                        <td colspan="8" class="bg-light">
+                            {% if r.details %}
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>来源</th><th>单据ID</th><th class="text-end">金额</th><th>操作人</th><th>时间</th></tr></thead>
+                                <tbody>
+                                {% for d in r.details %}
+                                <tr>
+                                    <td>{{ d.ref_type }}</td>
+                                    <td>{{ d.ref_id }}</td>
+                                    <td class="text-end">{{ '%.2f'|format(d.amount) }}</td>
+                                    <td>{{ d.operator or '-' }}</td>
+                                    <td>{{ d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                            {% else %}
+                            <span class="text-muted small">暂无开支记账明细。</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">暂无预算控制科目。点击「新增预算科目」设定年度预算，或等待首笔开支自动建账。</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="text-muted small mb-0">
+            说明：开支在「物资出库审批 / 设备租赁结算确认 / 分包扣款确认」时自动记账到对应科目；
+            超预算（使用率&gt;100%）标红、达预警线（默认 80%）标黄；超支可通过「预算调整单」提级审批后回写年度预算。
+            硬拦截开关 <code>BUDGET_STRICT_MODE</code> 默认关闭以保生产稳定。
+        </p>
     </div>
 </div>
 {% endblock %}

@@ -12,12 +12,14 @@
 from flask import (render_template, request, redirect, url_for, flash,
                    jsonify, current_app, session)
 from flask_login import login_required, current_user
+from datetime import datetime
 from sqlalchemy import func, or_
 
 from app import db
 from app.cost import cost_bp
 from app.cost.models import (ResponsibilityCostBudget, ResponsibilityCostBudgetItem,
-                             CostCategory)
+                             CostCategory, BudgetControl, BudgetAdjustment)
+from app.cost.services import BudgetService, CATEGORY_LABELS
 from app.models import Contract, ContractItem, StockOut, StockOutItem, Material, Project
 from app.utils import apply_data_scope
 from app.decorators import permission_required
@@ -277,9 +279,167 @@ def profit():
     return render_template('cost/profit.html')
 
 
-# ---------------------------------------------------------------- 预算管控（P2 占位）
+# ---------------------------------------------------------------- 预算管控看板（P2）
 @cost_bp.route('/control/')
 @login_required
 @permission_required('cost:control:view')
 def control():
-    return render_template('cost/control.html')
+    pid = _current_pid()
+    if not pid:
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
+    fy = request.args.get('fy', type=int) or datetime.now().year
+    rows = BudgetService.control_board(pid, fy) if pid else []
+    # 汇总
+    total_annual = round(sum(r['annual'] for r in rows), 2)
+    total_used = round(sum(r['used'] for r in rows), 2)
+    total_frozen = round(sum(r['frozen'] for r in rows), 2)
+    total_available = round(total_annual - total_used - total_frozen, 2)
+    over_count = sum(1 for r in rows if r['status'] == 'exceed')
+    warn_count = sum(1 for r in rows if r['status'] == 'warn')
+    return render_template('cost/control.html',
+                           rows=rows, fy=fy,
+                           total_annual=total_annual, total_used=total_used,
+                           total_frozen=total_frozen, total_available=total_available,
+                           over_count=over_count, warn_count=warn_count,
+                           labels=CATEGORY_LABELS)
+
+
+# ---------------------------------------------------------------- 预算控制（建/改/删）
+@cost_bp.route('/control/edit', methods=['GET', 'POST'])
+@cost_bp.route('/control/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@permission_required('cost:budget:edit')
+def control_edit(id=0):
+    """新增(id=0)或编辑预算控制科目（设定年度预算/预警线/提级审批角色）。"""
+    pid = _current_pid()
+    if not pid:
+        flash('请先选择项目。', 'warning')
+        return redirect(url_for('main.index'))
+    ctrl = BudgetControl.query.get(id) if id else None
+    fy = datetime.now().year
+
+    if request.method == 'POST':
+        category_code = request.form.get('category_code', '').strip()
+        annual = request.form.get('annual_amount', type=float) or 0
+        warn = request.form.get('warn_threshold', type=float)
+        approver = request.form.get('approver_role', '').strip() or None
+        if not category_code:
+            flash('请选择预算科目。', 'danger')
+        else:
+            if ctrl is None:
+                ctrl = BudgetControl(project_id=pid, category_code=category_code, fiscal_year=fy)
+                db.session.add(ctrl)
+            ctrl.annual_amount = annual
+            ctrl.warn_threshold = warn if warn is not None else 0.8
+            ctrl.approver_role = approver
+            ctrl.status = True
+            db.session.commit()
+            flash('预算控制已保存。', 'success')
+            return redirect(url_for('cost.control'))
+
+    return render_template('cost/control_form.html', ctrl=ctrl,
+                           labels=CATEGORY_LABELS, fy=fy)
+
+
+@cost_bp.route('/control/<int:id>/delete', methods=['POST'])
+@login_required
+@permission_required('cost:budget:edit')
+def control_delete(id):
+    ctrl = BudgetControl.query.get_or_404(id)
+    if ctrl.details.count() > 0:
+        flash('该预算科目已有开支记账，不可删除（可置为停用）。', 'danger')
+        return redirect(url_for('cost.control'))
+    db.session.delete(ctrl)
+    db.session.commit()
+    flash('预算控制已删除。', 'success')
+    return redirect(url_for('cost.control'))
+
+
+# ---------------------------------------------------------------- 预算调整单（P2）
+@cost_bp.route('/adjustment/')
+@login_required
+@permission_required('cost:adjust:review')
+def adjustment_list():
+    pid = _current_pid()
+    if not pid:
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
+    q = BudgetAdjustment.query
+    if pid:
+        q = q.filter_by(project_id=pid)
+    q = apply_data_scope(q, BudgetAdjustment)
+    status = request.args.get('status', '', type=str)
+    if status:
+        q = q.filter(BudgetAdjustment.approval_status == status)
+    adjs = q.order_by(BudgetAdjustment.created_at.desc()).all()
+    return render_template('cost/adjustment_list.html', adjs=adjs, status=status,
+                           labels=CATEGORY_LABELS)
+
+
+@cost_bp.route('/adjustment/create', methods=['GET', 'POST'])
+@login_required
+@permission_required('cost:adjust:review')
+def adjustment_create():
+    pid = _current_pid()
+    if not pid:
+        flash('请先选择项目。', 'warning')
+        return redirect(url_for('main.index'))
+    fy = datetime.now().year
+    controls = BudgetControl.query.filter_by(project_id=pid, fiscal_year=fy).all()
+
+    if request.method == 'POST':
+        control_id = request.form.get('control_id', type=int)
+        new_amount = request.form.get('new_amount', type=float)
+        reason = request.form.get('reason', '').strip() or None
+        if not control_id or new_amount is None:
+            flash('请选择预算科目并填写调整后年度预算。', 'danger')
+        else:
+            adj = BudgetService.request_adjustment(
+                control_id, new_amount, reason,
+                applicant_id=getattr(current_user, 'id', None))
+            db.session.commit()
+            flash('预算调整单已提交，待审批。', 'success')
+            return redirect(url_for('cost.adjustment_detail', id=adj.id))
+
+    return render_template('cost/adjustment_form.html', controls=controls,
+                           labels=CATEGORY_LABELS, fy=fy)
+
+
+@cost_bp.route('/adjustment/<int:id>')
+@login_required
+@permission_required('cost:adjust:review')
+def adjustment_detail(id):
+    adj = BudgetAdjustment.query.get_or_404(id)
+    return render_template('cost/adjustment_detail.html', adj=adj,
+                           label=CATEGORY_LABELS.get(adj.category_code, adj.category_code))
+
+
+@cost_bp.route('/adjustment/<int:id>/approve', methods=['POST'])
+@login_required
+@permission_required('cost:adjust:review')
+def adjustment_approve(id):
+    adj = BudgetAdjustment.query.get_or_404(id)
+    try:
+        BudgetService.approve_adjustment(id)
+        db.session.commit()
+        flash('预算调整单已审批通过，年度预算已回写。', 'success')
+    except ValueError as e:
+        flash(str(e), 'danger')
+    return redirect(url_for('cost.adjustment_detail', id=id))
+
+
+@cost_bp.route('/adjustment/<int:id>/reject', methods=['POST'])
+@login_required
+@permission_required('cost:adjust:review')
+def adjustment_reject(id):
+    adj = BudgetAdjustment.query.get_or_404(id)
+    try:
+        BudgetService.reject_adjustment(id)
+        db.session.commit()
+        flash('预算调整单已驳回。', 'success')
+    except ValueError as e:
+        flash(str(e), 'danger')
+    return redirect(url_for('cost.adjustment_detail', id=id))

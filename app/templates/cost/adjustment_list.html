@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}预算调整单 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>预算调整单</h5>
+        <div class="d-flex gap-2">
+            <form method="GET" action="{{ url_for('cost.adjustment_list') }}" class="d-inline-flex gap-1">
+                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部状态</option>
+                    <option value="pending" {% if status=='pending' %}selected{% endif %}>待审批</option>
+                    <option value="approved" {% if status=='approved' %}selected{% endif %}>已通过</option>
+                    <option value="rejected" {% if status=='rejected' %}selected{% endif %}>已驳回</option>
+                </select>
+            </form>
+            <a href="{{ url_for('cost.adjustment_create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增调整单</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>科目</th>
+                        <th class="text-end">调整前</th>
+                        <th class="text-end">调整后</th>
+                        <th>差额</th>
+                        <th>状态</th>
+                        <th>原因</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in adjs %}
+                    <tr>
+                        <td>{{ a.id }}</td>
+                        <td>{{ labels.get(a.category_code, a.category_code) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(a.old_amount or 0) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(a.new_amount or 0) }}</td>
+                        <td class="text-end">{{ '%.2f'|format((a.new_amount or 0) - (a.old_amount or 0)) }}</td>
+                        <td>
+                            {% if a.approval_status == 'pending' %}<span class="badge bg-warning">待审批</span>
+                            {% elif a.approval_status == 'approved' %}<span class="badge bg-success">已通过</span>
+                            {% elif a.approval_status == 'rejected' %}<span class="badge bg-danger">已驳回</span>
+                            {% else %}<span class="badge bg-secondary">{{ a.approval_status }}</span>{% endif %}
+                        </td>
+                        <td>{{ a.reason or '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('cost.adjustment_detail', id=a.id) }}" class="btn btn-sm btn-outline-info"><i class="bi bi-eye"></i></a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">暂无预算调整单。</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}预算控制设置 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>{{ '编辑' if ctrl else '新增' }}预算控制科目（{{ fy }} 年度）</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('cost.control_edit', id=ctrl.id if ctrl else 0) }}" class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">预算科目</label>
+                <select name="category_code" class="form-select" required>
+                    <option value="">-- 请选择 --</option>
+                    {% for code, name in labels.items() %}
+                    <option value="{{ code }}" {% if ctrl and ctrl.category_code==code %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">年度预算(元)</label>
+                <input type="number" step="0.01" name="annual_amount" class="form-control"
+                       value="{{ '%.2f'|format(ctrl.annual_amount) if ctrl and ctrl.annual_amount is not none else '' }}" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">预警线(%)</label>
+                <input type="number" step="0.01" min="0" max="1" name="warn_threshold" class="form-control"
+                       value="{{ ctrl.warn_threshold if ctrl and ctrl.warn_threshold is not none else 0.8 }}">
+                <div class="form-text">使用率达到该比例即预警（0~1，默认 0.8）。</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">超预算提级审批角色</label>
+                <input type="text" name="approver_role" class="form-control"
+                       value="{{ ctrl.approver_role or '' }}" placeholder="如 project_manager / finance_user">
+            </div>
+            <div class="col-12 d-flex gap-2">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>保存</button>
+                <a href="{{ url_for('cost.control') }}" class="btn btn-outline-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

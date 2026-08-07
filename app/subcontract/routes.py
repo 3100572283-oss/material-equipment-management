@@ -12,6 +12,7 @@ from datetime import datetime, date
 from sqlalchemy import func, extract
 
 from app.subcontract import bp
+from app.cost.services import safe_record_spend
 
 
 def _get_period_filters(period):
@@ -461,6 +462,9 @@ def confirm(id):
         return redirect(url_for('subcontract.index'))
     deduction.status = 'confirmed'
     deduction.updated_at = datetime.now()
+    # M4 P2：记账到预算管控（subcontract 科目），失败不影响主流程
+    safe_record_spend(deduction.project_id, 'subcontract',
+                      float(deduction.total_amount or 0), 'subcontract', deduction.id)
     db.session.commit()
     flash(f'{deduction.period} 扣款记录已确认。', 'success')
     return redirect(url_for('subcontract.index'))
