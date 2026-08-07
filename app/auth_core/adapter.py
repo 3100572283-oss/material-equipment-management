@@ -55,6 +55,62 @@ RESOURCE_CN = {
     ('module_turnover', 'turnover_material'): '周转材管理',
 }
 
+# 铁建岗位角色 → 默认权限授予规则（方案 A：业务模块权限纳入 SSOT 并按岗位分配）
+# 规则语法（grant spec）：
+#   'module'                 -> 授予该模块全部现有权限点
+#   'module:view'            -> 仅授予该模块 action=='view' 的权限点
+#   'module:resource'        -> 授予该资源全部动作
+#   'module:resource:action' -> 显式单点（不存在则自动创建）
+# 设计缺口修复：种子岗位角色（项目经理/总工/物资部长…）在 init_data 中只建数据范围、无功能权限；
+# 若无 legacy SysRoleMenu 映射则 perm_count=0 → 菜单为空。此处按岗位语义补齐默认授权，
+# 与 legacy ETL 授权取并集（不冲突、幂等）。
+DEFAULT_ROLE_PERMS = {
+    'project_manager': [
+        'material', 'stock', 'equipment', 'module_equipment', 'contract', 'cost',
+        'subcontract', 'report', 'workbench', 'basic', 'master:view', 'turnover',
+        'module_turnover', 'ai:view', 'help', 'tools:view', 'module_industry_tools:view',
+        'org_sync:view',
+        'system:org:view', 'system:role:view',
+        'system:user:view', 'system:user:create', 'system:user:edit', 'system:user:reset_pwd',
+    ],
+    'chief_engineer': [
+        'cost', 'contract', 'material:view', 'equipment', 'module_equipment',
+        'subcontract:view', 'report', 'workbench', 'basic:view', 'master:view',
+        'stock:view', 'turnover:view', 'help', 'ai:view',
+    ],
+    'material_manager': [
+        'material', 'stock', 'turnover', 'module_turnover', 'master:view', 'basic:view',
+        'subcontract:supplier:view', 'report', 'workbench',
+        'equipment:view', 'module_equipment:view', 'help', 'ai:view',
+    ],
+    'material_staff': [
+        'material:stock_in', 'material:stock_out', 'material:view', 'stock',
+        'turnover:view', 'basic:view', 'master:view', 'workbench', 'report:view', 'help',
+    ],
+    'equipment_manager': [
+        'equipment', 'module_equipment', 'report', 'workbench', 'basic:view',
+        'master:view', 'material:view', 'stock:view', 'turnover:view', 'help', 'ai:view',
+    ],
+    'cost_accountant': [
+        'cost', 'contract:view', 'report', 'workbench', 'basic:view', 'material:view',
+        'equipment:view', 'subcontract:view', 'stock:view', 'turnover:view', 'help',
+    ],
+    'contract_admin': [
+        'contract', 'subcontract', 'cost:view', 'report', 'basic:view', 'material:view',
+        'equipment:view', 'stock:view', 'workbench', 'help',
+    ],
+    'safety_director': [
+        'equipment:maintenance:view', 'equipment:view', 'module_equipment:view',
+        'report', 'workbench', 'basic:view', 'subcontract:view', 'help', 'ai:view',
+    ],
+    'viewer': [
+        'material:view', 'stock:view', 'equipment:view', 'module_equipment:view',
+        'contract:view', 'cost:view', 'subcontract:view', 'report:view', 'workbench:view',
+        'basic:view', 'master:view', 'turnover:view', 'module_turnover:view',
+        'help:view', 'ai:view', 'system:org:view', 'system:role:view', 'system:user:view',
+    ],
+}
+
 
 def _resolve_names(module, resource, perm_key=None):
     """解析权限点的中文模块名/资源名：优先 SysMenu.menu_name（数据驱动），其次兜底字典。"""
@@ -201,6 +257,9 @@ def sync_role_from_legacy():
                     db.session.add(AuthRolePermission(role_id=role.id, permission_id=perm.id))
     db.session.commit()
     sync_permission_names()
+    # 岗位默认授权（方案 A）：无论 legacy 是否映射，铁建岗位角色都获得与岗位匹配的合理权限，
+    # 杜绝 perm_count=0 → 菜单为空。与上面的 legacy ETL 授权取并集。
+    grant_default_role_permissions()
     return role_map
 
 
@@ -221,6 +280,37 @@ def sync_permission_names():
     if updated:
         db.session.commit()
     return updated
+
+
+def grant_default_role_permissions():
+    """为铁建岗位角色授予与岗位匹配的合理默认权限（幂等、可在 seed/ETL 后重复执行）。
+
+    解决：种子岗位角色（项目经理/总工/物资部长…）在 init_data 中仅建数据范围、无功能权限，
+    若无 legacy SysRoleMenu 映射则 perm_count=0 → 菜单为空。此处按岗位语义补齐默认授权，
+    与 legacy ETL 授权取并集（不冲突）。
+    """
+    granted = 0
+    for role_code, specs in DEFAULT_ROLE_PERMS.items():
+        role = AuthRole.query.filter_by(role_code=role_code).first()
+        if not role:
+            continue
+        for spec in specs:
+            parts = spec.split(':')
+            if len(parts) == 1:
+                perms = AuthPermission.query.filter_by(module=parts[0]).all()
+            elif len(parts) == 2 and parts[1] == 'view':
+                perms = AuthPermission.query.filter_by(module=parts[0], action='view').all()
+            elif len(parts) == 2:
+                perms = AuthPermission.query.filter_by(module=parts[0], resource=parts[1]).all()
+            else:  # module:resource:action —— 显式单点，不存在则自动创建
+                perms = [_ensure_permission(parts[0], parts[1], parts[2])]
+            for p in perms:
+                if not AuthRolePermission.query.filter_by(role_id=role.id, permission_id=p.id).first():
+                    db.session.add(AuthRolePermission(role_id=role.id, permission_id=p.id))
+                    granted += 1
+    if granted:
+        db.session.commit()
+    return granted
 
 
 def sync_user_from_legacy(legacy_user_id):

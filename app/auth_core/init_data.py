@@ -150,4 +150,13 @@ def init_auth_core_data():
             db.session.add(AuthUserRole(user_id=admin.id, role_id=role_ids['super_admin']))
 
     db.session.commit()
+    # 6) 铁建岗位角色默认授权（启动自愈）：即便未跑 legacy ETL，岗位角色也获得与岗位匹配的
+    #    合理功能权限，避免 perm_count=0 → 菜单为空。幂等，与 ETL 授权取并集。
+    try:
+        from app.auth_core import adapter
+        n = adapter.grant_default_role_permissions()
+        if n:
+            print("[auth_core] 岗位默认授权 +%d 项" % n)
+    except Exception as e:  # 启动期不阻断主流程
+        print("[auth_core] 岗位默认授权跳过：%s" % e)
     print("[auth_core] seed data initialized")
