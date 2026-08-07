@@ -34,6 +34,14 @@ DEPT_TYPE_NAMES = {
 
 
 # ============================== 通用工具 ==============================
+def _role_module_count(role_id):
+    """统计某角色已授予权限覆盖的模块数（用于角色列表授权概览列）。"""
+    perm_ids = [p.permission_id for p in AuthRolePermission.query.filter_by(role_id=role_id).all()]
+    if not perm_ids:
+        return 0
+    return AuthPermission.query.filter(AuthPermission.id.in_(perm_ids)).with_entities(AuthPermission.module).distinct().count()
+
+
 def ok(data=None, msg='ok', **extra):
     body = {'code': 0, 'msg': msg}
     if data is not None:
@@ -313,6 +321,7 @@ def api_role_list():
             'remark': r.remark or '',
             'scope_type': st, 'scope_name': scope_map.get(st, st),
             'perm_count': AuthRolePermission.query.filter_by(role_id=r.id).count(),
+            'module_count': _role_module_count(r.id),
             'user_count': AuthUserRole.query.filter_by(role_id=r.id).count(),
         })
     return ok(data)

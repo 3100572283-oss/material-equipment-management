@@ -24,7 +24,7 @@
             <th style="width:150px">角色名称</th>
             <th style="width:130px">编码</th>
             <th style="width:150px">数据范围</th>
-            <th style="width:80px" class="text-center">权限点</th>
+            <th style="width:110px" class="text-center">授权覆盖</th>
             <th style="width:70px" class="text-center">用户</th>
             <th style="width:70px">状态</th>
             <th>备注</th>
@@ -123,6 +123,11 @@
             <button class="btn btn-outline-secondary" onclick="Role.collapseAll(true)">全部折叠</button>
             <button class="btn btn-outline-secondary" onclick="Role.collapseAll(false)">全部展开</button>
           </div>
+          <div class="form-check form-switch mb-0 ms-2">
+            <input class="form-check-input" type="checkbox" id="permOnlyGranted"
+                   onchange="Role.filterPerm(document.getElementById('permSearch').value)">
+            <label class="form-check-label small" for="permOnlyGranted">仅看已授权</label>
+          </div>
         </div>
         <div id="permBox"></div>
       </div>
@@ -167,6 +172,7 @@ const ACTION_NAMES = {
 const Role = {
   list: [],
   curRoleId: null,
+  dirty: false,
 
   async load() {
     const j = await AC.req('{{ url_for("auth_core.api_role_list") }}');
@@ -191,7 +197,10 @@ const Role = {
         <td class="fw-semibold">${AC.esc(r.role_name)}${sysTag}</td>
         <td><code class="small">${AC.esc(r.role_code)}</code></td>
         <td><span class="badge bg-primary-subtle text-primary-emphasis">${AC.esc(r.scope_name)}</span></td>
-        <td class="text-center">${r.perm_count}</td>
+        <td class="text-center">
+          <div class="fw-semibold text-primary small">${r.module_count} 模块</div>
+          <div class="text-muted" style="font-size:11px">${r.perm_count} 权限点</div>
+        </td>
         <td class="text-center">${r.user_count}</td>
         <td>${r.status ? '<span class="badge bg-success">启用</span>' : '<span class="badge bg-secondary">禁用</span>'}</td>
         <td class="text-muted small">${AC.esc(r.remark)}</td>
@@ -244,6 +253,7 @@ const Role = {
 
   // ——— 权限矩阵 ———
   async openPerm(roleId, roleName) {
+    Role.dirty = false;
     Role.curRoleId = roleId;
     document.getElementById('permRoleName').textContent = roleName;
     const box = document.getElementById('permBox');
@@ -277,7 +287,7 @@ const Role = {
           <i class="bi bi-chevron-down me-1 perm-chevron"></i>
           <div class="form-check mb-0">
             <input class="form-check-input" type="checkbox" id="mod_${g.module}"
-                   onchange="Role.checkModule('${g.module}', this.checked)"
+                   onchange="Role.checkModule('${g.module}', this.checked); Role.dirty=true;"
                    onclick="event.stopPropagation()">
             <label class="form-check-label fw-semibold" for="mod_${g.module}">
               ${AC.esc(g.module_name || MODULE_NAMES[g.module] || g.module)}
@@ -295,7 +305,7 @@ const Role = {
                     <input class="form-check-input perm-cb" type="checkbox"
                            data-module="${g.module}" value="${a.id}"
                            id="p_${a.id}" ${a.granted ? 'checked' : ''}
-                           onchange="Role.countPerm()">
+                           onchange="Role.countPerm(); Role.dirty=true;">
                     <label class="form-check-label small" for="p_${a.id}" title="${AC.esc(a.perm_key)}">
                       ${AC.esc(ACTION_NAMES[a.action] || a.action)}
                     </label>
@@ -330,11 +340,15 @@ const Role = {
   filterPerm(q) {
     q = (q || '').trim().toLowerCase();
     const hasQ = !!q;
+    const onlyGranted = document.getElementById('permOnlyGranted')?.checked;
     document.querySelectorAll('#permBox .perm-group').forEach(g => {
       let visible = 0;
       g.querySelectorAll('.perm-res').forEach(res => {
         const name = (res.querySelector('.perm-res-name')?.textContent || '').toLowerCase();
-        const match = !q || name.indexOf(q) >= 0;
+        const granted = Array.from(res.querySelectorAll('.perm-cb')).some(cb => cb.checked);
+        const matchQ = !q || name.indexOf(q) >= 0;
+        const matchG = !onlyGranted || granted;
+        const match = matchQ && matchG;
         res.style.display = match ? '' : 'none';
         if (match) visible++;
       });
@@ -379,12 +393,23 @@ const Role = {
     const ids = Array.from(document.querySelectorAll('.perm-cb:checked')).map(c => parseInt(c.value));
     const j = await AC.req('/auth_core/api/role/' + Role.curRoleId + '/permissions', 'POST', { permission_ids: ids });
     if (!j) return;
-    bootstrap.Modal.getInstance(document.getElementById('permModal')).hide();
-    AC.toast(j.msg);
+    Role.dirty = false;
+    AC.toast(j.msg || '授权已保存');
+    Role.countPerm();
     Role.load();
   }
 };
 
+// 脏检查：未保存关闭授权弹窗时提示（覆盖 取消 / × / ESC）
+document.getElementById('permModal').addEventListener('hide.bs.modal', function (e) {
+  if (Role.dirty) {
+    if (!confirm('有未保存的授权修改，确定关闭并放弃吗？')) {
+      e.preventDefault();
+    } else {
+      Role.dirty = false;
+    }
+  }
+});
 Role.load();
 </script>
 <style>
