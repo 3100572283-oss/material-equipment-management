@@ -32,13 +32,16 @@ class Config:
         'sqlite:///' + os.path.join(basedir, 'material_mgmt.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # P1安全加固: SQLAlchemy连接池配置
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_size': 10,
-        'pool_recycle': 3600,
-        'pool_pre_ping': True,
-        'max_overflow': 20
-    }
+    # P1安全加固: SQLAlchemy连接池配置（SQLite 本地/测试无需连接池，避免报错）
+    if SQLALCHEMY_DATABASE_URI.startswith('sqlite'):
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+    else:
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            'pool_size': 10,
+            'pool_recycle': 3600,
+            'pool_pre_ping': True,
+            'max_overflow': 20
+        }
 
     # P1安全加固: Session安全属性
     SESSION_COOKIE_SECURE = True       # 仅HTTPS传输
