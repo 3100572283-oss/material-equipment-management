@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>数据可视化大屏 - 项目运营总览</title>
+<script src="{{ url_for('static', filename='vendor/echarts.min.js') }}"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(circle at 50% 0%, #0e2347 0%, #060f20 70%);
+    color: #dbe9ff; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+  .wrap { padding: 14px 22px 22px; min-height: 100vh; display: flex; flex-direction: column; gap: 14px; }
+  /* 顶部 */
+  .topbar { display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #1c3c5e; padding-bottom: 10px; }
+  .topbar h1 { font-size: 26px; font-weight: 700; letter-spacing: 2px;
+    background: linear-gradient(90deg, #58c4ff, #8affd6); -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent; }
+  .topbar .meta { display: flex; align-items: center; gap: 16px; font-size: 14px; color: #8fb6e6; }
+  .topbar select { background: #0f2138; color: #dbe9ff; border: 1px solid #1c3c5e;
+    border-radius: 6px; padding: 5px 10px; font-size: 14px; }
+  .topbar .live { color: #28a745; }
+  .topbar .live::before { content: "●"; margin-right: 5px; animation: blink 1.4s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  /* KPI */
+  .kpis { display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px; }
+  .kpi { background: linear-gradient(160deg, #11294a, #0a1830); border: 1px solid #1c3c5e;
+    border-radius: 10px; padding: 12px 14px; position: relative; overflow: hidden; }
+  .kpi::after { content: ""; position: absolute; left: 0; top: 0; width: 3px; height: 100%;
+    background: #2f9bff; }
+  .kpi.green::after { background: #28a745; } .kpi.yellow::after { background: #ffc107; }
+  .kpi.red::after { background: #dc3545; }
+  .kpi .lbl { font-size: 12px; color: #8fb6e6; }
+  .kpi .val { font-size: 24px; font-weight: 700; margin: 4px 0 2px; }
+  .kpi .sub { font-size: 11px; color: #6f93bf; }
+  /* 图表网格 */
+  .grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 14px; flex: 1; }
+  .panel { background: rgba(15,33,56,.7); border: 1px solid #1c3c5e; border-radius: 10px;
+    padding: 10px 14px; display: flex; flex-direction: column; }
+  .panel h3 { font-size: 15px; color: #9fc6f5; font-weight: 600; margin-bottom: 6px;
+    border-left: 3px solid #2f9bff; padding-left: 8px; }
+  .panel .chart { flex: 1; min-height: 220px; }
+  .span2 { grid-column: span 2; }
+  .span3 { grid-column: span 3; }
+  /* 待办 */
+  .todos { background: rgba(15,33,56,.7); border: 1px solid #1c3c5e; border-radius: 10px; padding: 10px 14px; }
+  .todos h3 { font-size: 15px; color: #9fc6f5; border-left: 3px solid #2f9bff; padding-left: 8px; margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #16304e; }
+  th { color: #8fb6e6; font-weight: 500; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .tag.red { background: rgba(220,53,69,.18); color: #ff7b8a; }
+  .tag.yellow { background: rgba(255,193,7,.18); color: #ffd75e; }
+  .tag.green { background: rgba(40,167,69,.18); color: #7ee29a; }
+  .empty { color: #6f93bf; font-size: 13px; padding: 8px; }
+  @media (max-width: 1400px) { .kpis { grid-template-columns: repeat(4, 1fr); } .grid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>中铁二十一局六公司 · 项目数据可视化大屏</h1>
+    <div class="meta">
+      <span>项目：
+        <select id="projSel">
+          <option value="">全部项目</option>
+          {% for pid, pname in projects %}
+          <option value="{{ pid }}" {% if pid == current_project_id %}selected{% endif %}>{{ pname }}</option>
+          {% endfor %}
+        </select>
+      </span>
+      <span id="clock"></span>
+      <span class="live" id="live">实时</span>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis">
+    <div class="kpi"><div class="lbl">责任成本执行率</div><div class="val" id="kExec">--</div><div class="sub" id="kExecSub">年度 -- / 已用 --</div></div>
+    <div class="kpi"><div class="lbl">盈亏节超(元)</div><div class="val" id="kVar">--</div><div class="sub" id="kVarSub">偏差率 --</div></div>
+    <div class="kpi"><div class="lbl">设备总数(台)</div><div class="val" id="kEq">--</div><div class="sub" id="kEqSub">在用 --</div></div>
+    <div class="kpi"><div class="lbl">分包商准入</div><div class="val" id="kSc">--</div><div class="sub" id="kScSub">待审 --</div></div>
+    <div class="kpi"><div class="lbl">票据三流(红/黄/绿)</div><div class="val" id="kInv">--</div><div class="sub" id="kInvSub">已入账 --</div></div>
+    <div class="kpi"><div class="lbl">在场物资(种)</div><div class="val" id="kMat">--</div><div class="sub" id="kMatSub">启用 --</div></div>
+    <div class="kpi"><div class="lbl">合格供应商</div><div class="val" id="kSup">--</div><div class="sub">主数据池</div></div>
+    <div class="kpi"><div class="lbl">预警(红/黄/绿)</div><div class="val" id="kWarn">--</div><div class="sub" id="kWarnSub">科目预警分布</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="panel span2">
+      <h3>各成本科目 计划 vs 实际（元）</h3>
+      <div class="chart" id="costBar"></div>
+    </div>
+    <div class="panel">
+      <h3>预算执行率</h3>
+      <div class="chart" id="execGauge"></div>
+    </div>
+    <div class="panel">
+      <h3>成本科目预警分布</h3>
+      <div class="chart" id="warnPie"></div>
+    </div>
+    <div class="panel">
+      <h3>分包商准入状态</h3>
+      <div class="chart" id="subPie"></div>
+    </div>
+    <div class="panel">
+      <h3>票据三流一致性</h3>
+      <div class="chart" id="invPie"></div>
+    </div>
+    <div class="panel">
+      <h3>设备状态分布</h3>
+      <div class="chart" id="eqPie"></div>
+    </div>
+  </div>
+
+  <div class="todos">
+    <h3>预警与待办</h3>
+    <table>
+      <thead><tr><th style="width:90px">级别</th><th style="width:110px">类型</th><th>说明</th></tr></thead>
+      <tbody id="todoBody"><tr><td colspan="3" class="empty">加载中…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const C = { blue:'#2f9bff', green:'#28a745', yellow:'#ffc107', red:'#dc3545',
+  cyan:'#20d6c8', purple:'#9b7bff', gray:'#6f93bf' };
+const charts = {};
+function initChart(id){ const el = document.getElementById(id); const c = echarts.init(el, null, {renderer:'canvas'}); charts[id]=c; return c; }
+['costBar','execGauge','warnPie','subPie','invPie','eqPie'].forEach(initChart);
+window.addEventListener('resize', ()=>Object.values(charts).forEach(c=>c.resize()));
+
+function fmt(n){ return (n==null?0:n).toLocaleString('zh-CN',{maximumFractionDigits:2}); }
+function pct(n){ return (n==null?0:(n*100)).toFixed(1)+'%'; }
+
+function setKpi(id, val, subId, sub){
+  document.getElementById(id).textContent = val;
+  if(subId) document.getElementById(subId).textContent = sub;
+}
+
+function render(d){
+  const c = d.cost || {};
+  // KPI
+  setKpi('kExec', pct(c.budget_exec_rate), 'kExecSub', '年度 '+fmt(c.budget_annual)+' / 已用 '+fmt(c.budget_used));
+  const v = c.variance_total||0;
+  const ve = document.getElementById('kVar'); ve.textContent = fmt(v);
+  ve.style.color = v>=0 ? C.green : C.red;
+  document.getElementById('kVarSub').textContent = '偏差率 '+(c.variance_rate==null?0:c.variance_rate*100).toFixed(1)+'%';
+  const eq = d.equipment||{}; const eqInUse = eq.by_status? (eq.by_status['in_use']||0):0;
+  setKpi('kEq', eq.total||0, 'kEqSub', '在用 '+eqInUse);
+  const sc = d.subcontractor||{};
+  setKpi('kSc', sc.approved||0, 'kScSub', '待审 '+(sc.pending||0)+(sc.blacklist_hit?(' / 命中黑名单 '+sc.blacklist_hit):''));
+  const inv = d.invoice||{};
+  document.getElementById('kInv').textContent = (inv.red||0)+' / '+(inv.yellow||0)+' / '+(inv.green||0);
+  setKpi('kInv', (inv.red||0)+' / '+(inv.yellow||0)+' / '+(inv.green||0), 'kInvSub', '已入账 '+(inv.booked||0)+' / 共 '+(inv.total||0));
+  setKpi('kMat', (d.material&&d.material.total)||0, 'kMatSub', '启用 '+(d.material&&d.material.active||0));
+  setKpi('kSup', (d.supplier&&d.supplier.total)||0);
+  const wl = c.warn_levels||{};
+  document.getElementById('kWarn').textContent = (wl.red||0)+' / '+(wl.yellow||0)+' / '+(wl.green||0);
+
+  // 成本科目对比
+  const cats = (c.categories||[]);
+  charts.costBar.setOption({
+    tooltip:{trigger:'axis', axisPointer:{type:'shadow'}},
+    legend:{ textStyle:{color:C.gray}, top:0, data:['计划','实际'] },
+    grid:{ left:50, right:20, top:34, bottom:24 },
+    xAxis:{ type:'category', data:cats.map(x=>x.label), axisLabel:{color:C.gray} },
+    yAxis:{ type:'value', axisLabel:{color:C.gray}, splitLine:{lineStyle:{color:'#16304e'}} },
+    series:[
+      { name:'计划', type:'bar', data:cats.map(x=>x.budget), itemStyle:{color:C.blue} },
+      { name:'实际', type:'bar', data:cats.map(x=>x.actual),
+        itemStyle:{ color:(p,opt)=>{ const lv = cats[opt.dataIndex].level; return lv==='red'?C.red:lv==='yellow'?C.yellow:C.green; } } }
+    ]
+  }, true);
+
+  // 预算执行率仪表
+  charts.execGauge.setOption({
+    series:[{ type:'gauge', radius:'92%', center:['50%','58%'],
+      progress:{show:true, width:14}, axisLine:{lineStyle:{width:14}},
+      detail:{ formatter:'{value}%', color:C.cyan, fontSize:26, offsetCenter:[0,'40%'] },
+      data:[{ value:+(c.budget_exec_rate==null?0:c.budget_exec_rate*100).toFixed(1) }],
+      title:{ show:true, offsetCenter:[0,'72%'], color:C.gray, fontSize:12 } }]
+  }, true);
+
+  // 预警分布
+  charts.warnPie.setOption({
+    tooltip:{trigger:'item'}, legend:{bottom:0, textStyle:{color:C.gray}},
+    series:[{ type:'pie', radius:['40%','66%'], center:['50%','46%'],
+      label:{color:'#dbe9ff'},
+      data:[
+        {name:'绿', value:wl.green||0, itemStyle:{color:C.green}},
+        {name:'黄', value:wl.yellow||0, itemStyle:{color:C.yellow}},
+        {name:'红', value:wl.red||0, itemStyle:{color:C.red}} ] }]
+  }, true);
+
+  // 分包商状态
+  charts.subPie.setOption({
+    tooltip:{trigger:'item'}, legend:{bottom:0, textStyle:{color:C.gray}},
+    series:[{ type:'pie', radius:['40%','66%'], center:['50%','46%'], label:{color:'#dbe9ff'},
+      data:[
+        {name:'通过', value:sc.approved||0, itemStyle:{color:C.green}},
+        {name:'待审', value:sc.pending||0, itemStyle:{color:C.yellow}},
+        {name:'驳回', value:sc.rejected||0, itemStyle:{color:C.red}} ] }]
+  }, true);
+
+  // 票据三流
+  charts.invPie.setOption({
+    tooltip:{trigger:'item'}, legend:{bottom:0, textStyle:{color:C.gray}},
+    series:[{ type:'pie', radius:['40%','66%'], center:['50%','46%'], label:{color:'#dbe9ff'},
+      data:[
+        {name:'绿', value:inv.green||0, itemStyle:{color:C.green}},
+        {name:'黄', value:inv.yellow||0, itemStyle:{color:C.yellow}},
+        {name:'红', value:inv.red||0, itemStyle:{color:C.red}} ] }]
+  }, true);
+
+  // 设备状态
+  const eqMap = {in_use:'在用', idle:'闲置', repairing:'维修中', exited:'已退场', scrapped:'已报废'};
+  const eqData = Object.keys(eq.by_status||{}).map(k=>({name:eqMap[k]||k, value:eq.by_status[k],
+    itemStyle:{color:[C.blue,C.cyan,C.yellow,C.gray,C.red][Object.keys(eqMap).indexOf(k)%5]}}));
+  charts.eqPie.setOption({
+    tooltip:{trigger:'item'}, legend:{bottom:0, textStyle:{color:C.gray}},
+    series:[{ type:'pie', radius:['40%','66%'], center:['50%','46%'], label:{color:'#dbe9ff'}, data:eqData }]
+  }, true);
+
+  // 待办
+  const tb = document.getElementById('todoBody');
+  const todos = d.todos||[];
+  if(!todos.length){ tb.innerHTML = '<tr><td colspan="3" class="empty">暂无预警与待办</td></tr>'; }
+  else {
+    tb.innerHTML = todos.map(t=>
+      '<tr><td><span class="tag '+(t.level==='red'?'red':t.level==='yellow'?'yellow':'green')+'">'+
+      (t.level==='red'?'红':t.level==='yellow'?'黄':'绿')+'</span></td><td>'+
+      (t.type==='cost'?'成本核算':t.type==='subcontractor'?'分包商核验':'票据三流')+'</td><td>'+t.text+'</td></tr>'
+    ).join('');
+  }
+}
+
+function load(){
+  const pid = document.getElementById('projSel').value;
+  const url = '/bigscreen/api/data' + (pid ? ('?project_id='+pid) : '');
+  fetch(url, {credentials:'same-origin'}).then(r=>r.json()).then(d=>{
+    if(d.error){ document.getElementById('live').textContent = '提示：'+d.msg; return; }
+    render(d); document.getElementById('live').textContent = '实时';
+  }).catch(e=>{ console.error(e); document.getElementById('live').textContent='连接异常'; });
+}
+document.getElementById('projSel').addEventListener('change', ()=>{
+  const pid = document.getElementById('projSel').value;
+  const u = new URL(location.href); if(pid) u.searchParams.set('project_id', pid); else u.searchParams.delete('project_id');
+  history.replaceState({}, '', u); load();
+});
+function tick(){ const n=new Date(); document.getElementById('clock').textContent =
+  n.toLocaleString('zh-CN',{hour12:false}); }
+tick(); setInterval(tick, 1000);
+load(); setInterval(load, 60000);
+</script>
+</body>
+</html>

@@ -63,6 +63,8 @@ PERM_SEED = [
     # —— M5 票据三流合一 ——
     ('invoice', 'threeflow', 'view', 'invoice:threeflow:view'),
     ('invoice', 'threeflow', 'book', 'invoice:threeflow:book'),
+    # —— 独立数据可视化大屏（第三终端）——
+    ('bigscreen', 'view', 'view', 'bigscreen:view:view'),
     # —— 权限中台自身管理权限（三页 UI 按钮级控制）——
     ('system', 'org', 'view', 'system:org:view'),
     ('system', 'org', 'create', 'system:org:create'),

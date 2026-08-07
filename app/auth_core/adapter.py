@@ -72,10 +72,10 @@ DEFAULT_ROLE_PERMS = {
         'org_sync:view',
         'system:org:view', 'system:role:view',
         'system:user:view', 'system:user:create', 'system:user:edit', 'system:user:reset_pwd',
-        'subcontractor', 'invoice',
+        'subcontractor', 'invoice', 'bigscreen',
     ],
     'chief_engineer': [
-        'cost', 'contract', 'material:view', 'equipment', 'module_equipment',
+        'cost', 'contract', 'material:view', 'equipment', 'module_equipment', 'bigscreen',
         'subcontract:view', 'report', 'workbench', 'basic:view', 'master:view',
         'stock:view', 'turnover:view', 'help', 'ai:view', 'subcontractor:view',
         'invoice:threeflow:view',
@@ -83,7 +83,7 @@ DEFAULT_ROLE_PERMS = {
     'material_manager': [
         'material', 'stock', 'turnover', 'module_turnover', 'master:view', 'basic:view',
         'subcontract:supplier:view', 'report', 'workbench',
-        'equipment:view', 'module_equipment:view', 'help', 'ai:view',
+        'equipment:view', 'module_equipment:view', 'help', 'ai:view', 'bigscreen',
     ],
     'material_staff': [
         'material:stock_in', 'material:stock_out', 'material:view', 'stock',
@@ -91,15 +91,15 @@ DEFAULT_ROLE_PERMS = {
     ],
     'equipment_manager': [
         'equipment', 'module_equipment', 'report', 'workbench', 'basic:view',
-        'master:view', 'material:view', 'stock:view', 'turnover:view', 'help', 'ai:view',
+        'master:view', 'material:view', 'stock:view', 'turnover:view', 'help', 'ai:view', 'bigscreen',
     ],
     'cost_accountant': [
-        'cost', 'contract:view', 'report', 'workbench', 'basic:view', 'material:view',
+        'cost', 'contract:view', 'report', 'workbench', 'basic:view', 'material:view', 'bigscreen',
         'equipment:view', 'subcontract:view', 'stock:view', 'turnover:view', 'help',
         'invoice',
     ],
     'contract_admin': [
-        'contract', 'subcontract', 'cost:view', 'report', 'basic:view', 'material:view',
+        'contract', 'subcontract', 'cost:view', 'report', 'basic:view', 'material:view', 'bigscreen',
         'equipment:view', 'stock:view', 'workbench', 'help', 'subcontractor:view',
         'invoice:threeflow:view',
     ],
@@ -111,7 +111,7 @@ DEFAULT_ROLE_PERMS = {
         'material:view', 'stock:view', 'equipment:view', 'module_equipment:view',
         'contract:view', 'cost:view', 'subcontract:view', 'report:view', 'workbench:view',
         'basic:view', 'master:view', 'turnover:view', 'module_turnover:view',
-        'help:view', 'ai:view', 'system:org:view', 'system:role:view', 'system:user:view',
+        'help:view', 'ai:view', 'system:org:view', 'system:role:view', 'system:user:view', 'bigscreen',
     ],
     # 功能性角色（legacy sys_role 存在但无 SysRoleMenu 映射 → 同属授权完整性缺口）
     'material_admin': [  # 公司物资部长(scope all)
@@ -119,7 +119,7 @@ DEFAULT_ROLE_PERMS = {
         'subcontract:supplier:view', 'report', 'workbench', 'equipment:view',
         'module_equipment:view', 'help', 'ai:view',
         'system:org:view', 'system:role:view', 'system:user:view',
-        'system:user:create', 'system:user:edit', 'system:user:reset_pwd',
+        'system:user:create', 'system:user:edit', 'system:user:reset_pwd', 'bigscreen',
     ],
     'project_admin': [  # 项目管理员
         'material', 'stock', 'equipment', 'module_equipment', 'contract', 'cost',
@@ -129,12 +129,12 @@ DEFAULT_ROLE_PERMS = {
         'system:org:view', 'system:org:create', 'system:org:edit',
         'system:role:view', 'system:role:grant',
         'system:user:view', 'system:user:create', 'system:user:edit',
-        'system:user:reset_pwd', 'system:user:delete',
+        'system:user:reset_pwd', 'system:user:delete', 'bigscreen',
     ],
     'finance_user': [  # 财务人员
         'cost', 'contract', 'subcontract:view', 'report', 'workbench', 'basic:view',
         'material:view', 'equipment:view', 'stock:view', 'turnover:view', 'help',
-        'ai:view', 'system:org:view', 'system:user:view',
+        'ai:view', 'system:org:view', 'system:user:view', 'bigscreen',
     ],
 }
 

@@ -1124,6 +1124,10 @@ def create_app(config_class=Config):
     from app.invoice import invoice_bp
     app.register_blueprint(invoice_bp, url_prefix='/invoice')
 
+    # 独立数据可视化大屏（第三终端，跨模块聚合）
+    from app.bigscreen import bigscreen_bp
+    app.register_blueprint(bigscreen_bp, url_prefix='/bigscreen')
+
     from app.stock_in import bp as stock_in_bp
     app.register_blueprint(stock_in_bp, url_prefix='/stock_in')
 
