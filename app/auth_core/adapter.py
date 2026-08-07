@@ -109,6 +109,29 @@ DEFAULT_ROLE_PERMS = {
         'basic:view', 'master:view', 'turnover:view', 'module_turnover:view',
         'help:view', 'ai:view', 'system:org:view', 'system:role:view', 'system:user:view',
     ],
+    # 功能性角色（legacy sys_role 存在但无 SysRoleMenu 映射 → 同属授权完整性缺口）
+    'material_admin': [  # 公司物资部长(scope all)
+        'material', 'stock', 'turnover', 'module_turnover', 'master:view', 'basic:view',
+        'subcontract:supplier:view', 'report', 'workbench', 'equipment:view',
+        'module_equipment:view', 'help', 'ai:view',
+        'system:org:view', 'system:role:view', 'system:user:view',
+        'system:user:create', 'system:user:edit', 'system:user:reset_pwd',
+    ],
+    'project_admin': [  # 项目管理员
+        'material', 'stock', 'equipment', 'module_equipment', 'contract', 'cost',
+        'subcontract', 'report', 'workbench', 'basic', 'master:view', 'turnover',
+        'module_turnover', 'ai:view', 'help', 'tools:view', 'module_industry_tools:view',
+        'org_sync:view',
+        'system:org:view', 'system:org:create', 'system:org:edit',
+        'system:role:view', 'system:role:grant',
+        'system:user:view', 'system:user:create', 'system:user:edit',
+        'system:user:reset_pwd', 'system:user:delete',
+    ],
+    'finance_user': [  # 财务人员
+        'cost', 'contract', 'subcontract:view', 'report', 'workbench', 'basic:view',
+        'material:view', 'equipment:view', 'stock:view', 'turnover:view', 'help',
+        'ai:view', 'system:org:view', 'system:user:view',
+    ],
 }
 
 
