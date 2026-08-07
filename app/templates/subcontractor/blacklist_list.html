@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}黑名单名录 - 分包商核验{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <h4 class="mb-3"><i class="bi bi-shield-exclamation me-2"></i>黑名单名录维护（company 级共享）</h4>
+
+  {% if current_user.has_permission('subcontractor:blacklist:edit') %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-light">新增名录记录</div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('subcontractor.blacklist_add') }}" class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">名录类型</label>
+          <select name="list_name" class="form-select form-select-sm" required>
+            <option value="">— 请选择 —</option>
+            {% for l in BLACKLIST_LISTS %}
+            <option value="{{ l }}">{{ l }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">企业名称</label>
+          <input name="entity_name" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">统一社会信用代码</label>
+          <input name="credit_code" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">列入原因</label>
+          <input name="reason" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-1">
+          <button class="btn btn-primary btn-sm w-100" type="submit">添加</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr><th>名录类型</th><th>企业名称</th><th>信用代码</th><th>原因</th>
+              {% if current_user.has_permission('subcontractor:blacklist:edit') %}<th class="text-end">操作</th>{% endif %}</tr>
+          </thead>
+          <tbody>
+            {% for e in entries %}
+            <tr>
+              <td>{{ e.list_name }}</td>
+              <td>{{ e.entity_name or '-' }}</td>
+              <td>{{ e.credit_code or '-' }}</td>
+              <td>{{ e.reason or '-' }}</td>
+              {% if current_user.has_permission('subcontractor:blacklist:edit') %}
+              <td class="text-end">
+                <form method="post" action="{{ url_for('subcontractor.blacklist_delete', id=e.id) }}">
+                  <button class="btn btn-sm btn-link text-danger py-0" type="submit">移除</button>
+                </form>
+              </td>
+              {% endif %}
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">名录为空（准入核查将不会产生命中）</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <p class="text-muted small mt-2">
+    说明：本名录为内置比对源。建档/重新核查时，系统按「企业名称 + 信用代码」实时比对 7 类名录；命中即禁止准入通过。
+  </p>
+</div>
+{% endblock %}

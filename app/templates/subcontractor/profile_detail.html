@@ -1,0 +1,216 @@
+{% extends 'base.html' %}
+{% block title %}准入详情 - 分包商核验{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+      <a href="{{ url_for('subcontractor.profile_list') }}" class="text-decoration-none me-2">
+        <i class="bi bi-arrow-left"></i> 返回</a>
+      <h4 class="d-inline mb-0">{{ supplier.name if supplier else '分包商' }}</h4>
+    </div>
+    <div class="btn-group btn-group-sm">
+      {% if current_user.has_permission('subcontractor:profile:edit') %}
+      <a href="{{ url_for('subcontractor.profile_edit', id=profile.id) }}"
+         class="btn btn-outline-secondary">编辑</a>
+      <form method="post" action="{{ url_for('subcontractor.profile_recheck', id=profile.id) }}"
+            class="d-inline">
+        <button class="btn btn-outline-info" type="submit">重新核查</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('subcontractor.profile_export', id=profile.id) }}"
+         class="btn btn-outline-success">导出资料包</a>
+      {% if current_user.has_permission('subcontractor:profile:review') %}
+      {% if profile.admit_status != 'approved' %}
+      <form method="post" action="{{ url_for('subcontractor.profile_approve', id=profile.id) }}"
+            class="d-inline">
+        <button class="btn btn-success" type="submit"
+          {% if profile.blacklist_hit %}disabled title="命中黑名单，禁止通过"{% endif %}>审批通过</button>
+      </form>
+      {% endif %}
+      {% if profile.admit_status != 'rejected' %}
+      <button class="btn btn-danger" type="button" data-bs-toggle="collapse"
+              data-bs-target="#rejectBox">驳回</button>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  {% if profile.blacklist_hit %}
+  <div class="alert alert-danger py-2">⚠ 该分包商命中黑名单，不可准入通过。</div>
+  {% endif %}
+
+  <div class="collapse mb-3" id="rejectBox">
+    <form method="post" action="{{ url_for('subcontractor.profile_reject', id=profile.id) }}"
+          class="card card-body border-danger">
+      <label class="form-label">驳回原因</label>
+      <textarea name="reject_reason" class="form-control mb-2" rows="2"></textarea>
+      <div class="text-end">
+        <button class="btn btn-danger btn-sm" type="submit">确认驳回</button>
+      </div>
+    </form>
+  </div>
+
+  {# 基本信息 #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-light">基本信息</div>
+    <div class="card-body row g-2 small">
+      <div class="col-md-3"><b>税号：</b>{{ supplier.credit_code or '-' if supplier else '-' }}</div>
+      <div class="col-md-3"><b>法人：</b>{{ supplier.legal_person or '-' if supplier else '-' }}</div>
+      <div class="col-md-3"><b>联系人：</b>{{ supplier.contact_person or '-' if supplier else '-' }}</div>
+      <div class="col-md-3"><b>电话：</b>{{ supplier.phone or '-' if supplier else '-' }}</div>
+      <div class="col-md-3"><b>准入范围：</b>{{ profile.admit_scope or '-' }}</div>
+      <div class="col-md-3"><b>有效期：</b>{{ profile.valid_from }} ~ {{ profile.valid_to }}</div>
+      <div class="col-md-3"><b>准入结论：</b>
+        {% if profile.admit_status == 'approved' %}<span class="badge bg-success">通过</span>
+        {% elif profile.admit_status == 'rejected' %}<span class="badge bg-danger">驳回</span>
+        {% else %}<span class="badge bg-warning text-dark">待审</span>{% endif %}
+      </div>
+      <div class="col-md-3"><b>企查查：</b>{{ profile.qcc_status }}</div>
+    </div>
+  </div>
+
+  {# 维度一：资质条件 #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header d-flex justify-content-between bg-light">
+      <span>一、资质条件</span>
+      {% if current_user.has_permission('subcontractor:profile:edit') %}
+      <button class="btn btn-sm btn-outline-primary py-0" type="button"
+              data-bs-toggle="collapse" data-bs-target="#qcForm">+ 添加</button>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <div class="collapse mb-2" id="qcForm">
+        <form method="post" action="{{ url_for('subcontractor.qc_add', id=profile.id) }}"
+              class="row g-2 align-items-end">
+          <div class="col"><input name="cert_type" class="form-control form-control-sm" placeholder="资质类型*"></div>
+          <div class="col"><input name="cert_no" class="form-control form-control-sm" placeholder="证书编号"></div>
+          <div class="col"><input name="issuer" class="form-control form-control-sm" placeholder="发证机关"></div>
+          <div class="col"><input type="date" name="valid_to" class="form-control form-control-sm"></div>
+          <div class="col"><button class="btn btn-primary btn-sm" type="submit">保存</button></div>
+        </form>
+      </div>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>资质类型</th><th>证书编号</th><th>发证机关</th><th>有效期至</th>
+          {% if current_user.has_permission('subcontractor:profile:edit') %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+          {% for q in qualifications %}
+          <tr>
+            <td>{{ q.cert_type }}</td><td>{{ q.cert_no or '-' }}</td>
+            <td>{{ q.issuer or '-' }}</td><td>{{ q.valid_to or '-' }}</td>
+            {% if current_user.has_permission('subcontractor:profile:edit') %}
+            <td><form method="post" action="{{ url_for('subcontractor.qc_delete', qid=q.id) }}">
+              <button class="btn btn-sm btn-link text-danger py-0" type="submit">删</button></form></td>
+            {% endif %}
+          </tr>
+          {% else %}<tr><td colspan="5" class="text-muted">暂无</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# 维度二：安全资格 #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header d-flex justify-content-between bg-light">
+      <span>二、安全资格（安许证 / C证 / 特种作业证）</span>
+      {% if current_user.has_permission('subcontractor:profile:edit') %}
+      <button class="btn btn-sm btn-outline-primary py-0" type="button"
+              data-bs-toggle="collapse" data-bs-target="#sfForm">+ 添加</button>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <div class="collapse mb-2" id="sfForm">
+        <form method="post" action="{{ url_for('subcontractor.safety_add', id=profile.id) }}"
+              class="row g-2 align-items-end">
+          <div class="col"><input name="cert_type" class="form-control form-control-sm" placeholder="证书类型*"></div>
+          <div class="col"><input name="cert_no" class="form-control form-control-sm" placeholder="证书编号"></div>
+          <div class="col"><input type="date" name="valid_to" class="form-control form-control-sm"></div>
+          <div class="col"><button class="btn btn-primary btn-sm" type="submit">保存</button></div>
+        </form>
+      </div>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>证书类型</th><th>证书编号</th><th>有效期至</th>
+          {% if current_user.has_permission('subcontractor:profile:edit') %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+          {% for s in safety_certs %}
+          <tr>
+            <td>{{ s.cert_type }}</td><td>{{ s.cert_no or '-' }}</td><td>{{ s.valid_to or '-' }}</td>
+            {% if current_user.has_permission('subcontractor:profile:edit') %}
+            <td><form method="post" action="{{ url_for('subcontractor.safety_delete', sid=s.id) }}">
+              <button class="btn btn-sm btn-link text-danger py-0" type="submit">删</button></form></td>
+            {% endif %}
+          </tr>
+          {% else %}<tr><td colspan="4" class="text-muted">暂无</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# 维度三：业绩要求 #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header d-flex justify-content-between bg-light">
+      <span>三、业绩要求（近 3-5 年同类工程）</span>
+      {% if current_user.has_permission('subcontractor:profile:edit') %}
+      <button class="btn btn-sm btn-outline-primary py-0" type="button"
+              data-bs-toggle="collapse" data-bs-target="#pfForm">+ 添加</button>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <div class="collapse mb-2" id="pfForm">
+        <form method="post" action="{{ url_for('subcontractor.perf_add', id=profile.id) }}"
+              class="row g-2 align-items-end">
+          <div class="col"><input name="project_name" class="form-control form-control-sm" placeholder="工程名称*"></div>
+          <div class="col"><input name="scale" class="form-control form-control-sm" placeholder="规模/金额"></div>
+          <div class="col"><input name="period" class="form-control form-control-sm" placeholder="工期/年份"></div>
+          <div class="col"><button class="btn btn-primary btn-sm" type="submit">保存</button></div>
+        </form>
+      </div>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>工程名称</th><th>规模/金额</th><th>工期/年份</th>
+          {% if current_user.has_permission('subcontractor:profile:edit') %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+          {% for p in performances %}
+          <tr>
+            <td>{{ p.project_name }}</td><td>{{ p.scale or '-' }}</td><td>{{ p.period or '-' }}</td>
+            {% if current_user.has_permission('subcontractor:profile:edit') %}
+            <td><form method="post" action="{{ url_for('subcontractor.perf_delete', pid=p.id) }}">
+              <button class="btn btn-sm btn-link text-danger py-0" type="submit">删</button></form></td>
+            {% endif %}
+          </tr>
+          {% else %}<tr><td colspan="4" class="text-muted">暂无</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# 维度四：黑名单核查 #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-light">四、黑名单核查（7 类联动）</div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>名录</th><th>是否命中</th><th>来源</th></tr></thead>
+        <tbody>
+          {% for c in blacklist_checks %}
+          <tr>
+            <td>{{ c.list_name }}</td>
+            <td>{% if c.hit %}<span class="badge bg-danger">命中</span>
+                {% else %}<span class="badge bg-secondary">未命中</span>{% endif %}</td>
+            <td>{{ c.source or '-' }}</td>
+          </tr>
+          {% else %}<tr><td colspan="3" class="text-muted">尚未核查</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# 企查查快照 #}
+  <div class="card shadow-sm">
+    <div class="card-header bg-light">企查查核验快照</div>
+    <div class="card-body small">
+      {% if qcc %}
+      <div><b>核验时间：</b>{{ qcc.checked_at }} ｜ <b>状态：</b>{{ qcc.status }}</div>
+      {% if qcc.raw_json %}<pre class="bg-light p-2 mt-2" style="max-height:200px;overflow:auto;">{{ qcc.raw_json }}</pre>{% endif %}
+      {% else %}<span class="text-muted">暂无快照（未配置企查查 API Key 时由人工核验）</span>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

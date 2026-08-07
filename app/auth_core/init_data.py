@@ -54,6 +54,12 @@ PERM_SEED = [
     ('cost', 'adjust', 'review', 'cost:adjust:review'),
     ('subcontract', 'supplier', 'view', 'subcontract:supplier:view'),
     ('subcontract', 'supplier', 'review', 'subcontract:supplier:review'),
+    # —— M6 分包商核验 ——
+    ('subcontractor', 'profile', 'view', 'subcontractor:profile:view'),
+    ('subcontractor', 'profile', 'edit', 'subcontractor:profile:edit'),
+    ('subcontractor', 'profile', 'review', 'subcontractor:profile:review'),
+    ('subcontractor', 'blacklist', 'view', 'subcontractor:blacklist:view'),
+    ('subcontractor', 'blacklist', 'edit', 'subcontractor:blacklist:edit'),
     # —— 权限中台自身管理权限（三页 UI 按钮级控制）——
     ('system', 'org', 'view', 'system:org:view'),
     ('system', 'org', 'create', 'system:org:create'),

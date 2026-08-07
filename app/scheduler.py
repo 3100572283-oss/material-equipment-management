@@ -126,6 +126,55 @@ def init_scheduler(app):
         replace_existing=True
     )
 
+    def subcontractor_expiry_job():
+        """M6：分包商准入有效期即将到期预警，推送站内消息给准入审批人。"""
+        with app.app_context():
+            from datetime import timedelta
+            from app.subcontractor.models import SubcontractorProfile
+            from app.auth_core.models import (AuthPermission, AuthRolePermission,
+                                               AuthUserRole)
+            from app.notification_service import send_message, MSG_TYPE_WARNING
+            try:
+                horizon = datetime.now().date() + timedelta(days=30)
+                today = datetime.now().date()
+                profiles = (SubcontractorProfile.query
+                            .filter(SubcontractorProfile.admit_status == 'approved',
+                                    SubcontractorProfile.valid_to.isnot(None),
+                                    SubcontractorProfile.valid_to <= horizon,
+                                    SubcontractorProfile.valid_to >= today)
+                            .all())
+                if not profiles:
+                    print("[Scheduler] subcontractor expiry: none due")
+                    return
+                perm = AuthPermission.query.filter_by(
+                    perm_key='subcontractor:profile:review').first()
+                recipients = set()
+                if perm:
+                    role_ids = [rp.role_id for rp in
+                                AuthRolePermission.query.filter_by(permission_id=perm.id)]
+                    for ur in AuthUserRole.query.filter(
+                            AuthUserRole.role_id.in_(role_ids)).all():
+                        recipients.add(ur.user_id)
+                sent = 0
+                for p in profiles:
+                    name = p.supplier.name if p.supplier else ('#%d' % p.id)
+                    for uid in recipients:
+                        send_message(uid, MSG_TYPE_WARNING, '分包商准入即将到期',
+                                     '分包商「%s」准入有效期至 %s，请及时办理续期或重新核验。'
+                                     % (name, p.valid_to))
+                        sent += 1
+                print("[Scheduler] subcontractor expiry warnings sent: %d" % sent)
+            except Exception as e:
+                print("[Scheduler] subcontractor expiry error: %s" % e)
+
+    # 每月1日 02:45 分包商准入到期预警
+    scheduler.add_job(
+        subcontractor_expiry_job,
+        CronTrigger(day=1, hour=2, minute=45),
+        id='subcontractor_expiry',
+        replace_existing=True
+    )
+
     scheduler.start()
-    print("APScheduler started: daily_warnings@09:00, inventory_warnings@10:00, cleanup_audit@02:00, cleanup_recycle@03:00, cost_profit@monthly(01 02:30)")
+    print("APScheduler started: daily_warnings@09:00, inventory_warnings@10:00, cleanup_audit@02:00, cleanup_recycle@03:00, cost_profit@monthly(01 02:30), subcontractor_expiry@monthly(01 02:45)")
     return scheduler

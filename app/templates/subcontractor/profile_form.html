@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}准入档案 - 分包商核验{% endblock %}
+{% block content %}
+<div class="container-fluid py-3" style="max-width: 760px;">
+  <h4 class="mb-3">
+    <i class="bi bi-person-badge me-2"></i>
+    {{ '编辑准入档案' if profile else '新建准入档案' }}
+  </h4>
+  <form method="post">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">关联供应商 <span class="text-danger">*</span></label>
+          <select name="supplier_id" class="form-select" {% if profile %}disabled{% endif %} required>
+            <option value="">— 请选择 —</option>
+            {% for s in suppliers %}
+            <option value="{{ s.id }}"
+              {% if profile and profile.supplier_id == s.id %}selected{% endif %}>
+              {{ s.name }}（{{ s.credit_code or '无税号' }}）
+            </option>
+            {% endfor %}
+          </select>
+          {% if profile %}
+          <input type="hidden" name="supplier_id" value="{{ profile.supplier_id }}">
+          {% endif %}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">准入范围 / 工种</label>
+          <input type="text" name="admit_scope" class="form-control"
+                 value="{{ profile.admit_scope or '' }}" placeholder="如：路基土石方、桥梁桩基">
+        </div>
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">准入有效期起</label>
+            <input type="date" name="valid_from" class="form-control"
+                   value="{{ profile.valid_from|string if profile and profile.valid_from else '' }}">
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">准入有效期止</label>
+            <input type="date" name="valid_to" class="form-control"
+                   value="{{ profile.valid_to|string if profile and profile.valid_to else '' }}">
+          </div>
+        </div>
+        <div class="form-text">
+          建档后系统将自动完成 7 类黑名单比对；资质/安全/业绩明细在详情页维护。
+        </div>
+      </div>
+      <div class="card-footer d-flex justify-content-end gap-2">
+        <a href="{{ url_for('subcontractor.profile_list') }}" class="btn btn-outline-secondary btn-sm">取消</a>
+        <button class="btn btn-primary btn-sm" type="submit">保存</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

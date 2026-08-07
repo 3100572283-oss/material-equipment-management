@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}准入档案 - 分包商核验{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-person-badge me-2"></i>分包商准入档案</h4>
+    {% if current_user.has_permission('subcontractor:profile:edit') %}
+    <a href="{{ url_for('subcontractor.profile_create') }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg"></i> 新建准入档案
+    </a>
+    {% endif %}
+  </div>
+
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-auto">
+      <input type="text" name="keyword" class="form-control form-control-sm"
+             placeholder="公司名称 / 税号" value="{{ keyword }}">
+    </div>
+    <div class="col-auto">
+      <select name="status" class="form-select form-select-sm">
+        <option value="">全部状态</option>
+        {% for k, v in ADMIT_STATUS.items() %}
+        <option value="{{ k }}" {% if status == k %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-sm btn-outline-secondary" type="submit">搜索</button>
+    </div>
+  </form>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>公司名称</th><th>税号</th><th>准入范围</th>
+              <th>准入状态</th><th>黑名单</th><th>企查查</th><th class="text-end">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in profiles %}
+            <tr>
+              <td>{{ p.supplier.name if p.supplier else '-' }}</td>
+              <td>{{ p.supplier.credit_code or '-' if p.supplier else '-' }}</td>
+              <td>{{ p.admit_scope or '-' }}</td>
+              <td>
+                {% if p.admit_status == 'approved' %}
+                <span class="badge bg-success">通过</span>
+                {% elif p.admit_status == 'rejected' %}
+                <span class="badge bg-danger">驳回</span>
+                {% else %}
+                <span class="badge bg-warning text-dark">待审</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if p.blacklist_hit %}
+                <span class="badge bg-danger">命中</span>
+                {% else %}
+                <span class="badge bg-secondary">未命中</span>
+                {% endif %}
+              </td>
+              <td><span class="badge bg-info text-dark">{{ p.qcc_status }}</span></td>
+              <td class="text-end">
+                <a href="{{ url_for('subcontractor.profile_detail', id=p.id) }}"
+                   class="btn btn-sm btn-outline-primary">详情</a>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">暂无准入档案</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

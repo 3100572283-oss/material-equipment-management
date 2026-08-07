@@ -1116,6 +1116,9 @@ def create_app(config_class=Config):
     # M4 成本核算模块（P1 责任成本测算；P2/P3 路由已占位）
     from app.cost import cost_bp
     app.register_blueprint(cost_bp, url_prefix='/cost')
+    # M6 分包商核验模块（与 app/subcontract 分包扣款区分命名）
+    from app.subcontractor import subcontractor_bp
+    app.register_blueprint(subcontractor_bp, url_prefix='/subcontractor')
 
     from app.stock_in import bp as stock_in_bp
     app.register_blueprint(stock_in_bp, url_prefix='/stock_in')

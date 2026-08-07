@@ -72,11 +72,12 @@ DEFAULT_ROLE_PERMS = {
         'org_sync:view',
         'system:org:view', 'system:role:view',
         'system:user:view', 'system:user:create', 'system:user:edit', 'system:user:reset_pwd',
+        'subcontractor',
     ],
     'chief_engineer': [
         'cost', 'contract', 'material:view', 'equipment', 'module_equipment',
         'subcontract:view', 'report', 'workbench', 'basic:view', 'master:view',
-        'stock:view', 'turnover:view', 'help', 'ai:view',
+        'stock:view', 'turnover:view', 'help', 'ai:view', 'subcontractor:view',
     ],
     'material_manager': [
         'material', 'stock', 'turnover', 'module_turnover', 'master:view', 'basic:view',
@@ -97,7 +98,7 @@ DEFAULT_ROLE_PERMS = {
     ],
     'contract_admin': [
         'contract', 'subcontract', 'cost:view', 'report', 'basic:view', 'material:view',
-        'equipment:view', 'stock:view', 'workbench', 'help',
+        'equipment:view', 'stock:view', 'workbench', 'help', 'subcontractor:view',
     ],
     'safety_director': [
         'equipment:maintenance:view', 'equipment:view', 'module_equipment:view',
