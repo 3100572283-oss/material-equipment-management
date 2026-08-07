@@ -1384,8 +1384,6 @@ def create_app(config_class=Config):
                             continue
 
                 catalog_extra = {}
-                if catalog.get('code') == 'system' and (not current_user.is_admin()):
-                    continue
 
                 items = []
                 for menu in catalog.get('children', []):
