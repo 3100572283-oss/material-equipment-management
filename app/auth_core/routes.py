@@ -404,7 +404,7 @@ def api_role_permissions(role_id):
         'module': m,
         'module_name': gd['module_name'],
         'resources': [{'resource': r, 'resource_name': rn['resource_name'],
-                       'actions': acts} for r, rn in gd['resources'].items()],
+                       'actions': rn['actions']} for r, rn in gd['resources'].items()],
     } for m, gd in groups.items()]
 
     role = AuthRole.query.get(role_id)
