@@ -21,6 +21,11 @@ def _operator():
     return getattr(current_user, 'username', None) or getattr(current_user, 'name', None)
 
 
+def _is_xhr():
+    """AJAX 请求判定：前端 integration-ui.js 在 fetch 时带 X-Requested-With 头。"""
+    return request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+
 # ============================================================ 数据源配置
 @integration_bp.route('/')
 @integration_bp.route('/datasource/')
@@ -85,11 +90,18 @@ def datasource_save(id):
 def datasource_test(id):
     cred = ExtCredential.query.get_or_404(id)
     if cred.provider != 'qcc':
-        flash('该数据源为模板化导出，无需连通性测试。', 'info')
+        msg = '该数据源为模板化导出，无需连通性测试。'
+        if _is_xhr():
+            return jsonify({'toast': msg, 'toast_type': 'info'})
+        flash(msg, 'info')
         return redirect(url_for('integration.datasource_list'))
     ok, msg = qcc_client.test_connection(operator=_operator())
-    flash('连通性测试%s：%s' % ('通过' if ok else '失败', msg),
-          'success' if ok else 'danger')
+    toast_msg = '连通性测试%s：%s' % ('通过' if ok else '失败', msg)
+    if _is_xhr():
+        return jsonify({'toast': toast_msg,
+                        'toast_type': 'success' if ok else 'error',
+                        'reload': True})
+    flash(toast_msg, 'success' if ok else 'danger')
     return redirect(url_for('integration.datasource_list'))
 
 
@@ -102,7 +114,10 @@ def endpoint_save(id):
     ep.method = request.form.get('method', 'GET').strip().upper()
     ep.enabled = request.form.get('enabled') == 'on'
     db.session.commit()
-    flash('接口 %s 已更新。' % (ep.name or ep.code), 'success')
+    msg = '接口 %s 已更新。' % (ep.name or ep.code)
+    if _is_xhr():
+        return jsonify({'toast': msg, 'toast_type': 'success', 'reload': True})
+    flash(msg, 'success')
     return redirect(url_for('integration.datasource_list'))
 
 
@@ -112,7 +127,10 @@ def endpoint_save(id):
 def cache_clear():
     n = ExtQueryCache.query.delete()
     db.session.commit()
-    flash('已清空 %s 条查询缓存（下次核验将重新调用外部接口）。' % n, 'success')
+    msg = '已清空 %s 条查询缓存（下次核验将重新调用外部接口）。' % n
+    if _is_xhr():
+        return jsonify({'toast': msg, 'toast_type': 'success', 'reload': True})
+    flash(msg, 'success')
     return redirect(url_for('integration.datasource_list'))
 
 
@@ -193,10 +211,16 @@ def template_save(id):
 def template_delete(id):
     tpl = ExportTemplate.query.get_or_404(id)
     if tpl.is_builtin:
-        flash('内置模板不可删除，可改为停用或调整字段。', 'warning')
+        msg = '内置模板不可删除，可改为停用或调整字段。'
+        if _is_xhr():
+            return jsonify({'toast': msg, 'toast_type': 'warning'})
+        flash(msg, 'warning')
         return redirect(url_for('integration.template_detail', id=tpl.id))
     db.session.delete(tpl)
     db.session.commit()
+    if _is_xhr():
+        return jsonify({'toast': '模板已删除。', 'toast_type': 'success',
+                        'redirect': url_for('integration.template_list')})
     flash('模板已删除。', 'success')
     return redirect(url_for('integration.template_list'))
 
@@ -265,6 +289,8 @@ def field_delete(fid):
     tid = f.template_id
     db.session.delete(f)
     db.session.commit()
+    if _is_xhr():
+        return jsonify({'toast': '字段已删除。', 'toast_type': 'success', 'reload': True})
     flash('字段已删除。', 'success')
     return redirect(url_for('integration.template_detail', id=tid))
 

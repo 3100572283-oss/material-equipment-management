@@ -38,9 +38,9 @@
           {% if current_user.has_permission('integration:template:edit') %}
           <button class="btn btn-primary btn-sm">保存</button>
           {% if not tpl.is_builtin %}
-          <button class="btn btn-outline-danger btn-sm" formnovalidate
-                  formaction="{{ url_for('integration.template_delete', id=tpl.id) }}"
-                  onclick="return confirm('确认删除该模板？');">删除</button>
+          <button type="button" class="btn btn-outline-danger btn-sm"
+                  data-ajax-post="{{ url_for('integration.template_delete', id=tpl.id) }}"
+                  data-confirm="确认删除该模板？此操作不可恢复。">删除</button>
           {% endif %}
           {% endif %}
         </div>
@@ -95,9 +95,9 @@
               <td class="small text-muted">{{ f.remark or '' }}</td>
               <td class="text-end">
                 {% if current_user.has_permission('integration:template:edit') %}
-                <button class="btn btn-outline-danger btn-sm" formnovalidate
-                        formaction="{{ url_for('integration.field_delete', fid=f.id) }}"
-                        onclick="return confirm('删除该字段？');">×</button>
+                <button type="button" class="btn btn-outline-danger btn-sm"
+                        data-ajax-post="{{ url_for('integration.field_delete', fid=f.id) }}"
+                        data-confirm="删除该字段？">×</button>
                 {% endif %}
               </td>
             </tr>
@@ -174,7 +174,10 @@ function previewTpl() {
       card.classList.remove('d-none');
       card.scrollIntoView({behavior: 'smooth'});
     })
-    .catch(e => alert('预览失败：' + e));
+    .catch(function () {
+      if (window.showToast) window.showToast('预览失败，请重试', 'error');
+      else alert('预览失败');
+    });
 }
 </script>
 {% endblock %}

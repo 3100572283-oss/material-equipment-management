@@ -115,19 +115,15 @@
       {% if current_user.has_permission('integration:datasource:edit') and c.provider == 'qcc' %}
       <hr>
       <div class="d-flex gap-2">
-        <form method="post" action="{{ url_for('integration.datasource_test', id=c.id) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-outline-primary btn-sm" type="submit">
-            <i class="bi bi-broadcast"></i> 连通性自检（消耗 1 次调用）
-          </button>
-        </form>
-        <form method="post" action="{{ url_for('integration.cache_clear') }}"
-              onsubmit="return confirm('清空后下次核验将重新调用外部接口（产生费用），确认？');">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-outline-secondary btn-sm" type="submit">
-            <i class="bi bi-trash"></i> 清空查询缓存
-          </button>
-        </form>
+        <button type="button" class="btn btn-outline-primary btn-sm"
+                data-ajax-post="{{ url_for('integration.datasource_test', id=c.id) }}">
+          <i class="bi bi-broadcast"></i> 连通性自检（消耗 1 次调用）
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm"
+                data-ajax-post="{{ url_for('integration.cache_clear') }}"
+                data-confirm="清空后下次核验将重新调用外部接口（产生费用），确认？">
+          <i class="bi bi-trash"></i> 清空查询缓存
+        </button>
       </div>
       {% endif %}
     </div>
@@ -148,7 +144,8 @@
           <tbody>
           {% for e in endpoints %}
             <tr>
-              <form method="post" action="{{ url_for('integration.endpoint_save', id=e.id) }}">
+              <form method="post" action="{{ url_for('integration.endpoint_save', id=e.id) }}"
+                    data-ajax-form>
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <td class="small">{{ PROVIDERS.get(e.provider, e.provider) }}</td>
               <td class="small">{{ e.name or e.code }}<div class="text-muted">{{ e.code }}</div></td>
