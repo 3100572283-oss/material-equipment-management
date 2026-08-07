@@ -173,4 +173,12 @@ def init_auth_core_data():
             print("[auth_core] 岗位默认授权 +%d 项" % n)
     except Exception as e:  # 启动期不阻断主流程
         print("[auth_core] 岗位默认授权跳过：%s" % e)
+
+    # 6.5) 阶段 A 影子菜单目录：幂等 ETL 旧 sys_menu → auth_core_menu（非破坏，旧路径仍读 sys_menu）
+    try:
+        from app.auth_core import adapter
+        adapter.sync_menu_from_legacy()
+    except Exception as e:  # 启动期不阻断主流程
+        print("[auth_core] 菜单目录 ETL 跳过：%s" % e)
+
     print("[auth_core] seed data initialized")

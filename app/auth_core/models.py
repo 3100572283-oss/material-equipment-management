@@ -263,3 +263,29 @@ class AuthUserDataScope(db.Model):
     org_ids = db.Column(db.Text, nullable=True)
     project_ids = db.Column(db.Text, nullable=True)  # JSON 项目ID集
     created_at = db.Column(db.DateTime, default=datetime.now)
+
+
+class AuthMenu(db.Model):
+    """菜单目录（替代旧 sys_menu 的目录/结构本体；可见性仍由 auth_core 权限派生）
+
+    绞杀者阶段 A：先作为影子目录与 sys_menu 并存（ETL 同步），经 parity 验证一致后，
+    再将侧边栏/面包屑等活路径从 sys_menu 切到本表，最终 RENAME 退役 sys_menu。
+    permission 列与 auth_core_permission.perm_key 同命名空间（module:resource:action）。
+    """
+    __tablename__ = 'auth_core_menu'
+    id = db.Column(db.Integer, primary_key=True)
+    parent_id = db.Column(db.Integer, db.ForeignKey('auth_core_menu.id'), nullable=True, default=None)
+    menu_name = db.Column(db.String(128), nullable=False)
+    menu_code = db.Column(db.String(64), nullable=True, unique=True)  # 与 Flask 端点名一致
+    menu_type = db.Column(db.String(16), default='menu')  # catalog/menu/button
+    path = db.Column(db.String(256), nullable=True)
+    component = db.Column(db.String(256), nullable=True)
+    icon = db.Column(db.String(64), nullable=True)
+    sort = db.Column(db.Integer, default=0)
+    status = db.Column(db.Boolean, default=True)
+    permission = db.Column(db.String(128), nullable=True)  # 权限标识，如 stock:in:view
+    module_key = db.Column(db.String(32), nullable=True)
+    remark = db.Column(db.String(256), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    children = db.relationship('AuthMenu', backref=db.backref('parent_menu', remote_side=[id]), lazy='dynamic')

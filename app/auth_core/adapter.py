@@ -8,7 +8,7 @@ import json
 from app import db
 from app.auth_core.models import (
     AuthUser, AuthRole, AuthOrgUnit, AuthPermission,
-    AuthRolePermission, AuthUserRole, AuthDataScope, AuthUserDataScope,
+    AuthRolePermission, AuthUserRole, AuthDataScope, AuthUserDataScope, AuthMenu,
 )
 
 # 仅此文件引用旧模型（桥接需要）
@@ -229,6 +229,59 @@ def sync_org_from_legacy(legacy_dept_id=None):
         if ou.parent_id != new_parent:
             ou.parent_id = new_parent
             db.session.add(ou)
+    db.session.commit()
+    return id_map
+
+
+def sync_menu_from_legacy():
+    """把旧 sys_menu 目录/结构单向同步到 auth_core_menu（阶段 A 影子目录）
+
+    幂等：以 menu_code 为主键去重（无 menu_code 的极个别历史行用 (menu_name,parent_id,menu_type) 兜底）。
+    因 auth_core_menu 使用独立 id 空间，先全量建行（parent_id 暂置 0），再按旧 id→新 id 映射修正 parent_id，
+    保证层级与 sys_menu 完全一致。permission 列原样复制（与 auth_core_permission.perm_key 同命名空间）。
+    """
+    # 1) 旧 id -> 新 id 映射（先建后修 parent）
+    id_map = {}
+    for m in LegacyMenu.query.order_by(LegacyMenu.sort.asc(), LegacyMenu.id.asc()).all():
+        existing = None
+        if m.menu_code:
+            existing = AuthMenu.query.filter_by(menu_code=m.menu_code).first()
+        if existing is None:
+            existing = AuthMenu.query.filter_by(
+                menu_name=m.menu_name, parent_id=0,
+                menu_type=m.menu_type or 'menu'
+            ).first()
+        if existing is None:
+            existing = AuthMenu(
+                parent_id=0,
+                menu_name=m.menu_name,
+                menu_code=m.menu_code,
+                menu_type=m.menu_type or 'menu',
+                path=m.path,
+                component=m.component,
+                icon=m.icon,
+                sort=m.sort or 0,
+                status=m.status if m.status is not None else True,
+                permission=m.permission,
+                module_key=m.module_key,
+                remark=m.remark,
+            )
+            db.session.add(existing)
+            db.session.flush()
+        id_map[m.id] = existing.id
+
+    # 2) 修正 parent_id（旧 sys_menu.id -> 新 auth_core_menu.id）
+    for m in LegacyMenu.query.all():
+        new_id = id_map.get(m.id)
+        if new_id is None:
+            continue
+        am = AuthMenu.query.get(new_id)
+        if am is None:
+            continue
+        new_parent = id_map.get(m.parent_id, 0) if m.parent_id else None
+        if am.parent_id != new_parent:
+            am.parent_id = new_parent
+            db.session.add(am)
     db.session.commit()
     return id_map
 
