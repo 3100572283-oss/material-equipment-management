@@ -49,6 +49,9 @@ PERM_SEED = [
     ('equipment', 'maintenance', 'create', 'equipment:maintenance:create'),
     ('cost', 'budget', 'view', 'cost:budget:view'),
     ('cost', 'budget', 'edit', 'cost:budget:edit'),
+    ('cost', 'profit', 'view', 'cost:profit:view'),
+    ('cost', 'control', 'view', 'cost:control:view'),
+    ('cost', 'adjust', 'review', 'cost:adjust:review'),
     ('subcontract', 'supplier', 'view', 'subcontract:supplier:view'),
     ('subcontract', 'supplier', 'review', 'subcontract:supplier:review'),
     # —— 权限中台自身管理权限（三页 UI 按钮级控制）——

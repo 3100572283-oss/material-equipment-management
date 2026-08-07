@@ -1113,6 +1113,10 @@ def create_app(config_class=Config):
     from app.contract import bp as contract_bp
     app.register_blueprint(contract_bp, url_prefix='/contract')
 
+    # M4 成本核算模块（P1 责任成本测算；P2/P3 路由已占位）
+    from app.cost import cost_bp
+    app.register_blueprint(cost_bp, url_prefix='/cost')
+
     from app.stock_in import bp as stock_in_bp
     app.register_blueprint(stock_in_bp, url_prefix='/stock_in')
 

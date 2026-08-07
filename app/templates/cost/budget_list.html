@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}责任成本测算 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>责任成本测算</h5>
+        <div class="d-flex gap-2">
+            {% if current_user.has_permission('cost:budget:edit') %}
+            <form method="POST" action="{{ url_for('cost.api_budget_auto_gen') }}" class="d-inline"
+                  onsubmit="return confirm('将从本项目合同清单重新生成责任成本预算（保留手动预算），确定？');">
+                <button type="submit" class="btn btn-outline-success btn-sm"><i class="bi bi-arrow-repeat"></i> 从合同生成</button>
+            </form>
+            <a href="{{ url_for('cost.budget_create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>新增预算</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form class="row g-2 mb-3" method="GET" action="{{ url_for('cost.budget_list') }}">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm" name="keyword" placeholder="搜索 WBS 编码/名称" value="{{ keyword or '' }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> 搜索</button>
+                <a href="{{ url_for('cost.budget_list') }}" class="btn btn-sm btn-outline-secondary">重置</a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>WBS 编码</th>
+                        <th>WBS 名称</th>
+                        <th>来源</th>
+                        <th>责任人岗位</th>
+                        <th class="text-end">预算金额(元)</th>
+                        <th>状态</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in budgets %}
+                    <tr>
+                        <td>{{ b.wbs_code or '-' }}</td>
+                        <td><a href="{{ url_for('cost.budget_detail', id=b.id) }}">{{ b.wbs_name }}</a></td>
+                        <td>
+                            {% if b.source == 'contract_auto' %}<span class="badge bg-info">合同自动</span>
+                            {% else %}<span class="badge bg-secondary">手动</span>{% endif %}
+                        </td>
+                        <td>{{ b.owner_role or '-' }}</td>
+                        <td class="text-end">{{ '%.2f'|format(b.budget_amount or 0) }}</td>
+                        <td>
+                            {% if b.status == 'active' %}<span class="badge bg-success">启用</span>
+                            {% elif b.status == 'locked' %}<span class="badge bg-warning">锁定</span>
+                            {% elif b.status == 'closed' %}<span class="badge bg-dark">关闭</span>
+                            {% else %}{{ b.status }}{% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('cost.budget_detail', id=b.id) }}" class="btn btn-sm btn-outline-info" title="详情"><i class="bi bi-eye"></i></a>
+                            {% if current_user.has_permission('cost:budget:edit') %}
+                            <a href="{{ url_for('cost.budget_edit', id=b.id) }}" class="btn btn-sm btn-outline-primary" title="编辑"><i class="bi bi-pencil"></i></a>
+                            <form method="POST" action="{{ url_for('cost.budget_delete', id=b.id) }}" class="d-inline" onsubmit="return confirm('确定删除该预算？');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="删除"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">暂无责任成本预算，点击「从合同生成」或「新增预算」开始。</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

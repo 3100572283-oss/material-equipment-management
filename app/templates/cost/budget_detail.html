@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}责任成本预算详情 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>{{ budget.wbs_name }}</h5>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('cost.budget_list') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> 返回</a>
+            {% if current_user.has_permission('cost:budget:edit') %}
+            <a href="{{ url_for('cost.budget_edit', id=budget.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> 编辑</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 small text-muted">
+            <div class="col-md-2"><strong>WBS 编码：</strong><br>{{ budget.wbs_code or '-' }}</div>
+            <div class="col-md-2"><strong>来源：</strong><br>{% if budget.source == 'contract_auto' %}合同自动{% else %}手动{% endif %}</div>
+            <div class="col-md-2"><strong>责任人岗位：</strong><br>{{ budget.owner_role or '-' }}</div>
+            <div class="col-md-2"><strong>状态：</strong><br>{{ budget.status or '-' }}</div>
+            <div class="col-md-4"><strong>备注：</strong><br>{{ budget.remark or '-' }}</div>
+        </div>
+        <div class="row g-3 mt-2">
+            <div class="col-md-4">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">责任预算(元)</div>
+                    <div class="fs-5 fw-bold">{{ '%.2f'|format(variance.planned_total) }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">实际成本(元)</div>
+                    <div class="fs-5 fw-bold text-danger">{{ '%.2f'|format(variance.actual_total) }}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-2 text-center">
+                    <div class="text-muted small">节超(预算-实际)</div>
+                    <div class="fs-5 fw-bold {% if variance.variance_total >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.2f'|format(variance.variance_total) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white"><h6 class="mb-0">预算明细与节超</h6></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>材料</th>
+                        <th class="text-end">数量</th>
+                        <th class="text-end">单价</th>
+                        <th class="text-end">计划金额(元)</th>
+                        <th class="text-end">实际成本(元)</th>
+                        <th class="text-end">节超(元)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in variance.items %}
+                    <tr>
+                        <td>{% if row.item.material %}{{ row.item.material.name }}{% else %}材料#{{ row.item.material_id }}{% endif %}</td>
+                        <td class="text-end">{{ '%.4f'|format(row.item.quantity or 0) }}</td>
+                        <td class="text-end">{{ '%.4f'|format(row.item.unit_price or 0) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(row.item.amount or 0) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(row.actual) }}</td>
+                        <td class="text-end {% if row.variance >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.2f'|format(row.variance) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted">暂无明细</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold table-light">
+                        <td>合计</td>
+                        <td></td><td></td>
+                        <td class="text-end">{{ '%.2f'|format(variance.planned_total) }}</td>
+                        <td class="text-end">{{ '%.2f'|format(variance.actual_total) }}</td>
+                        <td class="text-end {% if variance.variance_total >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.2f'|format(variance.variance_total) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <p class="text-muted small mb-0">说明：实际成本按本项目出库单（stock_out_items）按材料聚合；设备租赁/分包扣款等口径将于预算管控（P2）、盈亏预警（P3）阶段并入。</p>
+    </div>
+</div>
+{% endblock %}

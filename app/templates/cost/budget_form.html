@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}责任成本预算编辑 - 物资设备管理系统{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>{{ '编辑责任成本预算' if budget else '新增责任成本预算' }}</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('cost.budget_edit', id=budget.id) if budget else url_for('cost.budget_create') }}" id="budgetForm">
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">WBS 编码</label>
+                    <input type="text" class="form-control form-control-sm" name="wbs_code" value="{{ budget.wbs_code or '' }}" placeholder="如 PROJECT / 工号">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">WBS 名称 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control form-control-sm" name="wbs_name" value="{{ budget.wbs_name or '' }}" required placeholder="如 项目责任成本">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">成本科目</label>
+                    <select class="form-select form-select-sm" name="category_code">
+                        <option value="">-- 不指定 --</option>
+                        {% for c in categories %}
+                        <option value="{{ c.code }}" {% if budget and budget.category_code == c.code %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">责任人岗位</label>
+                    <select class="form-select form-select-sm" name="owner_role">
+                        <option value="">-- 不指定 --</option>
+                        {% for rc in ['project_manager','chief_engineer','material_manager','cost_accountant','contract_admin','finance_user'] %}
+                        <option value="{{ rc }}" {% if budget and budget.owner_role == rc %}selected{% endif %}>{{ rc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">来源</label>
+                    <select class="form-select form-select-sm" name="source">
+                        <option value="manual" {% if not budget or budget.source == 'manual' %}selected{% endif %}>手动</option>
+                        <option value="contract_auto" {% if budget and budget.source == 'contract_auto' %}selected{% endif %}>合同自动</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">状态</label>
+                    <select class="form-select form-select-sm" name="status">
+                        <option value="active" {% if not budget or budget.status == 'active' %}selected{% endif %}>启用</option>
+                        <option value="locked" {% if budget and budget.status == 'locked' %}selected{% endif %}>锁定</option>
+                        <option value="closed" {% if budget and budget.status == 'closed' %}selected{% endif %}>关闭</option>
+                    </select>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">备注</label>
+                    <input type="text" class="form-control form-control-sm" name="remark" value="{{ budget.remark or '' }}">
+                </div>
+            </div>
+
+            <hr>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">预算明细（按材料）</h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="addRow()"><i class="bi bi-plus-lg"></i> 添加材料行</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle" id="itemTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:38%">材料</th>
+                            <th style="width:15%">数量</th>
+                            <th style="width:15%">单价(不含税)</th>
+                            <th style="width:15%">金额(元)</th>
+                            <th style="width:14%">备注</th>
+                            <th style="width:3%"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemBody">
+                        {% if budget %}
+                        {% for it in budget.items.all() %}
+                        <tr>
+                            <td>
+                                <select class="form-select form-select-sm" name="item_material_id">
+                                    <option value="{{ it.material_id }}">{% if it.material %}{{ it.material.name }}{% else %}材料#{{ it.material_id }}{% endif %}</option>
+                                    {% for m in materials %}{% if m.id != it.material_id %}<option value="{{ m.id }}">{{ m.name }}</option>{% endif %}{% endfor %}
+                                </select>
+                            </td>
+                            <td><input type="number" step="0.0001" class="form-control form-control-sm qty" name="item_quantity" value="{{ it.quantity }}" oninput="calc(this)"></td>
+                            <td><input type="number" step="0.0001" class="form-control form-control-sm up" name="item_unit_price" value="{{ it.unit_price }}" oninput="calc(this)"></td>
+                            <td><input type="text" class="form-control form-control-sm amt" name="item_amount" value="{{ '%.2f'|format(it.amount or 0) }}" readonly></td>
+                            <td><input type="text" class="form-control form-control-sm" name="item_remark" value="{{ it.remark or '' }}"></td>
+                            <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="delRow(this)"><i class="bi bi-x"></i></button></td>
+                        </tr>
+                        {% endfor %}
+                        {% endif %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th colspan="3" class="text-end">预算合计</th>
+                            <th class="text-end" id="totalAmount">0.00</th>
+                            <th colspan="2"></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check-lg"></i> 保存</button>
+                <a href="{{ url_for('cost.budget_list') }}" class="btn btn-secondary btn-sm">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function addRow() {
+    var tbody = document.getElementById('itemBody');
+    var tr = document.createElement('tr');
+    var opts = '<option value="">-- 选择材料 --</option>';
+    {% for m in materials %}opts += '<option value="{{ m.id }}">{{ m.name }}</option>';{% endfor %}
+    tr.innerHTML = '<td><select class="form-select form-select-sm" name="item_material_id">' + opts + '</select></td>' +
+        '<td><input type="number" step="0.0001" class="form-control form-control-sm qty" name="item_quantity" value="0" oninput="calc(this)"></td>' +
+        '<td><input type="number" step="0.0001" class="form-control form-control-sm up" name="item_unit_price" value="0" oninput="calc(this)"></td>' +
+        '<td><input type="text" class="form-control form-control-sm amt" name="item_amount" value="0.00" readonly></td>' +
+        '<td><input type="text" class="form-control form-control-sm" name="item_remark"></td>' +
+        '<td><button type="button" class="btn btn-sm btn-outline-danger" onclick="delRow(this)"><i class="bi bi-x"></i></button></td>';
+    tbody.appendChild(tr);
+    recalc();
+}
+function delRow(btn) {
+    btn.closest('tr').remove();
+    recalc();
+}
+function calc(el) {
+    var tr = el.closest('tr');
+    var q = parseFloat(tr.querySelector('.qty').value || 0);
+    var u = parseFloat(tr.querySelector('.up').value || 0);
+    tr.querySelector('.amt').value = (q * u).toFixed(2);
+    recalc();
+}
+function recalc() {
+    var total = 0;
+    document.querySelectorAll('#itemBody .amt').forEach(function (e) {
+        total += parseFloat(e.value || 0);
+    });
+    document.getElementById('totalAmount').textContent = total.toFixed(2);
+}
+document.addEventListener('DOMContentLoaded', recalc);
+</script>
+{% endblock %}

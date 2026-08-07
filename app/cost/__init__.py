@@ -11,6 +11,8 @@ cost_bp = Blueprint('cost', __name__, url_prefix='/cost')
 
 # 导入模型，使 db.create_all / Flask-Migrate 能识别 cost_* 表
 from . import models  # noqa: E402,F401
+# 导入路由（P1：责任成本测算 + P2/P3 占位）。必须在 cost_bp 定义之后。
+from . import routes  # noqa: E402,F401
 
 
 @cost_bp.route('/health')
