@@ -60,6 +60,9 @@ PERM_SEED = [
     ('subcontractor', 'profile', 'review', 'subcontractor:profile:review'),
     ('subcontractor', 'blacklist', 'view', 'subcontractor:blacklist:view'),
     ('subcontractor', 'blacklist', 'edit', 'subcontractor:blacklist:edit'),
+    # —— M5 票据三流合一 ——
+    ('invoice', 'threeflow', 'view', 'invoice:threeflow:view'),
+    ('invoice', 'threeflow', 'book', 'invoice:threeflow:book'),
     # —— 权限中台自身管理权限（三页 UI 按钮级控制）——
     ('system', 'org', 'view', 'system:org:view'),
     ('system', 'org', 'create', 'system:org:create'),

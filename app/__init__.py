@@ -1120,6 +1120,10 @@ def create_app(config_class=Config):
     from app.subcontractor import subcontractor_bp
     app.register_blueprint(subcontractor_bp, url_prefix='/subcontractor')
 
+    # M5 票据三流合一模块（三流核对 + 自动入账）
+    from app.invoice import invoice_bp
+    app.register_blueprint(invoice_bp, url_prefix='/invoice')
+
     from app.stock_in import bp as stock_in_bp
     app.register_blueprint(stock_in_bp, url_prefix='/stock_in')
 

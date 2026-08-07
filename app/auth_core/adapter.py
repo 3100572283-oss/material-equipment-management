@@ -72,12 +72,13 @@ DEFAULT_ROLE_PERMS = {
         'org_sync:view',
         'system:org:view', 'system:role:view',
         'system:user:view', 'system:user:create', 'system:user:edit', 'system:user:reset_pwd',
-        'subcontractor',
+        'subcontractor', 'invoice',
     ],
     'chief_engineer': [
         'cost', 'contract', 'material:view', 'equipment', 'module_equipment',
         'subcontract:view', 'report', 'workbench', 'basic:view', 'master:view',
         'stock:view', 'turnover:view', 'help', 'ai:view', 'subcontractor:view',
+        'invoice:threeflow:view',
     ],
     'material_manager': [
         'material', 'stock', 'turnover', 'module_turnover', 'master:view', 'basic:view',
@@ -95,10 +96,12 @@ DEFAULT_ROLE_PERMS = {
     'cost_accountant': [
         'cost', 'contract:view', 'report', 'workbench', 'basic:view', 'material:view',
         'equipment:view', 'subcontract:view', 'stock:view', 'turnover:view', 'help',
+        'invoice',
     ],
     'contract_admin': [
         'contract', 'subcontract', 'cost:view', 'report', 'basic:view', 'material:view',
         'equipment:view', 'stock:view', 'workbench', 'help', 'subcontractor:view',
+        'invoice:threeflow:view',
     ],
     'safety_director': [
         'equipment:maintenance:view', 'equipment:view', 'module_equipment:view',
@@ -120,7 +123,7 @@ DEFAULT_ROLE_PERMS = {
     ],
     'project_admin': [  # 项目管理员
         'material', 'stock', 'equipment', 'module_equipment', 'contract', 'cost',
-        'subcontract', 'report', 'workbench', 'basic', 'master:view', 'turnover',
+        'subcontract', 'report', 'workbench', 'basic', 'master:view', 'turnover', 'invoice',
         'module_turnover', 'ai:view', 'help', 'tools:view', 'module_industry_tools:view',
         'org_sync:view',
         'system:org:view', 'system:org:create', 'system:org:edit',

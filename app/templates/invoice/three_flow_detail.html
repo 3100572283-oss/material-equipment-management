@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}三流合一明细{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <a href="{{ url_for('invoice.three_flow_list') }}" class="text-decoration-none"><i class="bi bi-arrow-left"></i> 返回</a>
+      <h4 class="mb-1 mt-1"><i class="bi bi-link-45deg"></i> 三流合一明细</h4>
+      <small class="text-muted">{{ supplier.name if supplier else chk.supplier_id }} · {{ contract.name if contract else chk.contract_id }} · {{ project.name if project else chk.project_id }}</small>
+    </div>
+    <div>
+      {% if chk.consistency_level=='green' %}<span class="badge bg-success fs-6">三流一致</span>
+      {% elif chk.consistency_level=='yellow' %}<span class="badge bg-warning text-dark fs-6">需关注</span>
+      {% else %}<span class="badge bg-danger fs-6">不一致</span>{% endif %}
+    </div>
+  </div>
+
+  <!-- 三流卡片 -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3"><div class="card border-info"><div class="card-body py-2"><div class="small text-muted">票流（发票）</div><div class="h5 mb-0">{{ '%.2f'|format(chk.invoice_total or 0) }}</div><div class="small text-muted">{{ chk.invoice_count }} 张</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-primary"><div class="card-body py-2"><div class="small text-muted">资金流（付款）</div><div class="h5 mb-0">{{ '%.2f'|format(chk.payment_total or 0) }}</div><div class="small text-muted">{{ chk.payment_count }} 笔</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-success"><div class="card-body py-2"><div class="small text-muted">货流（对账）</div><div class="h5 mb-0">{{ '%.2f'|format(chk.goods_total or 0) }}</div><div class="small text-muted">{{ chk.reconciliation_count }} 单</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">合同额（基线）</div><div class="h5 mb-0">{{ '%.2f'|format(chk.contract_amount or 0) }}</div></div></div></div>
+  </div>
+
+  <!-- 差异 -->
+  <div class="card mb-3">
+    <div class="card-header small fw-bold">差异分析</div>
+    <div class="card-body py-2">
+      <div class="row g-2 small">
+        <div class="col-4">票流 − 资金流：<b class="{{ 'text-danger' if chk.variance_inv_pay|abs > 0.005 }}">{{ '%.2f'|format(chk.variance_inv_pay or 0) }}</b></div>
+        <div class="col-4">资金流 − 货流：<b class="{{ 'text-danger' if chk.variance_pay_goods|abs > 0.005 }}">{{ '%.2f'|format(chk.variance_pay_goods or 0) }}</b></div>
+        <div class="col-4">票流 − 货流：<b class="{{ 'text-danger' if chk.variance_inv_goods|abs > 0.005 }}">{{ '%.2f'|format(chk.variance_inv_goods or 0) }}</b></div>
+      </div>
+      {% if chk.mismatch_types %}
+      <div class="mt-2">
+        {% for m in chk.mismatch_types.split(',') %}
+        <span class="badge bg-light text-dark border me-1">
+          {% if m=='inv_pay' %}票资不符
+          {% elif m=='pay_goods' %}资货不符
+          {% elif m=='inv_goods' %}票货不符
+          {% elif m=='goods_missing' %}货流缺失
+          {% elif m=='entity_mismatch' %}主体不一致
+          {% else %}{{ m }}{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 入账 -->
+  <div class="mb-3">
+    {% if chk.booked %}
+    <span class="badge bg-secondary">✓ 已入账（{{ chk.booked_at.strftime('%Y-%m-%d %H:%M') if chk.booked_at else '' }} · {{ chk.booked_by }}）</span>
+    {% elif chk.consistency_level != 'red' %}
+    <form method="post" action="{{ url_for('invoice.three_flow_book', check_id=chk.id) }}" class="d-inline">
+      <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('确认将三流核验一致金额计入项目成本？')"><i class="bi bi-check2-circle"></i> 确认入账</button>
+    </form>
+    {% else %}
+    <span class="text-danger small">红色（显著不一致）禁止入账，请先核对三流数据。</span>
+    {% endif %}
+  </div>
+
+  <!-- 票流明细 -->
+  <div class="card mb-3">
+    <div class="card-header small fw-bold">票流 · 发票清单（{{ invoices|length }}）</div>
+    <div class="table-responsive"><table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>发票号码</th><th>开票日期</th><th>含税金额</th><th>不含税</th></tr></thead>
+      <tbody>
+        {% for i in invoices %}
+        <tr><td>{{ i.invoice_number or '-' }}</td><td>{{ i.invoice_date or '-' }}</td>
+            <td class="text-end">{{ '%.2f'|format(i.amount_with_tax or 0) }}</td>
+            <td class="text-end">{{ '%.2f'|format(i.amount_without_tax or 0) }}</td></tr>
+        {% else %}<tr><td colspan="4" class="text-center text-muted">无发票</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- 资金流明细 -->
+  <div class="card mb-3">
+    <div class="card-header small fw-bold">资金流 · 付款清单（{{ payments|length }}）</div>
+    <div class="table-responsive"><table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>付款单号</th><th>付款日期</th><th>方式</th><th>金额</th></tr></thead>
+      <tbody>
+        {% for p in payments %}
+        <tr><td>{{ p.payment_code }}</td><td>{{ p.payment_date or '-' }}</td>
+            <td>{{ p.method or '-' }}</td><td class="text-end">{{ '%.2f'|format(p.amount or 0) }}</td></tr>
+        {% else %}<tr><td colspan="4" class="text-center text-muted">无付款</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- 货流明细 -->
+  <div class="card">
+    <div class="card-header small fw-bold">货流 · 对账供货清单（{{ reconciliations|length }}）</div>
+    <div class="table-responsive"><table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>对账单号</th><th>期间</th><th>含税金额</th><th>不含税</th></tr></thead>
+      <tbody>
+        {% for rc in reconciliations %}
+        <tr><td>{{ rc.code }}</td><td>{{ rc.start_date }}~{{ rc.end_date }}</td>
+            <td class="text-end">{{ '%.2f'|format(rc.total_amount or 0) }}</td>
+            <td class="text-end">{{ '%.2f'|format(rc.total_amount_without_tax or 0) }}</td></tr>
+        {% else %}<tr><td colspan="4" class="text-center text-muted">无对账（货流缺失）</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</div>
+{% endblock %}
