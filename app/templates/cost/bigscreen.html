@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}成本核算大屏 - 数据可视化{% endblock %}
+{% block extra_css %}
+<style>
+  body { background: #0b1f3a; }
+  .screen-wrap { color: #e8f1ff; }
+  .kpi-card {
+    background: linear-gradient(135deg, #12325c, #0b1f3a);
+    border: 1px solid #1f4f8a; border-radius: 12px; padding: 18px 20px; height: 100%;
+  }
+  .kpi-label { font-size: 13px; color: #8fb6e6; }
+  .kpi-value { font-size: 30px; font-weight: 700; letter-spacing: .5px; }
+  .kpi-sub { font-size: 12px; color: #6f93bf; }
+  .panel { background: rgba(18,50,92,.55); border: 1px solid #1f4f8a; border-radius: 12px; padding: 14px 16px; height: 100%; }
+  .panel h6 { color: #8fb6e6; font-size: 14px; border-left: 3px solid #2f9bff; padding-left: 8px; }
+  .badge-level { font-size: 12px; }
+  .bar-row { margin-bottom: 6px; }
+  .bar-track { background: #0b1f3a; border-radius: 6px; height: 14px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; }
+  .legend span { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="screen-wrap container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-bar-chart-fill me-2 text-info"></i>成本核算数据大屏</h4>
+    <div>
+      <span class="text-info" id="periodLabel"></span>
+      <button class="btn btn-sm btn-outline-info ms-2" onclick="loadDashboard()"><i class="bi bi-arrow-clockwise"></i> 刷新</button>
+    </div>
+  </div>
+
+  <!-- KPI 行 -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card">
+        <div class="kpi-label">计划成本（元）</div>
+        <div class="kpi-value" id="kpiBudget">--</div>
+        <div class="kpi-sub">责任成本预算合计</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card">
+        <div class="kpi-label">实际成本（元）</div>
+        <div class="kpi-value text-warning" id="kpiActual">--</div>
+        <div class="kpi-sub">已发生成本合计</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card">
+        <div class="kpi-label">节超（元）</div>
+        <div class="kpi-value" id="kpiVariance">--</div>
+        <div class="kpi-sub" id="kpiRate">偏差率 --</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="kpi-card">
+        <div class="kpi-label">预算执行率</div>
+        <div class="kpi-value text-info" id="kpiExec">--</div>
+        <div class="kpi-sub" id="kpiExecSub">年度预算 -- / 已用 --</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- 科目盈亏 -->
+    <div class="col-lg-7">
+      <div class="panel">
+        <h6>各科目盈亏分布</h6>
+        <div id="catPanel"><div class="text-muted">加载中…</div></div>
+      </div>
+    </div>
+    <!-- 预警分布 -->
+    <div class="col-lg-5">
+      <div class="panel">
+        <h6>预警三级分布</h6>
+        <div id="warnPanel"><div class="text-muted">加载中…</div></div>
+        <div class="legend mt-2 small">
+          <span style="background:#28a745"></span>绿（正常）
+          <span style="background:#ffc107"></span>黄（略超）
+          <span style="background:#dc3545"></span>红（超支）
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 预算管控看板 -->
+  <div class="row g-3 mt-1">
+    <div class="col-12">
+      <div class="panel">
+        <h6>预算管控执行</h6>
+        <div id="ctrlPanel"><div class="text-muted">加载中…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function fmt(n) { return (n == null ? 0 : n).toLocaleString('zh-CN', {maximumFractionDigits: 2}); }
+function levelBadge(l) {
+  if (l === 'red') return '<span class="badge bg-danger badge-level">红</span>';
+  if (l === 'yellow') return '<span class="badge bg-warning text-dark badge-level">黄</span>';
+  return '<span class="badge bg-success badge-level">绿</span>';
+}
+function loadDashboard() {
+  fetch('{{ url_for("cost.api_dashboard") }}', {credentials: 'same-origin'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { alert('错误：' + d.msg); return; }
+      document.getElementById('periodLabel').textContent = '统计月份：' + d.period;
+      document.getElementById('kpiBudget').textContent = fmt(d.budget_total);
+      document.getElementById('kpiActual').textContent = fmt(d.actual_total);
+      const v = d.variance_total;
+      const ve = document.getElementById('kpiVariance');
+      ve.textContent = fmt(v);
+      ve.className = 'kpi-value ' + (v >= 0 ? 'text-success' : 'text-danger');
+      document.getElementById('kpiRate').textContent = '偏差率 ' + (d.variance_rate * 100).toFixed(1) + '%';
+      document.getElementById('kpiExec').textContent = (d.budget_exec_rate * 100).toFixed(1) + '%';
+      document.getElementById('kpiExecSub').textContent = '年度 ' + fmt(d.budget_annual) + ' / 已用 ' + fmt(d.budget_used);
+
+      // 科目盈亏
+      let cat = '<div class="row g-2">';
+      d.categories.forEach(c => {
+        const pct = d.budget_total > 0 ? Math.min(100, Math.abs(c.variance) / d.budget_total * 100) : 0;
+        const color = c.level === 'red' ? '#dc3545' : c.level === 'yellow' ? '#ffc107' : '#28a745';
+        cat += '<div class="col-12 bar-row">'
+             + '<div class="d-flex justify-content-between small"><span>' + c.label + '</span>'
+             + '<span>计划 ' + fmt(c.budget) + ' / 实际 ' + fmt(c.actual) + ' / 节超 ' + fmt(c.variance) + ' ' + levelBadge(c.level) + '</span></div>'
+             + '<div class="bar-track"><div class="bar-fill" style="width:' + pct.toFixed(1) + '%;background:' + color + '"></div></div>'
+             + '</div>';
+      });
+      cat += '</div>';
+      document.getElementById('catPanel').innerHTML = cat || '<div class="text-muted">无数据</div>';
+
+      // 预警分布
+      const lv = d.warn_levels;
+      document.getElementById('warnPanel').innerHTML =
+        '<div class="d-flex justify-content-around text-center">'
+        + '<div><div class="kpi-value text-success">' + lv.green + '</div><div class="kpi-sub">绿</div></div>'
+        + '<div><div class="kpi-value text-warning">' + lv.yellow + '</div><div class="kpi-sub">黄</div></div>'
+        + '<div><div class="kpi-value text-danger">' + lv.red + '</div><div class="kpi-sub">红</div></div>'
+        + '</div>';
+
+      // 管控看板
+      let ctrl = '<div class="table-responsive"><table class="table table-sm table-dark mb-0"><thead><tr>'
+               + '<th>科目</th><th class="text-end">年度预算</th><th class="text-end">已用</th><th class="text-end">执行率</th><th class="text-center">状态</th></tr></thead><tbody>';
+      d.controls.forEach(c => {
+        ctrl += '<tr><td>' + c.label + '</td><td class="text-end">' + fmt(c.annual) + '</td>'
+              + '<td class="text-end">' + fmt(c.used) + '</td><td class="text-end">' + (c.rate * 100).toFixed(1) + '%</td>'
+              + '<td class="text-center">' + levelBadge(c.status) + '</td></tr>';
+      });
+      ctrl += '</tbody></table></div>';
+      document.getElementById('ctrlPanel').innerHTML = ctrl || '<div class="text-muted">无预算控制数据</div>';
+    })
+    .catch(e => { console.error(e); });
+}
+loadDashboard();
+setInterval(loadDashboard, 60000);  // 每 60s 自动刷新
+</script>
+{% endblock %}

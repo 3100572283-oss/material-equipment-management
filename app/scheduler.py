@@ -108,6 +108,24 @@ def init_scheduler(app):
         replace_existing=True
     )
 
+    def cost_profit_job():
+        with app.app_context():
+            from app.cost.services import refresh_profit_analysis, push_profit_warnings
+            try:
+                n = refresh_profit_analysis()
+                sent = push_profit_warnings()
+                print(f"[Scheduler] Cost profit analysis refreshed: {n} rows, warnings pushed: {sent} at {datetime.now()}")
+            except Exception as e:
+                print(f"[Scheduler] Cost profit error: {e}")
+
+    # 每月1日 02:30 刷新盈亏分析并推送预警
+    scheduler.add_job(
+        cost_profit_job,
+        CronTrigger(day=1, hour=2, minute=30),
+        id='cost_profit',
+        replace_existing=True
+    )
+
     scheduler.start()
-    print("APScheduler started: daily_warnings@09:00, inventory_warnings@10:00, cleanup_audit@02:00, cleanup_recycle@03:00")
+    print("APScheduler started: daily_warnings@09:00, inventory_warnings@10:00, cleanup_audit@02:00, cleanup_recycle@03:00, cost_profit@monthly(01 02:30)")
     return scheduler

@@ -18,8 +18,9 @@ from sqlalchemy import func, or_
 from app import db
 from app.cost import cost_bp
 from app.cost.models import (ResponsibilityCostBudget, ResponsibilityCostBudgetItem,
-                             CostCategory, BudgetControl, BudgetAdjustment)
-from app.cost.services import BudgetService, CATEGORY_LABELS
+                             CostCategory, BudgetControl, BudgetAdjustment, CostProfitAnalysis)
+from app.cost.services import BudgetService, CATEGORY_LABELS, refresh_profit_analysis, \
+    push_profit_warnings, dashboard_aggregate
 from app.models import Contract, ContractItem, StockOut, StockOutItem, Material, Project
 from app.utils import apply_data_scope
 from app.decorators import permission_required
@@ -271,12 +272,80 @@ def api_budget_auto_gen():
     return redirect(url_for('cost.budget_list'))
 
 
-# ---------------------------------------------------------------- 盈亏分析（P3 占位）
+# ---------------------------------------------------------------- 盈亏穿透分析（P3）
 @cost_bp.route('/profit/')
 @login_required
 @permission_required('cost:profit:view')
 def profit():
-    return render_template('cost/profit.html')
+    pid = _current_pid()
+    if not pid:
+        if not (current_user.get_data_scope() == 'all' or current_user.is_admin()):
+            flash('请先选择项目。', 'warning')
+            return redirect(url_for('main.index'))
+    period = request.args.get('period') or datetime.now().strftime('%Y-%m')
+    rows = CostProfitAnalysis.query.filter_by(
+        project_id=pid, period_month=period
+    ).order_by(CostProfitAnalysis.category_code).all() if pid else []
+
+    # 实时 WBS 穿透：本项目部责任预算节超（取自责任成本测算实时聚合）
+    drill = []
+    if pid:
+        for b in ResponsibilityCostBudget.query.filter_by(project_id=pid).all():
+            v = _compute_budget_variance(b)
+            drill.append({
+                'wbs': b.wbs_code, 'name': b.wbs_name,
+                'cat': b.category_code,
+                'budget': v['planned_total'], 'actual': v['actual_total'],
+                'variance': v['variance_total'],
+                'level': _warn_level_of(v['planned_total'], v['variance_total']),
+            })
+
+    return render_template('cost/profit.html', rows=rows, period=period, drill=drill,
+                           labels=CATEGORY_LABELS)
+
+
+def _warn_level_of(budget, variance):
+    """由计划/节超推导预警级别（与 services._warn_level 一致，供页面 WBS 穿透用）。"""
+    from app.cost.services import _warn_level
+    rate = variance / budget if budget > 0 else (0.0 if variance == 0 else -1.0)
+    return _warn_level(rate)
+
+
+@cost_bp.route('/profit/refresh', methods=['POST'])
+@login_required
+@permission_required('cost:profit:view')
+def profit_refresh():
+    """手动刷新盈亏分析（并推送红/黄预警）。"""
+    pid = _current_pid()
+    period = request.form.get('period') or datetime.now().strftime('%Y-%m')
+    try:
+        n = refresh_profit_analysis(pid, period)
+        sent = push_profit_warnings(pid, period)
+        flash('盈亏分析已刷新（%d 条科目），预警推送 %d 条。' % (n, sent), 'success')
+    except Exception as e:
+        flash('刷新失败：%s' % e, 'danger')
+    return redirect(url_for('cost.profit', period=period))
+
+
+# ---------------------------------------------------------------- 大屏聚合接口（P4）
+@cost_bp.route('/api/dashboard')
+@login_required
+@permission_required('cost:profit:view')
+def api_dashboard():
+    pid = _current_pid()
+    if not pid:
+        return jsonify({'error': 'no_project', 'msg': '请先选择项目'}), 400
+    period = request.args.get('period') or datetime.now().strftime('%Y-%m')
+    data = dashboard_aggregate(pid, period)
+    return jsonify(data)
+
+
+@cost_bp.route('/bigscreen')
+@login_required
+@permission_required('cost:profit:view')
+def bigscreen():
+    """数据可视化大屏（M4 联动页）：JS 拉取 /cost/api/dashboard 渲染。"""
+    return render_template('cost/bigscreen.html')
 
 
 # ---------------------------------------------------------------- 预算管控看板（P2）

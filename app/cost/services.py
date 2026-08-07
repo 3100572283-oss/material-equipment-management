@@ -13,9 +13,11 @@
 from datetime import datetime
 from flask import current_app
 from flask_login import current_user
+from sqlalchemy import func
 
 from app import db
-from app.cost.models import (BudgetControl, BudgetControlDetail, BudgetAdjustment)
+from app.cost.models import (BudgetControl, BudgetControlDetail, BudgetAdjustment,
+                             CostProfitAnalysis, ResponsibilityCostBudget)
 
 
 # 预算科目中文名（与 cost_categories.cost_type 对齐）
@@ -219,3 +221,225 @@ def safe_record_spend(project_id, category_code, amount, ref_type, ref_id, opera
         except Exception:
             pass
         return {'allowed': True, 'status': 'error', 'reason': str(e)}
+
+
+# ======================================================================
+# P3 盈亏穿透预警（cost_profit_analysis 物化 + 红/黄/绿三级 + 推送）
+# ======================================================================
+
+# 参与盈亏分析的四大成本科目（与设计文档 §3.4 对齐）
+PROFIT_CATEGORIES = ['material', 'equipment', 'subcontract', 'other']
+
+# 预警阈值：偏差率 = (计划 - 实际) / 计划
+#   偏差率 < -5%  → 红（实际超计划 5% 以上）
+#   -5% ≤ 偏差率 < 0 → 黄（实际略超计划）
+#   偏差率 >= 0   → 绿（未超计划）
+WARN_RED_RATE = -0.05
+
+
+def _actual_cost_by_category(project_id):
+    """按项目聚合四大科目实际成本（元）。
+
+    - material  : 物资出库 FIFO 金额（JOIN StockOut 按 project_id 隔离）
+    - equipment : 设备租赁结算总额（经 Equipment.project_id 隔离）
+    - subcontract: 分包领料扣款总额（直接 project_id）
+    - other     : 对账结算不含税合计（直接 project_id）
+    """
+    from app.models import (StockOut, StockOutItem, Equipment,
+                            EquipmentRentSettle, SubcontractDeduction, Reconciliation)
+
+    mat = db.session.query(func.coalesce(func.sum(StockOutItem.amount), 0)).join(
+        StockOut, StockOut.id == StockOutItem.stock_out_id
+    ).filter(StockOut.project_id == project_id).scalar() or 0
+
+    eq = db.session.query(func.coalesce(func.sum(EquipmentRentSettle.total_amount), 0)).join(
+        Equipment, Equipment.id == EquipmentRentSettle.equipment_id
+    ).filter(Equipment.project_id == project_id).scalar() or 0
+
+    sub = db.session.query(func.coalesce(func.sum(SubcontractDeduction.total_amount), 0)).filter(
+        SubcontractDeduction.project_id == project_id
+    ).scalar() or 0
+
+    oth = db.session.query(func.coalesce(func.sum(Reconciliation.total_amount_without_tax), 0)).filter(
+        Reconciliation.project_id == project_id
+    ).scalar() or 0
+
+    return {
+        'material': float(mat),
+        'equipment': float(eq),
+        'subcontract': float(sub),
+        'other': float(oth),
+    }
+
+
+def _warn_level(variance_rate):
+    """偏差率 → 预警级别。"""
+    if variance_rate < WARN_RED_RATE:
+        return 'red'
+    if variance_rate < 0:
+        return 'yellow'
+    return 'green'
+
+
+def refresh_profit_analysis(project_id=None, period_month=None):
+    """刷新盈亏分析物化表（按月、按项目）。
+
+    每个项目每个科目生成一行（wbs_code='*' 表示科目级汇总），聚合：
+      计划 = SUM(responsibility_cost_budget.budget_amount WHERE category_code)
+      实际 = _actual_cost_by_category 对应科目
+      节超 = 计划 - 实际；偏差率 = 节超 / 计划；预警级别 = _warn_level
+    幂等：同 (project, period, '*', category) 更新而非新增。
+    返回刷新的行数。
+    """
+    from app.models import Project
+
+    period = period_month or datetime.now().strftime('%Y-%m')
+    projects = [Project.query.get(project_id)] if project_id else Project.query.all()
+    count = 0
+    for proj in projects:
+        if not proj:
+            continue
+        pid = proj.id
+        actual = _actual_cost_by_category(pid)
+
+        # 计划成本按科目汇总 + 记录主要责任人岗位
+        budget_by_cat = {c: 0.0 for c in PROFIT_CATEGORIES}
+        owner_by_cat = {}
+        for b in ResponsibilityCostBudget.query.filter_by(project_id=pid).all():
+            c = b.category_code or 'other'
+            if c not in budget_by_cat:
+                budget_by_cat[c] = 0.0
+            budget_by_cat[c] += float(b.budget_amount or 0)
+            if b.owner_role and c not in owner_by_cat:
+                owner_by_cat[c] = b.owner_role
+
+        for c in PROFIT_CATEGORIES:
+            bud = round(budget_by_cat.get(c, 0.0), 2)
+            act = round(actual.get(c, 0.0), 2)
+            variance = round(bud - act, 2)
+            rate = round(variance / bud, 4) if bud > 0 else (0.0 if act == 0 else -1.0)
+            level = _warn_level(rate)
+
+            row = CostProfitAnalysis.query.filter_by(
+                project_id=pid, period_month=period, wbs_code='*', category_code=c
+            ).first()
+            if row is None:
+                row = CostProfitAnalysis(
+                    project_id=pid, period_month=period, wbs_code='*', category_code=c)
+                db.session.add(row)
+            row.budget_amount = bud
+            row.actual_amount = act
+            row.variance = variance
+            row.variance_rate = rate
+            row.warn_level = level
+            row.owner_role = owner_by_cat.get(c)
+            row.pushed_at = None
+            count += 1
+    db.session.commit()
+    return count
+
+
+def push_profit_warnings(project_id=None, period_month=None):
+    """对红/黄级盈亏分析行，按 owner_role 推送站内预警消息。
+
+    返回推送条数。异常被吞掉（不影响主流程）。
+    """
+    from app.notification_service import send_message, MSG_TYPE_WARNING
+    from app.auth_core.models import AuthRole, AuthUserRole
+
+    try:
+        period = period_month or datetime.now().strftime('%Y-%m')
+        q = CostProfitAnalysis.query.filter_by(period_month=period)
+        if project_id:
+            q = q.filter_by(project_id=project_id)
+        rows = q.filter(CostProfitAnalysis.warn_level.in_(['red', 'yellow'])).all()
+
+        sent = 0
+        for r in rows:
+            if not r.owner_role:
+                continue
+            role = AuthRole.query.filter_by(role_code=r.owner_role).first()
+            if not role:
+                continue
+            user_ids = [ur.user_id for ur in AuthUserRole.query.filter_by(role_id=role.id).all()]
+            if not user_ids:
+                continue
+            cat_label = CATEGORY_LABELS.get(r.category_code, r.category_code)
+            level_cn = '红' if r.warn_level == 'red' else '黄'
+            title = '盈亏预警（%s）' % level_cn
+            content = ('项目 %d 的%s在 %s 盈亏预警：计划 %.2f / 实际 %.2f / 节超 %.2f（偏差 %.1f%%）。'
+                       % (r.project_id, cat_label, r.period_month,
+                          float(r.budget_amount or 0), float(r.actual_amount or 0),
+                          float(r.variance or 0), float(r.variance_rate or 0) * 100))
+            for uid in user_ids:
+                send_message(user_id=uid, msg_type=MSG_TYPE_WARNING, title=title,
+                             content=content, biz_type='cost_profit', url='/cost/profit/')
+                sent += 1
+            r.pushed_at = datetime.now()
+        db.session.commit()
+        return sent
+    except Exception as e:
+        try:
+            current_app.logger.warning('[ProfitAnalysis] 预警推送失败(不影响主流程): %s' % e)
+        except Exception:
+            pass
+        return 0
+
+
+def dashboard_aggregate(project_id, period_month=None):
+    """大屏/看板聚合接口数据（P4）。
+
+    返回 dict：计划/实际/节超/偏差率、预警三级分布、预算执行率、科目明细、管控看板。
+    """
+    from app.cost.models import CostProfitAnalysis  # 本模块已导入，保险起见
+
+    period = period_month or datetime.now().strftime('%Y-%m')
+    rows = CostProfitAnalysis.query.filter_by(project_id=project_id, period_month=period).all()
+
+    budget_total = sum(float(r.budget_amount or 0) for r in rows)
+    actual_total = sum(float(r.actual_amount or 0) for r in rows)
+    variance_total = round(budget_total - actual_total, 2)
+    variance_rate = round(variance_total / budget_total, 4) if budget_total > 0 else 0.0
+
+    level_counts = {'green': 0, 'yellow': 0, 'red': 0}
+    for r in rows:
+        level_counts[r.warn_level] = level_counts.get(r.warn_level, 0) + 1
+
+    board = BudgetService.control_board(project_id)
+    used = sum(r['used'] for r in board)
+    annual = sum(r['annual'] for r in board)
+    exec_rate = round(used / annual, 4) if annual > 0 else 0.0
+
+    return {
+        'project_id': project_id,
+        'period': period,
+        'budget_total': round(budget_total, 2),
+        'actual_total': round(actual_total, 2),
+        'variance_total': variance_total,
+        'variance_rate': variance_rate,
+        'warn_levels': level_counts,
+        'budget_annual': round(annual, 2),
+        'budget_used': round(used, 2),
+        'budget_exec_rate': exec_rate,
+        'categories': [
+            {
+                'category': r.category_code,
+                'label': CATEGORY_LABELS.get(r.category_code, r.category_code),
+                'budget': float(r.budget_amount or 0),
+                'actual': float(r.actual_amount or 0),
+                'variance': float(r.variance or 0),
+                'rate': float(r.variance_rate or 0),
+                'level': r.warn_level,
+            } for r in rows
+        ],
+        'controls': [
+            {
+                'category': r['category_code'],
+                'label': r['label'],
+                'annual': r['annual'],
+                'used': r['used'],
+                'rate': r['rate'],
+                'status': r['status'],
+            } for r in board
+        ],
+    }
