@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% block title %}{{ tpl.name }} - 字段映射{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>{{ tpl.name }}
+      <span class="text-muted small ms-2">{{ tpl.code }} · {{ tpl.version }}</span></h4>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-secondary btn-sm" onclick="previewTpl()">
+        <i class="bi bi-eye"></i> 预览渲染结果</button>
+      <a class="btn btn-outline-secondary btn-sm"
+         href="{{ url_for('integration.template_list') }}">返回列表</a>
+    </div>
+  </div>
+
+  {# ===== 模板信息 ===== #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-light">模板信息</div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('integration.template_save', id=tpl.id) }}"
+            class="row g-2 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-md-3"><label class="form-label small">名称</label>
+          <input class="form-control form-control-sm" name="name" value="{{ tpl.name }}"></div>
+        <div class="col-md-2"><label class="form-label small">目标平台</label>
+          <input class="form-control form-control-sm" name="target_platform"
+                 value="{{ tpl.target_platform }}"></div>
+        <div class="col-md-1"><label class="form-label small">版本</label>
+          <input class="form-control form-control-sm" name="version" value="{{ tpl.version }}"></div>
+        <div class="col-md-3"><label class="form-label small">备注</label>
+          <input class="form-control form-control-sm" name="remark" value="{{ tpl.remark or '' }}"></div>
+        <div class="col-md-1">
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="is_active"
+                 id="act" {% if tpl.is_active %}checked{% endif %}>
+            <label class="form-check-label small" for="act">启用</label></div>
+        </div>
+        <div class="col-md-2 d-flex gap-2">
+          {% if current_user.has_permission('integration:template:edit') %}
+          <button class="btn btn-primary btn-sm">保存</button>
+          {% if not tpl.is_builtin %}
+          <button class="btn btn-outline-danger btn-sm" formnovalidate
+                  formaction="{{ url_for('integration.template_delete', id=tpl.id) }}"
+                  onclick="return confirm('确认删除该模板？');">删除</button>
+          {% endif %}
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ===== 字段映射 ===== #}
+  <form method="post" action="{{ url_for('integration.field_batch_save', id=tpl.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+      <span>字段映射（{{ tpl.fields|length }} 列）</span>
+      {% if current_user.has_permission('integration:template:edit') %}
+      <button class="btn btn-primary btn-sm" type="submit">
+        <i class="bi bi-save"></i> 整表保存</button>
+      {% endif %}
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:70px">列序</th>
+              <th style="width:24%">目标平台列名</th>
+              <th style="width:26%">取值源（本系统）</th>
+              <th style="width:16%">默认值</th>
+              <th style="width:70px">必填</th>
+              <th>说明</th>
+              <th class="text-end" style="width:70px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for f in tpl.fields %}
+            <tr>
+              <td><input class="form-control form-control-sm" type="number"
+                         name="f{{ f.id }}_seq" value="{{ f.seq or 0 }}"></td>
+              <td><input class="form-control form-control-sm"
+                         name="f{{ f.id }}_target_field" value="{{ f.target_field }}"></td>
+              <td>
+                <select class="form-select form-select-sm" name="f{{ f.id }}_source_expr">
+                  <option value="">（留空列）</option>
+                  {% for k, label in FIELD_SOURCES.items() %}
+                  <option value="{{ k }}" {% if f.source_expr == k %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><input class="form-control form-control-sm"
+                         name="f{{ f.id }}_default_value" value="{{ f.default_value or '' }}"></td>
+              <td class="text-center"><input class="form-check-input" type="checkbox"
+                         name="f{{ f.id }}_required" {% if f.required %}checked{% endif %}></td>
+              <td class="small text-muted">{{ f.remark or '' }}</td>
+              <td class="text-end">
+                {% if current_user.has_permission('integration:template:edit') %}
+                <button class="btn btn-outline-danger btn-sm" formnovalidate
+                        formaction="{{ url_for('integration.field_delete', fid=f.id) }}"
+                        onclick="return confirm('删除该字段？');">×</button>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7" class="text-muted p-3">暂无字段，请在下方添加</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  </form>
+
+  {% if current_user.has_permission('integration:template:edit') %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-light">添加字段</div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('integration.field_add', id=tpl.id) }}"
+            class="row g-2 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-md-3"><label class="form-label small">目标平台列名</label>
+          <input class="form-control form-control-sm" name="target_field" required></div>
+        <div class="col-md-3"><label class="form-label small">取值源</label>
+          <select class="form-select form-select-sm" name="source_expr">
+            <option value="">（留空列）</option>
+            {% for k, label in FIELD_SOURCES.items() %}
+            <option value="{{ k }}">{{ label }}</option>{% endfor %}
+          </select></div>
+        <div class="col-md-2"><label class="form-label small">默认值</label>
+          <input class="form-control form-control-sm" name="default_value"></div>
+        <div class="col-md-2"><label class="form-label small">说明</label>
+          <input class="form-control form-control-sm" name="remark"></div>
+        <div class="col-md-1"><div class="form-check">
+          <input class="form-check-input" type="checkbox" name="required" id="rq">
+          <label class="form-check-label small" for="rq">必填</label></div></div>
+        <div class="col-md-1"><button class="btn btn-primary btn-sm w-100">添加</button></div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ===== 预览 ===== #}
+  <div class="card shadow-sm d-none" id="previewCard">
+    <div class="card-header bg-light">渲染预览（当前项目最近 5 条准入档案）</div>
+    <div class="card-body p-0">
+      <div class="table-responsive" style="max-height:420px;overflow:auto;">
+        <table class="table table-sm table-bordered mb-0 small" id="previewTable"></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function previewTpl() {
+  fetch("{{ url_for('integration.template_preview', id=tpl.id) }}")
+    .then(r => r.json())
+    .then(d => {
+      const card = document.getElementById('previewCard');
+      const tb = document.getElementById('previewTable');
+      let html = '<thead class="table-light"><tr>';
+      d.headers.forEach(h => { html += '<th class="text-nowrap">' + h + '</th>'; });
+      html += '</tr></thead><tbody>';
+      if (!d.rows.length) {
+        html += '<tr><td colspan="' + d.headers.length +
+                '" class="text-muted p-3">当前项目暂无准入档案数据</td></tr>';
+      }
+      d.rows.forEach(row => {
+        html += '<tr>';
+        row.forEach(v => { html += '<td class="text-nowrap">' + (v === null ? '' : v) + '</td>'; });
+        html += '</tr>';
+      });
+      html += '</tbody>';
+      tb.innerHTML = html;
+      card.classList.remove('d-none');
+      card.scrollIntoView({behavior: 'smooth'});
+    })
+    .catch(e => alert('预览失败：' + e));
+}
+</script>
+{% endblock %}

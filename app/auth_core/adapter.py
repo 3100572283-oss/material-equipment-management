@@ -43,6 +43,8 @@ MODULE_CN = {
     'module_turnover': '周转材管理', 'org_sync': '组织同步', 'report': '统计报表',
     'stock': '库存管理', 'subcontract': '分包商管理', 'system': '系统与权限',
     'tools': '行业工具', 'turnover': '周转材管理', 'workbench': '工作台',
+    'subcontractor': '分包商核验', 'invoice': '票据管理', 'bigscreen': '数据大屏',
+    'integration': '外部对接',
 }
 
 # 资源中文名兜底（仅用于无对应 SysMenu.permission 的权限点；多数资源名由 SysMenu.menu_name 派生）
@@ -53,6 +55,7 @@ RESOURCE_CN = {
     ('module_equipment', 'equipment'): '设备台账',
     ('module_industry_tools', 'industry_tools'): '行业工具',
     ('module_turnover', 'turnover_material'): '周转材管理',
+    ('integration', 'datasource'): '外部数据源', ('integration', 'template'): '导出模板',
 }
 
 # 铁建岗位角色 → 默认权限授予规则（方案 A：业务模块权限纳入 SSOT 并按岗位分配）
@@ -72,13 +75,13 @@ DEFAULT_ROLE_PERMS = {
         'org_sync:view',
         'system:org:view', 'system:role:view',
         'system:user:view', 'system:user:create', 'system:user:edit', 'system:user:reset_pwd',
-        'subcontractor', 'invoice', 'bigscreen',
+        'subcontractor', 'invoice', 'bigscreen', 'integration',
     ],
     'chief_engineer': [
         'cost', 'contract', 'material:view', 'equipment', 'module_equipment', 'bigscreen',
         'subcontract:view', 'report', 'workbench', 'basic:view', 'master:view',
         'stock:view', 'turnover:view', 'help', 'ai:view', 'subcontractor:view',
-        'invoice:threeflow:view',
+        'invoice:threeflow:view', 'integration:template:view',
     ],
     'material_manager': [
         'material', 'stock', 'turnover', 'module_turnover', 'master:view', 'basic:view',
@@ -96,12 +99,12 @@ DEFAULT_ROLE_PERMS = {
     'cost_accountant': [
         'cost', 'contract:view', 'report', 'workbench', 'basic:view', 'material:view', 'bigscreen',
         'equipment:view', 'subcontract:view', 'stock:view', 'turnover:view', 'help',
-        'invoice',
+        'invoice', 'integration:template:view',
     ],
     'contract_admin': [
         'contract', 'subcontract', 'cost:view', 'report', 'basic:view', 'material:view', 'bigscreen',
         'equipment:view', 'stock:view', 'workbench', 'help', 'subcontractor:view',
-        'invoice:threeflow:view',
+        'invoice:threeflow:view', 'integration:template:view', 'integration:template:edit',
     ],
     'safety_director': [
         'equipment:maintenance:view', 'equipment:view', 'module_equipment:view',
@@ -129,7 +132,7 @@ DEFAULT_ROLE_PERMS = {
         'system:org:view', 'system:org:create', 'system:org:edit',
         'system:role:view', 'system:role:grant',
         'system:user:view', 'system:user:create', 'system:user:edit',
-        'system:user:reset_pwd', 'system:user:delete', 'bigscreen',
+        'system:user:reset_pwd', 'system:user:delete', 'bigscreen', 'integration',
     ],
     'finance_user': [  # 财务人员
         'cost', 'contract', 'subcontract:view', 'report', 'workbench', 'basic:view',

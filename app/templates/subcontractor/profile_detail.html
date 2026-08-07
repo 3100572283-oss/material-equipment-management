@@ -16,9 +16,33 @@
             class="d-inline">
         <button class="btn btn-outline-info" type="submit">重新核查</button>
       </form>
+      <form method="post" action="{{ url_for('subcontractor.profile_recheck', id=profile.id) }}"
+            class="d-inline" title="跳过缓存，强制重新调用外部接口（会消耗调用次数）">
+        <input type="hidden" name="force_refresh" value="on">
+        <button class="btn btn-outline-warning" type="submit">强制刷新核查</button>
+      </form>
       {% endif %}
       <a href="{{ url_for('subcontractor.profile_export', id=profile.id) }}"
-         class="btn btn-outline-success">导出资料包</a>
+         class="btn btn-outline-success">资料包(Word)</a>
+      {% if templates %}
+      <div class="btn-group btn-group-sm">
+        <a href="{{ url_for('subcontractor.profile_export_xlsx', id=profile.id) }}"
+           class="btn btn-success">按模板导出(Excel)</a>
+        <button type="button" class="btn btn-success dropdown-toggle dropdown-toggle-split"
+                data-bs-toggle="dropdown"></button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          {% for t in templates %}
+          <li><a class="dropdown-item small"
+                 href="{{ url_for('subcontractor.profile_export_xlsx', id=profile.id, tpl=t.code) }}">
+              {{ t.name }} <span class="text-muted">({{ t.version }})</span></a></li>
+          {% endfor %}
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item small text-warning"
+                 href="{{ url_for('subcontractor.profile_export_xlsx', id=profile.id, ignore=1) }}">
+              忽略必填校验强制导出</a></li>
+        </ul>
+      </div>
+      {% endif %}
       {% if current_user.has_permission('subcontractor:profile:review') %}
       {% if profile.admit_status != 'approved' %}
       <form method="post" action="{{ url_for('subcontractor.profile_approve', id=profile.id) }}"
@@ -37,6 +61,43 @@
 
   {% if profile.blacklist_hit %}
   <div class="alert alert-danger py-2">⚠ 该分包商命中黑名单，不可准入通过。</div>
+  {% endif %}
+
+  {% if missing_fields %}
+  <div class="alert alert-warning py-2 small">
+    <b>报送资料不完整</b>：按当前导出模板校验，以下必填项为空 —
+    {{ missing_fields|join('、') }}。补齐后方可导出报送。
+  </div>
+  {% endif %}
+
+  {% if qcc_detail.get('diffs') %}
+  <div class="card border-warning shadow-sm mb-3">
+    <div class="card-header bg-warning bg-opacity-10 py-2">
+      <b>工商登记信息比对</b>
+      <span class="text-muted small ms-2">系统台账 vs 第三方工商数据，发现 {{ qcc_detail['diffs']|length }} 处差异</span>
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0 small">
+        <thead class="table-light"><tr>
+          <th style="width:20%">字段</th><th style="width:35%">系统台账</th>
+          <th style="width:35%">工商登记</th><th>提示</th></tr></thead>
+        <tbody>
+        {% for d in qcc_detail['diffs'] %}
+          <tr class="{% if d.level == 'danger' %}table-danger{% elif d.level == 'warn' %}table-warning{% endif %}">
+            <td>{{ d.field }}</td>
+            <td>{{ d.local }}</td>
+            <td><b>{{ d.remote }}</b></td>
+            <td class="text-muted">
+              {% if d.level == 'danger' %}登记状态异常，需重点关注
+              {% elif d.level == 'fill' %}系统台账为空，建议补录
+              {% else %}不一致，请人工确认以工商登记为准{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
   {% endif %}
 
   <div class="collapse mb-3" id="rejectBox">
@@ -202,14 +263,66 @@
     </div>
   </div>
 
-  {# 企查查快照 #}
+  {# 工商核验快照 #}
   <div class="card shadow-sm">
-    <div class="card-header bg-light">企查查核验快照</div>
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+      <span>工商信息核验快照（企查查）</span>
+      {% if current_user.has_permission('integration:datasource:view') %}
+      <a class="small text-decoration-none" href="{{ url_for('integration.datasource_list') }}">
+        <i class="bi bi-gear"></i> 数据源配置</a>
+      {% endif %}
+    </div>
     <div class="card-body small">
       {% if qcc %}
-      <div><b>核验时间：</b>{{ qcc.checked_at }} ｜ <b>状态：</b>{{ qcc.status }}</div>
-      {% if qcc.raw_json %}<pre class="bg-light p-2 mt-2" style="max-height:200px;overflow:auto;">{{ qcc.raw_json }}</pre>{% endif %}
-      {% else %}<span class="text-muted">暂无快照（未配置企查查 API Key 时由人工核验）</span>{% endif %}
+      <div class="mb-2">
+        <b>核验时间：</b>{{ qcc.checked_at }} ｜
+        <b>状态：</b>
+        {% if qcc.status == 'ok' %}<span class="badge bg-success">核验成功</span>
+        {% elif qcc.status == 'empty' %}<span class="badge bg-secondary">未查询到数据</span>
+        {% elif qcc.status == 'manual' %}<span class="badge bg-info text-dark">人工核验</span>
+        {% else %}<span class="badge bg-danger">{{ qcc.status }}</span>{% endif %}
+        {% if qcc_detail.get('from_cache') %}
+        <span class="badge bg-light text-dark border">缓存结果</span>{% endif %}
+      </div>
+
+      {% set basic = qcc_detail.get('basic') or {} %}
+      {% if basic %}
+      <div class="row g-2 mb-2">
+        <div class="col-md-4"><b>登记名称：</b>{{ basic.get('name') or '-' }}</div>
+        <div class="col-md-4"><b>信用代码：</b>{{ basic.get('credit_code') or '-' }}</div>
+        <div class="col-md-4"><b>法定代表人：</b>{{ basic.get('legal_person') or '-' }}</div>
+        <div class="col-md-4"><b>登记状态：</b>{{ basic.get('status') or '-' }}</div>
+        <div class="col-md-4"><b>注册资本：</b>{{ basic.get('reg_capital') or '-' }}</div>
+        <div class="col-md-4"><b>成立日期：</b>{{ basic.get('start_date') or '-' }}</div>
+        <div class="col-md-12"><b>注册地址：</b>{{ basic.get('address') or '-' }}</div>
+      </div>
+      {% endif %}
+
+      {% set hits = qcc_detail.get('list_hits') or {} %}
+      {% if hits %}
+      <div class="mb-2"><b>外部名录核查：</b>
+        {% for k, v in hits.items() %}
+          {% if v %}<span class="badge bg-danger me-1">{{ k }} {{ v }} 条</span>
+          {% else %}<span class="badge bg-success me-1">{{ k }} 未命中</span>{% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if qcc_detail.get('message') %}
+      <div class="text-muted">接口返回：{{ qcc_detail['message'] }}</div>
+      {% endif %}
+
+      {% if qcc.raw_json %}
+      <a class="small" data-bs-toggle="collapse" href="#rawJson">查看原始快照 JSON</a>
+      <div class="collapse" id="rawJson">
+        <pre class="bg-light p-2 mt-2" style="max-height:240px;overflow:auto;">{{ qcc.raw_json }}</pre>
+      </div>
+      {% endif %}
+
+      {% else %}
+      <span class="text-muted">暂无快照。未启用企查查数据源时，由人工核验并录入结论；
+        启用后点击上方「重新核查」自动获取工商登记与失信信息。</span>
+      {% endif %}
     </div>
   </div>
 </div>

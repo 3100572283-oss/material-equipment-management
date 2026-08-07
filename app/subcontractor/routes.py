@@ -119,13 +119,39 @@ def profile_detail(id):
                         .filter_by(profile_id=profile.id).all())
     qcc = (SubcontractorQccSnapshot.query.filter_by(profile_id=profile.id)
            .order_by(SubcontractorQccSnapshot.checked_at.desc()).first())
+
+    # 解析最近一次核验快照中的结构化结论（工商信息 / 差异 / 外部名录命中）
+    qcc_detail = {}
+    if qcc and qcc.raw_json:
+        try:
+            import json as _json
+            parsed = _json.loads(qcc.raw_json)
+            if isinstance(parsed, dict):
+                qcc_detail = parsed
+        except Exception:
+            qcc_detail = {}
+
+    # 可用导出模板 + 必填校验缺口
+    templates, missing_fields = [], []
+    try:
+        from app.integration import services as integ
+        from app.integration.models import ExportTemplate
+        templates = (ExportTemplate.query.filter_by(is_active=True, scene='subcontractor')
+                     .order_by(ExportTemplate.id).all())
+        if templates:
+            missing_fields = integ.validate_template(profile, templates[0])
+    except Exception:
+        pass
+
     return render_template('subcontractor/profile_detail.html',
                            profile=profile, supplier=profile.supplier,
                            qualifications=profile.qualifications,
                            safety_certs=profile.safety_certs,
                            performances=profile.performances,
                            blacklist_checks=blacklist_checks,
-                           qcc=qcc, BLACKLIST_LISTS=BLACKLIST_LISTS,
+                           qcc=qcc, qcc_detail=qcc_detail,
+                           templates=templates, missing_fields=missing_fields,
+                           BLACKLIST_LISTS=BLACKLIST_LISTS,
                            ADMIT_STATUS=ADMIT_STATUS)
 
 
@@ -164,21 +190,94 @@ def profile_reject(id):
 @login_required
 @permission_required('subcontractor:profile:edit')
 def profile_recheck(id):
+    """重新核查：内置 7 类名录比对 + 企查查工商/失信核验（未配置时自动降级人工）。"""
     profile = SubcontractorProfile.query.get_or_404(id)
     hit = run_blacklist_check(profile)
-    # 企查查核验（Adapter 预留）
-    supplier = profile.supplier
-    adapter = QccAdapter(api_key=current_app.config.get('QCC_API_KEY'))
-    result = adapter.verify(credit_code=supplier.credit_code, name=supplier.name)
-    snap = SubcontractorQccSnapshot(profile_id=profile.id, status=result.get('status', 'manual'))
-    if result.get('configured') and result.get('raw'):
-        snap.raw_json = str(result.get('raw'))
-    db.session.add(snap)
-    profile.qcc_status = result.get('status', 'manual')
-    db.session.commit()
-    flash('已重新核查：黑名单%s，企查查状态=%s。'
-          % ('命中' if hit else '未命中', result.get('status')), 'info')
+
+    force = request.form.get('force_refresh') == 'on'
+    from app.integration.services import verify_subcontractor
+    result = verify_subcontractor(profile, operator=_operator(), force_refresh=force)
+
+    msgs = ['内置名录：%s' % ('命中' if hit else '未命中')]
+    if result.get('configured'):
+        msgs.append('工商核验：%s' % result.get('status'))
+        if result.get('from_cache'):
+            msgs.append('（命中缓存，未消耗调用次数）')
+        hits = {k: v for k, v in (result.get('list_hits') or {}).items() if v}
+        if hits:
+            msgs.append('外部名录命中：' + '、'.join('%s×%s' % (k, v) for k, v in hits.items()))
+        if result.get('diffs'):
+            msgs.append('与工商登记存在 %s 处差异，请在下方核对' % len(result['diffs']))
+    else:
+        msgs.append(result.get('message') or '工商核验未启用，已按人工核验处理')
+
+    level = 'warning' if (profile.blacklist_hit or result.get('diffs')) else 'info'
+    flash('｜'.join(msgs), level)
     return redirect(url_for('subcontractor.profile_detail', id=profile.id))
+
+
+@subcontractor_bp.route('/profile/<int:id>/export_xlsx')
+@login_required
+@permission_required('subcontractor:profile:view')
+def profile_export_xlsx(id):
+    """按导出模板生成 xlsx（铁建云链等平台批量导入格式）。"""
+    from app.integration import services as integ
+    profile = SubcontractorProfile.query.get_or_404(id)
+    tpl = integ.get_active_template(request.args.get('tpl'))
+    if not tpl:
+        flash('未找到可用的导出模板，请先在「导出模板管理」中配置。', 'warning')
+        return redirect(url_for('subcontractor.profile_detail', id=profile.id))
+
+    missing = integ.validate_template(profile, tpl)
+    if missing and request.args.get('ignore') != '1':
+        flash('以下必填字段为空，无法导出：%s。补齐后重试，或点击「忽略校验导出」。'
+              % '、'.join(missing), 'danger')
+        return redirect(url_for('subcontractor.profile_detail', id=profile.id))
+
+    buf = integ.export_xlsx([profile], tpl)
+    supplier = profile.supplier
+    fname = '%s_%s.xlsx' % (tpl.name, (supplier.name if supplier else profile.id))
+    db.session.add(SubcontractorAdmitPackage(
+        profile_id=profile.id, file_name=fname, template_version=tpl.version,
+        exported_by=_operator()))
+    db.session.commit()
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@subcontractor_bp.route('/export_batch')
+@login_required
+@permission_required('subcontractor:profile:view')
+def profile_export_batch():
+    """批量导出当前项目下的准入台账（按模板列，可直接报送平台）。"""
+    from app.integration import services as integ
+    pid = _current_pid()
+    q = SubcontractorProfile.query
+    if pid:
+        q = q.filter_by(project_id=pid)
+    q = apply_data_scope(q, SubcontractorProfile)
+    status = request.args.get('status', '').strip()
+    if status:
+        q = q.filter_by(admit_status=status)
+    profiles = q.order_by(SubcontractorProfile.created_at.desc()).all()
+    if not profiles:
+        flash('当前范围内没有可导出的准入档案。', 'warning')
+        return redirect(url_for('subcontractor.profile_list'))
+
+    tpl = integ.get_active_template(request.args.get('tpl'))
+    if not tpl:
+        flash('未找到可用的导出模板，请先在「导出模板管理」中配置。', 'warning')
+        return redirect(url_for('subcontractor.profile_list'))
+
+    buf = integ.export_xlsx(profiles, tpl)
+    fname = '%s_台账_%s.xlsx' % (tpl.name, datetime.now().strftime('%Y%m%d'))
+    for p in profiles:
+        db.session.add(SubcontractorAdmitPackage(
+            profile_id=p.id, file_name=fname, template_version=tpl.version,
+            exported_by=_operator()))
+    db.session.commit()
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 @subcontractor_bp.route('/profile/<int:id>/export')

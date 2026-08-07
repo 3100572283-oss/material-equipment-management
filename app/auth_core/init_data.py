@@ -65,6 +65,11 @@ PERM_SEED = [
     ('invoice', 'threeflow', 'book', 'invoice:threeflow:book'),
     # —— 独立数据可视化大屏（第三终端）——
     ('bigscreen', 'view', 'view', 'bigscreen:view:view'),
+    # —— 外部对接中心（数据源凭据 + 导出模板）——
+    ('integration', 'datasource', 'view', 'integration:datasource:view'),
+    ('integration', 'datasource', 'edit', 'integration:datasource:edit'),
+    ('integration', 'template', 'view', 'integration:template:view'),
+    ('integration', 'template', 'edit', 'integration:template:edit'),
     # —— 权限中台自身管理权限（三页 UI 按钮级控制）——
     ('system', 'org', 'view', 'system:org:view'),
     ('system', 'org', 'create', 'system:org:create'),

@@ -1130,6 +1130,10 @@ def create_app(config_class=Config):
     from app.bigscreen import bigscreen_bp
     app.register_blueprint(bigscreen_bp, url_prefix='/bigscreen')
 
+    # 外部对接中心（企查查数据源 + 铁建云链导出模板，全部后台可配置）
+    from app.integration import integration_bp
+    app.register_blueprint(integration_bp, url_prefix='/integration')
+
     from app.stock_in import bp as stock_in_bp
     app.register_blueprint(stock_in_bp, url_prefix='/stock_in')
 
@@ -1515,6 +1519,12 @@ def create_app(config_class=Config):
             # M0 权限中台：组织树骨架 + 铁建岗位角色模板 + 超级管理员种子
             from app.auth_core.init_data import init_auth_core_data
             init_auth_core_data()
+            # 外部对接中心：内置数据源占位 + 企查查接口目录 + 铁建云链导出模板（幂等）
+            try:
+                from app.integration.models import ensure_builtin_integration_data
+                ensure_builtin_integration_data()
+            except Exception as _e:
+                app.logger.warning('integration 初始化跳过: %s', _e)
             # 主数据统一改造：建立项目常用关联
             from app.utils import init_master_data_unification
             init_master_data_unification()

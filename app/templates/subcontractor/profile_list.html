@@ -4,11 +4,17 @@
 <div class="container-fluid py-3">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0"><i class="bi bi-person-badge me-2"></i>分包商准入档案</h4>
-    {% if current_user.has_permission('subcontractor:profile:edit') %}
-    <a href="{{ url_for('subcontractor.profile_create') }}" class="btn btn-primary btn-sm">
-      <i class="bi bi-plus-lg"></i> 新建准入档案
-    </a>
-    {% endif %}
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('subcontractor.profile_export_batch', status=status) }}"
+         class="btn btn-outline-success btn-sm" title="按导出模板生成可报送的准入台账（Excel）">
+        <i class="bi bi-file-earmark-spreadsheet"></i> 导出准入台账
+      </a>
+      {% if current_user.has_permission('subcontractor:profile:edit') %}
+      <a href="{{ url_for('subcontractor.profile_create') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg"></i> 新建准入档案
+      </a>
+      {% endif %}
+    </div>
   </div>
 
   <form class="row g-2 mb-3" method="get">

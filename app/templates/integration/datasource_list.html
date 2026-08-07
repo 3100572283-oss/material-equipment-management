@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+{% block title %}外部数据源配置 - 外部对接{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-plug me-2"></i>外部数据源配置</h4>
+    <div class="text-muted small">
+      今日真实调用 <b class="text-primary">{{ today_calls }}</b> 次 ｜ 缓存 {{ cache_count }} 条
+    </div>
+  </div>
+
+  <div class="alert alert-light border small mb-3">
+    <i class="bi bi-info-circle text-primary me-1"></i>
+    API Key 采用加密存储，页面仅掩码回显；<b>留空表示不修改</b>。启用后，分包商准入档案的
+    「重新核查」将自动调用工商/失信接口并回填核查结论；未启用时自动降级为人工录入，不影响主流程。
+  </div>
+
+  {% for c in creds %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+      <span>
+        <b>{{ c.display_name or PROVIDERS.get(c.provider, c.provider) }}</b>
+        <span class="text-muted small ms-2">provider = {{ c.provider }}</span>
+      </span>
+      <span>
+        {% if c.enabled %}<span class="badge bg-success">已启用</span>
+        {% else %}<span class="badge bg-secondary">未启用</span>{% endif %}
+        {% if c.last_test_at %}
+          {% if c.last_test_ok %}<span class="badge bg-info text-dark">最近自检通过</span>
+          {% else %}<span class="badge bg-danger">最近自检失败</span>{% endif %}
+        {% endif %}
+      </span>
+    </div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('integration.datasource_save', id=c.id) }}"
+            class="row g-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-md-3">
+          <label class="form-label small">显示名称</label>
+          <input class="form-control form-control-sm" name="display_name"
+                 value="{{ c.display_name or '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">接口根地址 base_url</label>
+          <input class="form-control form-control-sm" name="base_url"
+                 placeholder="https://api.qichacha.com" value="{{ c.base_url or '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">鉴权方式</label>
+          <select class="form-select form-select-sm" name="auth_style">
+            <option value="header_sign" {% if c.auth_style == 'header_sign' %}selected{% endif %}>
+              header_sign（V4 签名）</option>
+            <option value="plain_key" {% if c.auth_style == 'plain_key' %}selected{% endif %}>
+              plain_key（仅 key）</option>
+          </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="enabled" id="en{{ c.id }}"
+                   {% if c.enabled %}checked{% endif %}>
+            <label class="form-check-label" for="en{{ c.id }}">启用该数据源</label>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label small">API Key（留空=不修改）</label>
+          <input class="form-control form-control-sm" name="api_key" autocomplete="off"
+                 placeholder="{{ c.key_masked or '尚未配置' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">API Secret / SecretKey（留空=不修改）</label>
+          <input class="form-control form-control-sm" name="api_secret" autocomplete="off"
+                 type="password" placeholder="{% if c.api_secret %}已配置{% else %}尚未配置{% endif %}">
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <div class="form-check text-danger">
+            <input class="form-check-input" type="checkbox" name="clear_key" id="ck{{ c.id }}">
+            <label class="form-check-label small" for="ck{{ c.id }}">清空密钥并停用</label>
+          </div>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label small">缓存天数</label>
+          <input class="form-control form-control-sm" name="cache_days" type="number" min="1"
+                 value="{{ c.cache_days or 30 }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">超时（秒）</label>
+          <input class="form-control form-control-sm" name="timeout_sec" type="number" min="1"
+                 value="{{ c.timeout_sec or 10 }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">每日调用上限</label>
+          <input class="form-control form-control-sm" name="daily_quota" type="number" min="0"
+                 placeholder="不限" value="{{ c.daily_quota or '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small">备注（企查查：此处填写连通性自检用的企业名称）</label>
+          <input class="form-control form-control-sm" name="remark" value="{{ c.remark or '' }}">
+        </div>
+
+        {% if c.last_test_msg %}
+        <div class="col-12">
+          <div class="small text-muted">最近自检：{{ c.last_test_at }} — {{ c.last_test_msg }}</div>
+        </div>
+        {% endif %}
+
+        <div class="col-12 d-flex gap-2">
+          {% if current_user.has_permission('integration:datasource:edit') %}
+          <button class="btn btn-primary btn-sm" type="submit">保存配置</button>
+          {% endif %}
+        </div>
+      </form>
+
+      {% if current_user.has_permission('integration:datasource:edit') and c.provider == 'qcc' %}
+      <hr>
+      <div class="d-flex gap-2">
+        <form method="post" action="{{ url_for('integration.datasource_test', id=c.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-outline-primary btn-sm" type="submit">
+            <i class="bi bi-broadcast"></i> 连通性自检（消耗 1 次调用）
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('integration.cache_clear') }}"
+              onsubmit="return confirm('清空后下次核验将重新调用外部接口（产生费用），确认？');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-outline-secondary btn-sm" type="submit">
+            <i class="bi bi-trash"></i> 清空查询缓存
+          </button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {# ============ 接口目录 ============ #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-light">接口目录（官方文档路径变更时在此调整，无需改代码）</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr><th>数据源</th><th>接口</th><th>请求路径</th><th style="width:90px">方法</th>
+                <th style="width:80px">计费</th><th style="width:80px">启用</th>
+                <th class="text-end" style="width:90px">操作</th></tr>
+          </thead>
+          <tbody>
+          {% for e in endpoints %}
+            <tr>
+              <form method="post" action="{{ url_for('integration.endpoint_save', id=e.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <td class="small">{{ PROVIDERS.get(e.provider, e.provider) }}</td>
+              <td class="small">{{ e.name or e.code }}<div class="text-muted">{{ e.code }}</div></td>
+              <td><input class="form-control form-control-sm" name="path" value="{{ e.path or '' }}"></td>
+              <td>
+                <select class="form-select form-select-sm" name="method">
+                  <option {% if e.method == 'GET' %}selected{% endif %}>GET</option>
+                  <option {% if e.method == 'POST' %}selected{% endif %}>POST</option>
+                </select>
+              </td>
+              <td class="small">{% if e.billable %}<span class="badge bg-warning text-dark">按次</span>
+                  {% else %}<span class="badge bg-light text-dark">免费</span>{% endif %}</td>
+              <td><input class="form-check-input" type="checkbox" name="enabled"
+                         {% if e.enabled %}checked{% endif %}></td>
+              <td class="text-end">
+                {% if current_user.has_permission('integration:datasource:edit') %}
+                <button class="btn btn-outline-primary btn-sm" type="submit">保存</button>
+                {% endif %}
+              </td>
+              </form>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ============ 调用流水 ============ #}
+  <div class="card shadow-sm">
+    <div class="card-header bg-light">最近调用流水（最新 20 条）</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>时间</th><th>接口</th><th>查询关键字</th><th>结果</th>
+                <th>来源</th><th>耗时</th><th>说明</th><th>操作人</th></tr>
+          </thead>
+          <tbody>
+          {% for l in recent_logs %}
+            <tr>
+              <td class="small">{{ l.created_at.strftime('%m-%d %H:%M:%S') if l.created_at }}</td>
+              <td class="small">{{ l.endpoint_code }}</td>
+              <td class="small">{{ l.query_key }}</td>
+              <td>{% if l.ok %}<span class="badge bg-success">成功</span>
+                  {% else %}<span class="badge bg-danger">失败</span>{% endif %}</td>
+              <td class="small">{% if l.from_cache %}缓存{% else %}实调{% endif %}</td>
+              <td class="small">{{ l.elapsed_ms }}ms</td>
+              <td class="small text-muted">{{ l.message }}</td>
+              <td class="small">{{ l.operator or '-' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8" class="text-muted p-3">暂无调用记录</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
