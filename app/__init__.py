@@ -357,6 +357,10 @@ def init_db_schema():
     _add_column_if_missing('sys_announcement', 'visible_roles', 'TEXT')
     _add_column_if_missing('sys_announcement', 'visible_depts', 'TEXT')
 
+    # M0 #27：auth_core_permission 增加中文名展示列（供权限矩阵友好展示）
+    _add_column_if_missing('auth_core_permission', 'module_name', "VARCHAR(64)")
+    _add_column_if_missing('auth_core_permission', 'resource_name', "VARCHAR(128)")
+
     # 价格方案字段迁移（discount_type -> float_type, discount_value -> float_value）
     _migrate_price_formula_fields()
 

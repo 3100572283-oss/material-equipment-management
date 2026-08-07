@@ -220,6 +220,8 @@ class AuthPermission(db.Model):
     resource = db.Column(db.String(64), nullable=False)      # stock_in/contract/supplier...
     action = db.Column(db.String(32), nullable=False)        # view/create/edit/delete/export/approve
     perm_key = db.Column(db.String(128), unique=True, nullable=False, index=True)  # material:stock_in:create
+    module_name = db.Column(db.String(64), nullable=True)     # 模块中文名（物资管理/设备管理等），供权限矩阵展示
+    resource_name = db.Column(db.String(128), nullable=True)  # 资源中文名（入库管理/合同台账等），供权限矩阵展示
     status = db.Column(db.Boolean, default=True)
     remark = db.Column(db.String(256), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)

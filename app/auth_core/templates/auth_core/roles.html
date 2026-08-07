@@ -133,11 +133,23 @@ const CAN = {
 };
 const MODULE_NAMES = {
   material: '物资管理', equipment: '设备管理', cost: '成本核算',
-  subcontract: '分包商管理', system: '系统与权限'
+  subcontract: '分包商管理', system: '系统与权限', admin: '后台管理',
+  ai: 'AI智能助手', basic: '基础数据', contract: '采购合同',
+  master: '主数据管理', stock: '库存管理', turnover: '周转材管理',
+  tools: '行业工具', report: '统计报表', help: '帮助中心',
+  workbench: '工作台', org_sync: '组织同步'
+};
+const RESOURCE_NAMES = {
+  code_check: '单据编号检查', basic: '基础信息', category: '分类配置',
+  stock_in: '入库管理', stock_out: '出库管理', contract: '合同台账',
+  supplier: '供应商管理', org: '组织架构', maintenance: '设备维保',
+  budget: '责任成本预算', equipment: '设备台账', industry_tools: '行业工具',
+  turnover_material: '周转材管理'
 };
 const ACTION_NAMES = {
   view: '查看', create: '新增', edit: '编辑', delete: '删除',
-  export: '导出', approve: '审批', review: '审查', grant: '授权', reset_pwd: '重置密码'
+  export: '导出', import: '导入', approve: '审批', review: '审查',
+  print: '打印', grant: '授权', reset_pwd: '重置密码'
 };
 
 const Role = {
@@ -251,14 +263,14 @@ const Role = {
             <input class="form-check-input" type="checkbox" id="mod_${g.module}"
                    onchange="Role.checkModule('${g.module}', this.checked)">
             <label class="form-check-label fw-semibold" for="mod_${g.module}">
-              ${AC.esc(MODULE_NAMES[g.module] || g.module)}
+              ${AC.esc(g.module_name || MODULE_NAMES[g.module] || g.module)}
             </label>
           </div>
         </div>
         <div class="perm-group-body">
           ${g.resources.map(r => `
             <div class="perm-res" data-module="${g.module}">
-              <div class="perm-res-name">${AC.esc(r.resource)}</div>
+              <div class="perm-res-name">${AC.esc(r.resource_name || RESOURCE_NAMES[r.resource] || r.resource)}</div>
               <div class="perm-actions">
                 ${r.actions.map(a => `
                   <div class="form-check form-check-inline">

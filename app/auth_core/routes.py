@@ -391,15 +391,21 @@ def api_role_permissions(role_id):
 
     groups = {}
     for p in perms:
-        g = groups.setdefault(p.module, {})
-        g.setdefault(p.resource, []).append({
+        g = groups.setdefault(p.module, {'module_name': p.module_name or p.module, 'resources': {}})
+        g['module_name'] = p.module_name or p.module
+        res = g['resources'].setdefault(p.resource, {
+            'resource_name': p.resource_name or p.resource, 'actions': []})
+        res['resource_name'] = p.resource_name or p.resource
+        res['actions'].append({
             'id': p.id, 'action': p.action, 'perm_key': p.perm_key,
             'granted': p.id in granted,
         })
     data = [{
         'module': m,
-        'resources': [{'resource': r, 'actions': acts} for r, acts in res.items()],
-    } for m, res in groups.items()]
+        'module_name': gd['module_name'],
+        'resources': [{'resource': r, 'resource_name': rn['resource_name'],
+                       'actions': acts} for r, rn in gd['resources'].items()],
+    } for m, gd in groups.items()]
 
     role = AuthRole.query.get(role_id)
     return ok(data, role_code=(role.role_code if role else ''),

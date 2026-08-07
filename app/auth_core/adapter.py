@@ -34,19 +34,60 @@ ORG_CODE_ALIAS = {
     'HQ': 'CRC',
 }
 
+# 模块中文名（覆盖全部 auth_core_permission.module 取值，供权限矩阵分组标题展示）
+MODULE_CN = {
+    'admin': '后台管理', 'ai': 'AI智能助手', 'basic': '基础数据',
+    'contract': '采购合同', 'cost': '成本核算', 'equipment': '设备管理',
+    'help': '帮助中心', 'master': '主数据管理', 'material': '物资管理',
+    'module_equipment': '设备管理', 'module_industry_tools': '行业工具',
+    'module_turnover': '周转材管理', 'org_sync': '组织同步', 'report': '统计报表',
+    'stock': '库存管理', 'subcontract': '分包商管理', 'system': '系统与权限',
+    'tools': '行业工具', 'turnover': '周转材管理', 'workbench': '工作台',
+}
+
+# 资源中文名兜底（仅用于无对应 SysMenu.permission 的权限点；多数资源名由 SysMenu.menu_name 派生）
+RESOURCE_CN = {
+    ('cost', 'budget'): '责任成本预算', ('equipment', 'maintenance'): '设备维保',
+    ('material', 'stock_in'): '入库管理', ('material', 'stock_out'): '出库管理',
+    ('subcontract', 'supplier'): '供应商管理', ('system', 'org'): '组织架构',
+    ('module_equipment', 'equipment'): '设备台账',
+    ('module_industry_tools', 'industry_tools'): '行业工具',
+    ('module_turnover', 'turnover_material'): '周转材管理',
+}
+
+
+def _resolve_names(module, resource, perm_key=None):
+    """解析权限点的中文模块名/资源名：优先 SysMenu.menu_name（数据驱动），其次兜底字典。"""
+    module_name = MODULE_CN.get(module, module)
+    resource_name = RESOURCE_CN.get((module, resource))
+    if not resource_name and perm_key:
+        m = LegacyMenu.query.filter(LegacyMenu.permission == perm_key).first()
+        if m:
+            resource_name = m.menu_name
+    if not resource_name:
+        # 退而求其次：用 module:resource: 前缀匹配菜单（覆盖 menu_type=menu 的权限点）
+        m = LegacyMenu.query.filter(LegacyMenu.permission.like('%s:%s:%%' % (module, resource))).first()
+        if m:
+            resource_name = m.menu_name
+    if not resource_name:
+        resource_name = resource
+    return module_name, resource_name
+
 
 def _ensure_permission(module, resource, action):
     """确保 auth_core_permission 中存在 (module, resource, action) 权限点，返回实例（幂等）。
 
     权限点 perm_key 统一为 'module:resource:action'，与 SysMenu.permission
     （由 _generate_permission 生成 module:func:view）同命名空间，可作为菜单可见性与
-    按钮权限判定的单一数据源（SSOT）。
+    按钮权限判定的单一数据源（SSOT）。同时写入中文模块名/资源名供权限矩阵友好展示。
     """
     perm_key = '%s:%s:%s' % (module, resource, action)
     p = AuthPermission.query.filter_by(perm_key=perm_key).first()
     if p:
         return p
-    p = AuthPermission(module=module, resource=resource, action=action, perm_key=perm_key)
+    module_name, resource_name = _resolve_names(module, resource, perm_key)
+    p = AuthPermission(module=module, resource=resource, action=action, perm_key=perm_key,
+                        module_name=module_name, resource_name=resource_name)
     db.session.add(p)
     db.session.flush()
     return p
@@ -121,7 +162,9 @@ def sync_role_from_legacy():
             module = parts[0] if parts else 'misc'
             action = parts[-1] if parts else 'view'
             resource = parts[1] if len(parts) > 2 else (m.menu_code or 'page')
-            p = AuthPermission(module=module, resource=resource, action=action, perm_key=key)
+            module_name, resource_name = _resolve_names(module, resource, key)
+            p = AuthPermission(module=module, resource=resource, action=action, perm_key=key,
+                               module_name=module_name, resource_name=resource_name)
             db.session.add(p)
             db.session.flush()
         perm_map[m.id] = p.id
@@ -157,7 +200,27 @@ def sync_role_from_legacy():
                 if not AuthRolePermission.query.filter_by(role_id=role.id, permission_id=perm.id).first():
                     db.session.add(AuthRolePermission(role_id=role.id, permission_id=perm.id))
     db.session.commit()
+    sync_permission_names()
     return role_map
+
+
+def sync_permission_names():
+    """回填/修正 auth_core_permission 的中文模块名与资源名（幂等，可重复执行）。
+
+    优先用 SysMenu.menu_name 派生资源名，其次 MODULE_CN/RESOURCE_CN 兜底字典；
+    保证权限矩阵展示始终为中文，不再暴露内部编码。
+    """
+    updated = 0
+    for p in AuthPermission.query.all():
+        mn, rn = _resolve_names(p.module, p.resource, p.perm_key)
+        if (p.module_name or '') != mn or (p.resource_name or '') != rn:
+            p.module_name = mn
+            p.resource_name = rn
+            db.session.add(p)
+            updated += 1
+    if updated:
+        db.session.commit()
+    return updated
 
 
 def sync_user_from_legacy(legacy_user_id):
