@@ -103,13 +103,25 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
           <div class="small text-muted">
             已选 <strong id="permCount" class="text-primary">0</strong> 项
           </div>
           <div class="btn-group btn-group-sm">
             <button class="btn btn-outline-secondary" onclick="Role.checkAll(true)">全选</button>
             <button class="btn btn-outline-secondary" onclick="Role.checkAll(false)">清空</button>
+          </div>
+        </div>
+        <div class="d-flex gap-2 align-items-center mb-3">
+          <div class="input-group input-group-sm flex-grow-1">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" class="form-control" id="permSearch"
+                   placeholder="搜索功能/资源（如：入库、合同、供应商）"
+                   oninput="Role.filterPerm(this.value)">
+          </div>
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" onclick="Role.collapseAll(true)">全部折叠</button>
+            <button class="btn btn-outline-secondary" onclick="Role.collapseAll(false)">全部展开</button>
           </div>
         </div>
         <div id="permBox"></div>
@@ -256,14 +268,20 @@ const Role = {
 
   matrix(groups) {
     if (!groups.length) return '<div class="ac-empty"><i class="bi bi-inbox"></i>暂无权限点</div>';
-    return groups.map(g => `
-      <div class="perm-group">
-        <div class="perm-group-head">
+    return groups.map(g => {
+      const total = g.resources.reduce((s, r) => s + r.actions.length, 0);
+      const granted = g.resources.reduce((s, r) => s + r.actions.filter(a => a.granted).length, 0);
+      return `
+      <div class="perm-group" data-module="${g.module}">
+        <div class="perm-group-head" onclick="Role.toggleGroup('${g.module}')" style="cursor:pointer">
+          <i class="bi bi-chevron-down me-1 perm-chevron"></i>
           <div class="form-check mb-0">
             <input class="form-check-input" type="checkbox" id="mod_${g.module}"
-                   onchange="Role.checkModule('${g.module}', this.checked)">
+                   onchange="Role.checkModule('${g.module}', this.checked)"
+                   onclick="event.stopPropagation()">
             <label class="form-check-label fw-semibold" for="mod_${g.module}">
               ${AC.esc(g.module_name || MODULE_NAMES[g.module] || g.module)}
+              <span class="badge rounded-pill bg-light text-secondary ms-1">${granted}/${total}</span>
             </label>
           </div>
         </div>
@@ -285,7 +303,49 @@ const Role = {
               </div>
             </div>`).join('')}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
+  },
+
+  toggleGroup(mod) {
+    const g = document.querySelector('#permBox .perm-group[data-module="' + mod + '"]');
+    if (!g) return;
+    const body = g.querySelector('.perm-group-body');
+    const collapsed = body.style.display === 'none';
+    body.style.display = collapsed ? '' : 'none';
+    const chev = g.querySelector('.perm-chevron');
+    if (chev) chev.style.transition = 'transform .15s';
+    if (chev) chev.style.transform = collapsed ? '' : 'rotate(-90deg)';
+  },
+
+  collapseAll(collapsed) {
+    document.querySelectorAll('#permBox .perm-group').forEach(g => {
+      const body = g.querySelector('.perm-group-body');
+      if (body) body.style.display = collapsed ? 'none' : '';
+      const chev = g.querySelector('.perm-chevron');
+      if (chev) chev.style.transform = collapsed ? 'rotate(-90deg)' : '';
+    });
+  },
+
+  filterPerm(q) {
+    q = (q || '').trim().toLowerCase();
+    const hasQ = !!q;
+    document.querySelectorAll('#permBox .perm-group').forEach(g => {
+      let visible = 0;
+      g.querySelectorAll('.perm-res').forEach(res => {
+        const name = (res.querySelector('.perm-res-name')?.textContent || '').toLowerCase();
+        const match = !q || name.indexOf(q) >= 0;
+        res.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      g.style.display = visible ? '' : 'none';
+      if (hasQ && visible) {
+        const body = g.querySelector('.perm-group-body');
+        if (body) body.style.display = '';
+        const chev = g.querySelector('.perm-chevron');
+        if (chev) chev.style.transform = '';
+      }
+    });
   },
 
   checkModule(mod, checked) {
@@ -329,12 +389,13 @@ Role.load();
 </script>
 <style>
   .perm-group { border: 1px solid var(--bs-border-color, #e9ecef); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
-  .perm-group-head { background: rgba(13,110,253,.05); padding: 9px 13px; border-bottom: 1px solid var(--bs-border-color, #eef0f3); }
+  .perm-group-head { background: rgba(13,110,253,.05); padding: 9px 13px; border-bottom: 1px solid var(--bs-border-color, #eef0f3); user-select: none; }
+  .perm-chevron { transition: transform .15s ease; color: #6c757d; }
   .perm-group-body { padding: 4px 13px 10px; }
   .perm-res { display: flex; align-items: center; gap: 14px; padding: 7px 0; border-bottom: 1px dashed var(--bs-border-color, #f0f2f5); }
   .perm-res:last-child { border-bottom: none; }
-  .perm-res-name { width: 130px; flex-shrink: 0; font-size: 13px; color: #6c757d; font-family: ui-monospace, monospace; }
-  .perm-actions { flex: 1; }
+  .perm-res-name { width: 140px; flex-shrink: 0; font-size: 13.5px; font-weight: 500; color: #212529; }
+  .perm-actions { flex: 1; flex-wrap: wrap; }
   @media (max-width: 575.98px) {
     .perm-res { flex-direction: column; align-items: flex-start; gap: 4px; }
     .perm-res-name { width: auto; }
