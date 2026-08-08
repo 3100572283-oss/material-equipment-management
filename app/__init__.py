@@ -1513,27 +1513,37 @@ def create_app(config_class=Config):
                 # 自动执行数据库迁移
                 from app.migration import run_migrations
                 run_migrations()
-                from app.utils import init_system_config, init_dict_data
-                init_system_config()
-                init_dict_data()
-                from app.approval.service import init_default_flows
-                init_default_flows()
-                init_rbac_data()
-                init_steel_specs()
-                # M0 权限中台：组织树骨架 + 铁建岗位角色模板 + 超级管理员种子
-                from app.auth_core.init_data import init_auth_core_data
-                init_auth_core_data()
-                # 外部对接中心：内置数据源占位 + 企查查接口目录 + 铁建云链导出模板（幂等）
+                # 幂等守卫:种子数据已存在则跳过后续数据初始化,避免 gunicorn 多 worker 重复插入唯一键冲突崩溃
+                from sqlalchemy import text
                 try:
-                    from app.integration.models import ensure_builtin_integration_data
-                    ensure_builtin_integration_data()
-                except Exception as _e:
-                    app.logger.warning('integration 初始化跳过: %s', _e)
-                # 主数据统一改造：建立项目常用关联
-                from app.utils import init_master_data_unification
-                init_master_data_unification()
-                # 初始化默认管理员账号
-                init_default_users()
+                    _has = db.session.execute(text('SELECT 1 FROM auth_core_role_permission LIMIT 1')).fetchone()
+                except Exception:
+                    _has = None
+                _already_seeded = _has is not None
+                if not _already_seeded:
+                    from app.utils import init_system_config, init_dict_data
+                    init_system_config()
+                    init_dict_data()
+                    from app.approval.service import init_default_flows
+                    init_default_flows()
+                    init_rbac_data()
+                    init_steel_specs()
+                    # M0 权限中台：组织树骨架 + 铁建岗位角色模板 + 超级管理员种子
+                    from app.auth_core.init_data import init_auth_core_data
+                    init_auth_core_data()
+                    # 外部对接中心：内置数据源占位 + 企查查接口目录 + 铁建云链导出模板（幂等）
+                    try:
+                        from app.integration.models import ensure_builtin_integration_data
+                        ensure_builtin_integration_data()
+                    except Exception as _e:
+                        app.logger.warning('integration 初始化跳过: %s', _e)
+                    # 主数据统一改造：建立项目常用关联
+                    from app.utils import init_master_data_unification
+                    init_master_data_unification()
+                    # 初始化默认管理员账号
+                    init_default_users()
+                else:
+                    app.logger.info('boot: 检测到种子数据已存在,跳过重复数据初始化(多 worker 并发保护)')
         finally:
             _fcntl.flock(_blf.fileno(), _fcntl.LOCK_UN)
             _blf.close()
