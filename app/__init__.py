@@ -1505,8 +1505,31 @@ def create_app(config_class=Config):
     # MIGRATE_NO_CREATE_ALL=1 时跳过全部建表/数据初始化，供 Flask-Migrate autogenerate 针对空库生成基线
     if not os.environ.get('MIGRATE_NO_CREATE_ALL'):
         import fcntl as _fcntl
-        _blf = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.init_boot_lock'), 'w')
-        _fcntl.flock(_blf.fileno(), _fcntl.LOCK_EX)
+        import os as _os
+        import time as _time
+        _blf_path = '/tmp/material_init_boot.lock'
+        _blf = None
+        _lock_err = None
+        for _attempt in range(10):
+            try:
+                _blf = _os.open(_blf_path, _os.O_CREAT | _os.O_RDWR, 0o666)
+                try:
+                    _os.chmod(_blf_path, 0o666)
+                except Exception:
+                    pass
+                _fcntl.flock(_blf, _fcntl.LOCK_EX)
+                break
+            except (PermissionError, OSError) as _exc:
+                _lock_err = _exc
+                if _blf is not None:
+                    try:
+                        _os.close(_blf)
+                    except Exception:
+                        pass
+                    _blf = None
+                _time.sleep(0.2)
+        if _blf is None:
+            raise RuntimeError('无法获取启动初始化锁: ' + str(_lock_err))
         try:
             with app.app_context():
                 init_db_schema()
@@ -1545,8 +1568,8 @@ def create_app(config_class=Config):
                 else:
                     app.logger.info('boot: 检测到种子数据已存在,跳过重复数据初始化(多 worker 并发保护)')
         finally:
-            _fcntl.flock(_blf.fileno(), _fcntl.LOCK_UN)
-            _blf.close()
+            _fcntl.flock(_blf, _fcntl.LOCK_UN)
+            _os.close(_blf)
 
     # M0 权限中台：集中式行级数据隔离（替代逐路由过滤补丁，灰度开关 DATA_SCOPE_ENFORCE）
     from app.auth_core.data_scope import install_data_scope
