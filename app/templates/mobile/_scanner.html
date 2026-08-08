@@ -1,7 +1,7 @@
 {# 移动端通用扫码组件 - 通过 include 引入，依赖全局 MobileScanner 对象 #}
 {# 用法：{% include 'mobile/_scanner.html' %}
        MobileScanner.open(onScanSuccess)  #}
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="{{ url_for("static", filename="vendor/html5-qrcode-2.3.8/html5-qrcode.min.js") }}"></script>
 <style>
 .m-scanner-mask {
     position: fixed; inset: 0; z-index: 9999;

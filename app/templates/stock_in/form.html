@@ -424,8 +424,8 @@ async function startScanner() {
     if (!window.Html5Qrcode) {
         // CDN 多源 fallback: unpkg → jsdelivr → 本地
         const cdnSources = [
-            'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
-            'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
+            '{{ url_for("static", filename="vendor/html5-qrcode-2.3.8/html5-qrcode.min.js") }}',
+            '{{ url_for("static", filename="vendor/html5-qrcode-2.3.8/html5-qrcode.min.js") }}',
             '{{ url_for("static", filename="js/vendor/html5-qrcode.min.js") }}'
         ];
         let loaded = false;

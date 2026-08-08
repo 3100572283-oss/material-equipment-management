@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function startScanner() {
         if (!window.Html5Qrcode) {
             try {
-                await loadScript('https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js');
+                await loadScript('{{ url_for("static", filename="vendor/html5-qrcode-2.3.8/html5-qrcode.min.js") }}');
             } catch (e) {
                 scanStatus.textContent = '加载扫码库失败，请检查网络。';
                 return;

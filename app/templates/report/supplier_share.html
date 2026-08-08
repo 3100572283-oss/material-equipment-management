@@ -34,7 +34,7 @@
 </div>
 {% endblock %}
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script src="{{ url_for("static", filename="vendor/echarts-5.4.3/echarts.min.js") }}"></script>
 <script>
     var chart = echarts.init(document.getElementById('supplierChart'));
     var option = {

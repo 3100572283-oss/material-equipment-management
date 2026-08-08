@@ -37,7 +37,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="{{ url_for("static", filename="vendor/qrcodejs-1.0.0/qrcode.min.js") }}"></script>
 <script>
 // 二维码内容：移动端扫描后跳转到设备详情
 var qrUrl = window.location.origin + "{{ url_for('mobile.scan_redirect') }}?code={{ eq.code }}";
